@@ -102,6 +102,24 @@ Subtasks are one level deep, as in Apple Reminders.
   boundaries.
 - **The List field** in the details dialog moves it to another list.
 
+### Copying and pasting
+
+- **Ctrl+C** on a selected reminder copies it as the Markdown line from its
+  file, with its notes and subtasks (no id), so it also pastes into an editor
+  or a chat as a checklist.
+- **Ctrl+V** while not typing in a text field pastes reminders:
+  - **A copied reminder** (or any `- [ ] …` checklist lines) comes back with
+    every field, notes and subtasks.
+  - **Plain text** becomes one reminder per line, titled with the line;
+    inline fields such as `#tag` or `📅 2026-10-05` apply, as when typing.
+  - **Where they go:** after the selected reminder, in its list and section;
+    otherwise at the end of the list being shown. In a smart list they go
+    into your first list, and are made to show there: due today in Today or
+    Scheduled, flagged in Flagged, tagged in a tag's view.
+  - Undo with Ctrl+Z.
+- **In a text field** (a title being edited, New Reminder, search), Ctrl+C and
+  Ctrl+V copy and paste text as usual.
+
 ### Deleting
 
 Press Delete, or **⋮ → Delete**. Undo from the message that appears, or with
@@ -165,6 +183,8 @@ Press Ctrl+? in the app for this list.
 | Alt+0 … Alt+3 | Priority none / low / medium / high |
 | Ctrl+] / Ctrl+[ | Indent / outdent |
 | Alt+↑ / Alt+↓ | Move up / down |
+| Ctrl+C | Copy (as Markdown) |
+| Ctrl+V | Paste reminders (outside a text field) |
 | Delete | Delete |
 
 **Lists**

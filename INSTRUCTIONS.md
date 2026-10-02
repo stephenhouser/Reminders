@@ -214,11 +214,20 @@ Ground rules
   long-press on a sidebar row → Move "Group" Up/Down and a Collapsible check
   item (visible <-> collapsible), or Alt+↑/↓ on a row;
   TUI J/K or Alt+↑/↓ in the sidebar (core move_sidebar_group skips groups
-  not showing). TUI S opens settings.ini in $EDITOR and reloads it. One ordering
+  not showing). TUI S opens settings.ini in $EDITOR and reloads it.
+  One ordering
   function per front end drives drawing, the number labels, Ctrl+1…/1…,
   Ctrl+PgUp/PgDn (over what's showing) and Go To (which also finds folded
   groups); a hidden saved view falls back to Today or the first entry. The
   TUI sidebar starts with a bold "Reminders" title and a blank line.
+  Copy/paste (GUI): Ctrl+C on a reminder row copies it as list-file Markdown
+  without ids (core clipboard.hpp: to_clipboard_text / from_clipboard_text).
+  Ctrl+V is a window key controller in the bubble phase, so focused text
+  fields paste normally; elsewhere checklist lines paste with all fields,
+  notes and subtasks, plain text as one reminder per line. They go after the
+  focused reminder (rows carry "reminder-id"), else at the end of the shown
+  list, else into the first list adjusted to the smart view. One undo step;
+  Store::add gives new ids to subtasks too.
   --show-key-numbers / --hide-key-numbers on either command line override it
   for that run without writing the file (and switch a running GUI).
 - CLI: lists, list [VIEW] [-a], show, add, edit, done, undone, move

@@ -5,6 +5,7 @@
 #include <map>
 
 #include "dialogs.hpp"
+#include "reminders/clipboard.hpp"
 #include "reminders/format.hpp"
 #include "reminders/settings.hpp"
 #include "reminders/syncthing.hpp"
@@ -502,6 +503,20 @@ void Window::build() {
             return TRUE;
         });
     gtk_widget_add_controller(sidebar_list_, sidebar_keys);
+    // Ctrl+V outside a text field pastes reminders. Text fields handle it
+    // first (this runs as the key bubbles up to the window), so pasting
+    // into them works as usual.
+    auto* paste_keys = gtk_event_controller_key_new();
+    connect<gboolean(GtkEventControllerKey*, guint, guint, GdkModifierType)>(
+        paste_keys, "key-pressed", [this](GtkEventControllerKey*, guint key, guint, GdkModifierType mods) -> gboolean {
+            if ((mods & gtk_accelerator_get_default_mod_mask()) != GDK_CONTROL_MASK) return FALSE;
+            if (gdk_keyval_to_lower(key) != GDK_KEY_v) return FALSE;
+            auto* focus = gtk_root_get_focus(GTK_ROOT(window_));
+            if (focus && (GTK_IS_EDITABLE(focus) || GTK_IS_TEXT_VIEW(focus))) return FALSE;
+            paste_reminders();
+            return TRUE;
+        });
+    gtk_widget_add_controller(window_, paste_keys);
     auto* sidebar_scroller = gtk_scrolled_window_new();
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(sidebar_scroller), GTK_POLICY_NEVER,
                                    GTK_POLICY_AUTOMATIC);
@@ -1239,6 +1254,7 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
     gtk_list_box_row_set_activatable(GTK_LIST_BOX_ROW(row), FALSE);
     gtk_widget_add_css_class(row, "reminder-row");
     gtk_widget_add_css_class(row, color_class(ref.list->color()).c_str());
+    g_object_set_data_full(G_OBJECT(row), "reminder-id", g_strdup(id.c_str()), g_free);  // for paste
 
     auto* box = hbox(12);
     gtk_widget_set_margin_top(box, 8);
@@ -1470,6 +1486,7 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
                 switch (key) {
                     case GDK_KEY_t: return later([this, id] { set_due(id, 0); });
                     case GDK_KEY_i: return later([this, id] { show_details(id); });
+                    case GDK_KEY_c: copy_reminder(id); return TRUE;
                     case GDK_KEY_bracketright:
                         if (in_list) return later([this, id] { indent(id, true); });
                         break;
@@ -1762,6 +1779,78 @@ void Window::toggle_flag(const std::string& id) {
     });
     focus_reminder_ = id;
     refresh();
+}
+
+// The reminder as Markdown text, so it also pastes into other apps.
+void Window::copy_reminder(const std::string& id) {
+    auto ref = store_ ? store_->find(id) : std::nullopt;
+    if (!ref) return;
+    gdk_clipboard_set_text(gtk_widget_get_clipboard(window_), rem::to_clipboard_text(*ref->reminder).c_str());
+    toast(std::format("Copied “{}”", ref->reminder->title));
+}
+
+void Window::paste_reminders() {
+    if (!store_) return;
+    auto keep = Obj<GtkWindow>::ref(GTK_WINDOW(window_));
+    gdk_clipboard_read_text_async(
+        gtk_widget_get_clipboard(window_), nullptr,
+        [](GObject* source, GAsyncResult* result, gpointer data) {
+            auto* holder = static_cast<Obj<GtkWindow>*>(data);
+            char* text = gdk_clipboard_read_text_finish(GDK_CLIPBOARD(source), result, nullptr);
+            if (auto* self = Window::from(holder->get()); self && text) self->add_pasted(text);
+            g_free(text);
+            delete holder;
+        },
+        new Obj<GtkWindow>(std::move(keep)));
+}
+
+// Adds pasted text as reminders: after the focused reminder (in its list and
+// section), else at the end of the list being shown. In a smart list they go
+// into the first list, set up to show there (due today in Today, flagged in
+// Flagged, tagged in a tag's view).
+void Window::add_pasted(const std::string& text) {
+    auto pasted = rem::from_clipboard_text(text);
+    if (pasted.empty() || !store_) return;
+
+    std::optional<rem::Ref> anchor;
+    for (auto* w = gtk_root_get_focus(GTK_ROOT(window_)); w; w = gtk_widget_get_parent(w))
+        if (auto* id = static_cast<const char*>(g_object_get_data(G_OBJECT(w), "reminder-id"))) {
+            anchor = store_->find(id);
+            break;
+        }
+    rem::ListFile* list = anchor ? anchor->list : view_.kind == View::List ? store_->list(view_.name) : nullptr;
+    if (!list && !store_->lists().empty()) list = store_->lists().front();
+    if (!list) {
+        toast("Create a list first");
+        return;
+    }
+    // A subtask's paste goes after its parent.
+    const rem::Reminder* after = anchor ? (anchor->parent ? anchor->parent : anchor->reminder) : nullptr;
+    std::optional<std::string> section = after ? list->doc.section_of(*after) : std::nullopt;
+    std::string after_id = after ? after->id : "";
+
+    auto day = today();
+    undoable("Paste", [&] {
+        std::string first;
+        try {
+            for (auto& r : pasted) {
+                if (!r.created) r.created = day;
+                if (!r.done && !r.due_date && (view_.kind == View::Today || view_.kind == View::Scheduled))
+                    r.due_date = day;
+                if (view_.kind == View::Flagged) r.flagged = true;
+                if (view_.kind == View::Tag && std::ranges::find(r.tags, view_.name) == r.tags.end())
+                    r.tags.push_back(view_.name);
+                const rem::Reminder* at = after_id.empty() ? nullptr : list->doc.find(after_id);
+                after_id = store_->add(*list, std::move(r), at, section).id;
+                if (first.empty()) first = after_id;
+            }
+        } catch (const std::exception& e) {
+            toast(std::format("Couldn't save: {}", e.what()));
+        }
+        if (!first.empty()) focus_reminder_ = first;
+        refresh();
+    });
+    if (pasted.size() > 1) toast(std::format("Pasted {} reminders", pasted.size()));
 }
 
 void Window::delete_reminder(const std::string& id) {

@@ -49,6 +49,8 @@ void show_shortcuts(GtkApplication* app) {
                           {"Outdent", "<Control>bracketleft"},
                           {"Move Up", "<Alt>Up"},
                           {"Move Down", "<Alt>Down"},
+                          {"Copy", "<Control>c"},
+                          {"Paste as New Reminders", "<Control>v"},
                           {"Delete", "Delete"}});
     section("Lists", {{"Go To…", "<Control>k"},
                       {"Sidebar Entries 1–9 (Today, Scheduled, …, Your Lists)", "<Control>1...<Control>9"},

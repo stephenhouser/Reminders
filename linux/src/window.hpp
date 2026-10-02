@@ -106,6 +106,10 @@ private:
     void move_step(const std::string& id, bool up);
     void setup_autoscroll();
     void delete_reminder(const std::string& id);
+    // Ctrl+C on a reminder; Ctrl+V outside text fields (see clipboard.hpp).
+    void copy_reminder(const std::string& id);
+    void paste_reminders();
+    void add_pasted(const std::string& text);
     void show_details(const std::string& id);
     void new_list();
     void edit_list(const std::string& name);

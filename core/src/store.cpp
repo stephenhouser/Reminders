@@ -396,11 +396,16 @@ std::optional<Ref> Store::find(std::string_view id) {
 
 Reminder& Store::add(ListFile& list, Reminder r, const Reminder* after,
                      const std::optional<std::string>& section) {
-    if (r.id.empty()) {
-        auto taken = taken_ids();
-        do r.id = new_id();
-        while (std::ranges::find(taken, r.id) != taken.end());
-    }
+    // New ids for it and any subtasks (a pasted reminder brings some along).
+    auto taken = taken_ids();
+    auto give_id = [&](Reminder& x) {
+        if (!x.id.empty()) return;
+        do x.id = new_id();
+        while (std::ranges::find(taken, x.id) != taken.end());
+        taken.push_back(x.id);
+    };
+    give_id(r);
+    for (auto& s : r.subtasks) give_id(s);
     auto id = r.id;
     list.doc.insert(std::move(r), after, section);
     save(list);

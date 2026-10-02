@@ -8,6 +8,7 @@ add_library(reminders_core
   src/syncthing.cpp
   src/settings.cpp
   src/dates.cpp
+  src/clipboard.cpp
 )
 target_include_directories(reminders_core PUBLIC include)
 
@@ -20,6 +21,7 @@ add_executable(core_tests
   tests/history_test.cpp
   tests/syncthing_test.cpp
   tests/dates_test.cpp
+  tests/clipboard_test.cpp
 )
 target_link_libraries(core_tests PRIVATE reminders_core)
 add_test(NAME core_tests COMMAND core_tests)
