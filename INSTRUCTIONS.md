@@ -321,3 +321,44 @@ only compiled.
 - **Recognising your own writes after a restart needs persistent state** (the
   fingerprint), or unsynced local edits become the merge base and the other
   device's changes get lost in the next conflict.
+- **Don't parent a popover to a `GtkListBox` that gets rebuilt.**
+  `gtk_list_box_remove_all()` tries to remove it as a row ("Tried to remove
+  non-child"), and the rebuild that the menu's own action triggers breaks.
+  The sidebar menu hangs off the scrolled window instead.
+- **settings.ini keys outside `[general]` are silently ignored.** A
+  hand-written file without the section header has no effect; the TUI's `S`
+  creates the file with the header.
+- **Testing pitfalls:**
+  - **tmux:** keep tmux's own TERM. Forcing `TERM=screen-256color` loses the
+    extended key names (kUP3 …), so Alt+arrows aren't recognised.
+  - **Saved view:** `--folder` with a folder other than the saved one ignores
+    the saved view, so such a test opens on Today.
+  - **GUI actions without a mouse:** inside the private `dbus-run-session`,
+    `gdbus call --session --dest com.stephenhouser.Reminders --object-path
+    /com/stephenhouser/Reminders/window/1 --method org.gtk.Actions.Activate
+    move-group-up [] {}` runs a `win.` action, timed before the screenshot
+    hook fires (1.5 s after start-up).
+
+## Where things stand (2026-10-01)
+
+- **Done:**
+  - **Core library** (C++23): the file format with byte-for-byte round
+    trips, three-way merging of Syncthing conflict copies, undo/redo history
+    and settings. Unit tests pass.
+  - **GNOME app** (`Reminders`): the features in the brief, the keyboard
+    shortcuts, drag and drop, the quick switcher, configurable sidebar
+    groups (order, visible / collapsible / hidden, rearranged from the
+    sidebar).
+  - **Terminal client** (`reminders`): the CLI and the TUI, sharing settings
+    and the last view with the app.
+  - **Docs:** README, docs/FORMAT.md, docs/USING.md, docs/TERMINAL.md,
+    docs/settings.example.ini.
+- **Not yet confirmed by the user:** the GUI right-click menu for moving
+  sidebar groups, after the popover fix above (tested headless only).
+- **Known gaps:**
+  - The GNOME app reads settings.ini only at start-up (the TUI reloads it
+    after `S`).
+  - No iOS, Android, Windows or macOS client yet. iOS can't be built on the
+    Linux dev machine (no Swift or Xcode); nothing gets installed without
+    asking.
+- **Next step:** not chosen yet; ask the user.

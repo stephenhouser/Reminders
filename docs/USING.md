@@ -250,6 +250,9 @@ Groceries.md                      ← a list (synced)
 client. Most of it is filled in for you; `show-key-numbers` is only set here.
 In the terminal client, `S` opens it in your editor and applies the changes
 when you quit the editor; the app reads it at start-up.
+[settings.example.ini](settings.example.ini) lists every setting with its
+default, ready to copy. Settings must be under the `[general]` line; anything
+outside it is ignored.
 
 ```ini
 [general]
