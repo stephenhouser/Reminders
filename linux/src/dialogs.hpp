@@ -8,6 +8,9 @@
 #include <string>
 #include <vector>
 
+#include <filesystem>
+
+#include "reminders/backend.hpp"
 #include "reminders/model.hpp"
 
 namespace ui {
@@ -42,5 +45,26 @@ void show_list_dialog(GtkWidget* parent, std::optional<ListEdit> existing,
 // (`style.name` is shown as the subtitle, e.g. "#errands").
 void show_tag_dialog(GtkWidget* parent, const std::string& tag, ListEdit style,
                      std::function<void(ListEdit)> on_done);
+
+// "Source Info": a source's title, back end and folder, and whether new
+// lists go into it. Its name ([source.NAME]) is fixed: settings refer to it.
+struct SourceEdit {
+    std::string name;
+    std::string title;  // empty: from the name
+    rem::BackendKind backend = rem::BackendKind::Syncthing;
+    std::filesystem::path folder;
+    bool is_default = false;
+};
+// `validate` returns an error to show, or "". `on_remove` runs when Remove
+// Source… is pressed (the dialog closes first).
+void show_source_dialog(GtkWidget* parent, SourceEdit source, std::function<std::string(const SourceEdit&)> validate,
+                        std::function<void(SourceEdit)> on_done, std::function<void()> on_remove);
+
+// "Sources": every source, each opening its Source Info; and Add Source….
+struct SourceRow {
+    std::string name, title, detail;
+};
+void show_sources_dialog(GtkWidget* parent, const std::vector<SourceRow>& rows, std::function<void(std::string)> on_open,
+                         std::function<void()> on_add);
 
 }  // namespace ui

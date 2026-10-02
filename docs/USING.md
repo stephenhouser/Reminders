@@ -15,7 +15,8 @@ only want Reminders on one computer.
 ### 2. Open it
 
 The first time you start Reminders, choose **Choose Folder…** and pick the
-folder. Reminders remembers it. To switch later, use **☰ → Change Folder…**.
+folder. Reminders remembers it. To change it later, or to add more folders,
+use **☰ → Sources…** (see [Sources](#sources)).
 
 To open a different folder for one session without changing the saved one,
 name it on the command line:
@@ -289,7 +290,7 @@ sources, which have a section each (below).
 
 ```ini
 [general]
-# The source for new lists, and Change Folder…'s (set by Change Folder…)
+# The source new lists go into (Default Source in Source Info…)
 default-source=personal
 # The list that last had focus
 view=list:Groceries
@@ -431,25 +432,28 @@ folder=/home/you/Sync/Reminders
 | `syncthing` | The folder is synced by Syncthing. Conflict copies are merged; per-device records live in `<folder>/.reminders/`, which `.stignore` keeps out of the sync. |
 | `local` | Just the folder: list files are read and saved as they are, and changes made by other programs still show up. |
 
-- **Change Folder…** (or `reminders folder PATH`) sets the default source's
-  folder, and its back end: `syncthing` inside a Syncthing folder (one with
-  `.stfolder`), else `local`. With no source yet, it creates one named after
-  the folder. To choose the back end yourself, edit `backend=`.
-- **`default-source=`** in `[general]` says which source to open; without
-  it, the first one.
+- **☰ → Sources…** lists your sources. Choose one for **Source Info…**:
+  its title, how it's synced (Syncthing or Local Folder), its folder,
+  whether it's the **Default Source** (where new lists go), and **Remove
+  Source…**, which takes it out of the app and leaves its folder and files
+  as they are. **Add Source…** adds a folder as a new source, named after it
+  (`[source.NAME]`), with the back end it needs: `syncthing` inside a
+  Syncthing folder (one with `.stfolder`), else `local`.
+- **Right-click a source's group heading** for **New List…** in that source
+  and its **Source Info…**.
+- **`reminders folder PATH`** (and the first-run Choose Folder…) sets the
+  default source's folder, creating the source if there's none.
+- **`default-source=`** in `[general]` is the default source; without it,
+  the first one.
 - **A folder given on the command line** uses its source's settings if it is
   one, else the back end it needs, for that run only.
 - **Several sources** are open at once: each gets its own sidebar group, and
   the smart lists, tags and search cover all of them. Reminders can be
   moved (dragged, or the List field in Details) between sources. Undo works
   across them.
-- **Add Source…** (main menu) adds a folder as a new source, named after it
-  (`[source.NAME]`), with the back end it needs. A source group's heading
-  menu (right-click it) has **New List…** for that source and **Remove
-  Source…**, which takes it out of the app and leaves its folder and files as
-  they are.
-- **`title=`** in a source's section sets the heading shown for its group;
-  without it, the name capitalised (`personal` → "Personal").
+- **`title=`** in a source's section (Title in Source Info…) is the heading
+  shown for its group; without it, the name capitalised (`personal` →
+  "Personal").
 - **New lists** go into the source of the list you're viewing, else the
   default one. In the terminal: `reminders new-list NAME --source NAME`.
 - **List names** only need to be unique within a source. Where two sources
@@ -458,7 +462,7 @@ folder=/home/you/Sync/Reminders
   `view=list:home/Todo`, `lists-order`, `lists-hidden`. A bare `Todo`
   still works when only one source has it.
 - **Settings from before sources** had `folder=` in `[general]`; it's no
-  longer read. Choose the folder again with Change Folder… (or
+  longer read. Add the folder again with ☰ → Sources… → Add Source… (or
   `reminders folder PATH`), or write the section above by hand.
 
 ## Troubleshooting

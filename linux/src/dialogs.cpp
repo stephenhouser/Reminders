@@ -1,6 +1,7 @@
 #include "dialogs.hpp"
 
 #include <algorithm>
+#include <format>
 #include <memory>
 
 #include "gtk_util.hpp"
@@ -532,6 +533,193 @@ void show_list_dialog(GtkWidget* parent, std::optional<ListEdit> existing,
 void show_tag_dialog(GtkWidget* parent, const std::string& tag, ListEdit style, std::function<void(ListEdit)> on_done) {
     present_style_dialog(parent, std::move(style), &tag, [](const ListEdit&) { return std::string(); },
                          std::move(on_done));
+}
+
+namespace {
+
+struct SourceDialog {
+    SourceEdit edit;
+    std::function<std::string(const SourceEdit&)> validate;
+    GtkWidget* done = nullptr;
+    GtkWidget* error = nullptr;
+    GtkWidget* folder_row = nullptr;
+
+    void update() {
+        auto err = validate(edit);
+        gtk_label_set_text(GTK_LABEL(error), err.c_str());
+        gtk_widget_set_visible(error, !err.empty());
+        gtk_widget_set_sensitive(done, err.empty());
+        adw_action_row_set_subtitle(ADW_ACTION_ROW(folder_row), edit.folder.string().c_str());
+    }
+};
+
+}  // namespace
+
+void show_source_dialog(GtkWidget* parent, SourceEdit source, std::function<std::string(const SourceEdit&)> validate,
+                        std::function<void(SourceEdit)> on_done, std::function<void()> on_remove) {
+    auto* dialog = adw_dialog_new();
+    adw_dialog_set_title(ADW_DIALOG(dialog), "Source Info");
+    adw_dialog_set_content_width(ADW_DIALOG(dialog), 460);
+    auto* d = attach(dialog, "state", std::make_unique<SourceDialog>());
+    d->edit = std::move(source);
+    d->validate = std::move(validate);
+
+    GtkWidget* cancel;
+    auto* header = header_with_buttons("_Done", &cancel, &d->done);
+    auto* page = adw_preferences_page_new();
+
+    auto* main = adw_preferences_group_new();
+    adw_preferences_group_set_description(
+        ADW_PREFERENCES_GROUP(main), std::format("Settings name it “{}” ([source.{}]).", d->edit.name, d->edit.name).c_str());
+    auto* title = adw_entry_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(title), "Title");
+    gtk_editable_set_text(GTK_EDITABLE(title), d->edit.title.c_str());
+    on(title, "changed", [d, title] {
+        d->edit.title = trim(gtk_editable_get_text(GTK_EDITABLE(title)));
+        d->update();
+    });
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(main), title);
+
+    auto* backend = adw_combo_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(backend), "Syncing");
+    auto* kinds = string_list({"Syncthing", "Local Folder"});
+    adw_combo_row_set_model(ADW_COMBO_ROW(backend), G_LIST_MODEL(kinds));
+    g_object_unref(kinds);
+    adw_combo_row_set_selected(ADW_COMBO_ROW(backend), d->edit.backend == rem::BackendKind::Local ? 1 : 0);
+    auto backend_subtitle = [backend](guint i) {
+        adw_action_row_set_subtitle(ADW_ACTION_ROW(backend),
+                                    i == 1 ? "Files are read and saved as they are"
+                                           : "Conflict copies from other devices are merged");
+    };
+    backend_subtitle(adw_combo_row_get_selected(ADW_COMBO_ROW(backend)));
+    connect<void(GObject*, GParamSpec*)>(backend, "notify::selected", [d, backend, backend_subtitle](GObject*, GParamSpec*) {
+        auto i = adw_combo_row_get_selected(ADW_COMBO_ROW(backend));
+        d->edit.backend = i == 1 ? rem::BackendKind::Local : rem::BackendKind::Syncthing;
+        backend_subtitle(i);
+    });
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(main), backend);
+
+    d->folder_row = adw_action_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(d->folder_row), "Folder");
+    adw_action_row_set_subtitle_selectable(ADW_ACTION_ROW(d->folder_row), TRUE);
+    auto* change = gtk_button_new_with_mnemonic("_Change…");
+    gtk_widget_set_valign(change, GTK_ALIGN_CENTER);
+    adw_action_row_add_suffix(ADW_ACTION_ROW(d->folder_row), change);
+    on(change, "clicked", [d, dialog] {
+        auto* chooser = gtk_file_dialog_new();
+        gtk_file_dialog_set_title(chooser, "Choose the Source's Folder");
+        auto current = Obj<GFile>::adopt(g_file_new_for_path(d->edit.folder.c_str()));
+        gtk_file_dialog_set_initial_folder(chooser, current.get());
+        auto keep = Obj<GtkWidget>::ref(GTK_WIDGET(dialog));
+        gtk_file_dialog_select_folder(
+            chooser, GTK_WINDOW(gtk_widget_get_root(GTK_WIDGET(dialog))), nullptr,
+            [](GObject* src, GAsyncResult* res, gpointer data) {
+                std::unique_ptr<Obj<GtkWidget>> keep(static_cast<Obj<GtkWidget>*>(data));
+                auto* d = static_cast<SourceDialog*>(g_object_get_data(G_OBJECT(keep->get()), "state"));
+                GError* error = nullptr;
+                auto file = Obj<GFile>::adopt(gtk_file_dialog_select_folder_finish(GTK_FILE_DIALOG(src), res, &error));
+                if (error) {
+                    g_error_free(error);  // cancelled
+                    return;
+                }
+                if (auto* path = g_file_get_path(file.get())) {
+                    d->edit.folder = path;
+                    g_free(path);
+                    d->update();
+                }
+            },
+            new Obj<GtkWidget>(std::move(keep)));
+        g_object_unref(chooser);
+    });
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(main), d->folder_row);
+
+    auto* is_default = adw_switch_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(is_default), "Default Source");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(is_default), "New lists go here unless you choose another");
+    adw_switch_row_set_active(ADW_SWITCH_ROW(is_default), d->edit.is_default);
+    gtk_widget_set_sensitive(is_default, !d->edit.is_default);  // another source must take over by being chosen
+    connect<void(GObject*, GParamSpec*)>(is_default, "notify::active", [d, is_default](GObject*, GParamSpec*) {
+        d->edit.is_default = adw_switch_row_get_active(ADW_SWITCH_ROW(is_default));
+    });
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(main), is_default);
+    d->error = label("", {"error", "caption"});
+    gtk_widget_set_margin_top(d->error, 6);
+    gtk_widget_set_margin_start(d->error, 12);
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(main), d->error);
+
+    auto* danger = adw_preferences_group_new();
+    auto* remove = adw_button_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(remove), "_Remove Source…");
+    adw_preferences_row_set_use_underline(ADW_PREFERENCES_ROW(remove), TRUE);
+    gtk_widget_add_css_class(remove, "destructive-action");
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(danger), remove);
+    connect<void(AdwButtonRow*)>(remove, "activated", [dialog, on_remove](AdwButtonRow*) {
+        adw_dialog_close(ADW_DIALOG(dialog));
+        if (on_remove) on_remove();
+    });
+
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(main));
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(danger));
+
+    on(cancel, "clicked", [dialog] { adw_dialog_close(ADW_DIALOG(dialog)); });
+    on(d->done, "clicked", [d, dialog, on_done] {
+        d->update();
+        if (!gtk_widget_get_sensitive(d->done)) return;
+        auto e = d->edit;
+        adw_dialog_close(ADW_DIALOG(dialog));
+        on_done(std::move(e));
+    });
+
+    auto* view = adw_toolbar_view_new();
+    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(view), header);
+    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(view), page);
+    adw_dialog_set_child(ADW_DIALOG(dialog), view);
+    adw_dialog_set_default_widget(ADW_DIALOG(dialog), d->done);
+    add_shortcut(GTK_WIDGET(dialog), "<Control>s", [d] { gtk_widget_activate(d->done); });
+    d->update();
+    adw_dialog_present(ADW_DIALOG(dialog), parent);
+}
+
+void show_sources_dialog(GtkWidget* parent, const std::vector<SourceRow>& rows, std::function<void(std::string)> on_open,
+                         std::function<void()> on_add) {
+    auto* dialog = adw_dialog_new();
+    adw_dialog_set_title(ADW_DIALOG(dialog), "Sources");
+    adw_dialog_set_content_width(ADW_DIALOG(dialog), 460);
+    auto* page = adw_preferences_page_new();
+    auto* group = adw_preferences_group_new();
+    adw_preferences_group_set_description(ADW_PREFERENCES_GROUP(group),
+                                          "Where your lists come from. Each source is a folder, kept in step with "
+                                          "your other devices by its syncing method.");
+    for (auto& r : rows) {
+        auto* row = adw_action_row_new();
+        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), r.title.c_str());
+        adw_preferences_row_set_use_markup(ADW_PREFERENCES_ROW(row), FALSE);
+        adw_action_row_set_subtitle(ADW_ACTION_ROW(row), r.detail.c_str());
+        adw_action_row_add_suffix(ADW_ACTION_ROW(row), icon("go-next-symbolic", {}));
+        gtk_list_box_row_set_activatable(GTK_LIST_BOX_ROW(row), TRUE);
+        connect<void(AdwActionRow*)>(row, "activated", [dialog, on_open, name = r.name](AdwActionRow*) {
+            adw_dialog_close(ADW_DIALOG(dialog));
+            on_open(name);
+        });
+        adw_preferences_group_add(ADW_PREFERENCES_GROUP(group), row);
+    }
+    auto* add = adw_button_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(add), "_Add Source…");
+    adw_preferences_row_set_use_underline(ADW_PREFERENCES_ROW(add), TRUE);
+    adw_button_row_set_start_icon_name(ADW_BUTTON_ROW(add), "list-add-symbolic");
+    connect<void(AdwButtonRow*)>(add, "activated", [dialog, on_add](AdwButtonRow*) {
+        adw_dialog_close(ADW_DIALOG(dialog));
+        on_add();
+    });
+    auto* adds = adw_preferences_group_new();
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(adds), add);
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(group));
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(adds));
+    auto* view = adw_toolbar_view_new();
+    adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(view), adw_header_bar_new());
+    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(view), page);
+    adw_dialog_set_child(ADW_DIALOG(dialog), view);
+    adw_dialog_present(ADW_DIALOG(dialog), parent);
 }
 
 }  // namespace ui

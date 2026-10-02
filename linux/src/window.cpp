@@ -529,8 +529,7 @@ void Window::build() {
     auto* primary_menu = g_menu_new();
     auto* s1 = menu_section(primary_menu);
     g_menu_append(s1, "_New List…", "win.new-list");
-    g_menu_append(s1, "_Add Source…", "win.add-source");
-    g_menu_append(s1, "_Change Folder…", "win.change-folder");
+    g_menu_append(s1, "S_ources…", "win.sources");
     g_menu_append(menu_section(primary_menu), "Show _Hidden Lists", "win.show-hidden");
     auto* s2 = menu_section(primary_menu);
     g_menu_append(s2, "_Settings…", "win.settings");
@@ -790,6 +789,7 @@ void Window::build() {
 void Window::add_actions() {
     add_action(window_, "change-folder", [this] { choose_folder(); });
     add_action(window_, "add-source", [this] { choose_folder(true); });
+    add_action(window_, "sources", [this] { show_sources(); });
     add_action(window_, "settings", [this] { open_settings(); });
     // "go-1" … "go-10": the sidebar's entries in order (Ctrl+1 … Ctrl+9, Ctrl+0).
     for (int n = 1; n <= 10; ++n)
@@ -965,6 +965,50 @@ void Window::remove_source(const std::string& name) {
         idle([this] { open_sources(); });
     });
     adw_dialog_present(ADW_DIALOG(dialog), window_);
+}
+
+void Window::source_info(const std::string& name) {
+    std::optional<rem::SourceConfig> config;
+    for (auto& s : rem::load_sources())
+        if (s.name == name) config = s;
+    if (!config) return;
+    SourceEdit edit{config->name, config->title, config->backend, config->folder,
+                    rem::load_setting("default-source") == name || (store_ && store_->default_source() == name)};
+    show_source_dialog(
+        window_, edit,
+        [name](const SourceEdit& e) -> std::string {
+            std::error_code ec;
+            if (!std::filesystem::is_directory(e.folder, ec)) return "That folder doesn't exist";
+            for (auto& s : rem::load_sources())
+                if (s.name != name && std::filesystem::equivalent(s.folder, e.folder, ec))
+                    return std::format("That folder is already the source “{}”", rem::source_title(s));
+            return {};
+        },
+        [this](SourceEdit e) {
+            try {
+                rem::save_source(rem::SourceConfig{e.name, e.backend, e.folder, e.title});
+                if (e.title.empty()) rem::save_section_setting("source." + e.name, "title", "");
+                if (e.is_default) rem::save_setting("default-source", e.name);
+            } catch (const std::exception& err) {
+                toast(std::format("Couldn't save the source: {}", err.what()));
+                return;
+            }
+            open_sources();
+        },
+        [this, name] { idle([this, name] { remove_source(name); }); });
+}
+
+void Window::show_sources() {
+    std::vector<SourceRow> rows;
+    for (auto& s : rem::load_sources()) {
+        auto folder = s.folder.string();  // ~/… for folders in the home folder
+        if (std::string home = g_get_home_dir(); folder.starts_with(home + "/")) folder = "~" + folder.substr(home.size());
+        auto detail = std::format("{} · {}", s.backend == rem::BackendKind::Local ? "Local folder" : "Syncthing", folder);
+        rows.push_back({s.name, rem::source_title(s), detail});
+    }
+    show_sources_dialog(
+        window_, rows, [this](std::string name) { idle([this, name] { source_info(name); }); },
+        [this] { idle([this] { choose_folder(true); }); });
 }
 
 void Window::stop_watching() {
@@ -2740,8 +2784,10 @@ void Window::sidebar_menu(GtkListBoxRow* row, double x, double y) {
             add_action(actions, "remove", [this, source] { idle([this, source] { remove_source(source); }); });
             gtk_widget_insert_action_group(sidebar_menu_button_, "sidebar-source", G_ACTION_GROUP(actions));
             g_object_unref(actions);
-            g_menu_append(menu_section(m), "_New List…", "sidebar-source.new-list");
-            g_menu_append(menu_section(m), "_Remove Source…", "sidebar-source.remove");
+            add_action(actions, "info", [this, source] { idle([this, source] { source_info(source); }); });
+            auto* items = menu_section(m);
+            g_menu_append(items, "_New List…", "sidebar-source.new-list");
+            g_menu_append(items, "Source _Info…", "sidebar-source.info");
         }
         menu = Obj<GMenuModel>::adopt(G_MENU_MODEL(m));
     }

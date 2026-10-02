@@ -50,6 +50,8 @@ private:
     // choose_source: Add Source….
     void choose_folder(bool new_source = false);
     void remove_source(const std::string& name);
+    void source_info(const std::string& name);  // Source Info…
+    void show_sources();                        // Sources… (main menu)
 public:
     // With `folder` (from the command line), just that folder for this
     // session; otherwise every configured source, remembered.

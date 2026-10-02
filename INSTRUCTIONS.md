@@ -429,7 +429,7 @@ settings in a `[source.NAME]` section; later the apps show several at once.
    "source/name"); `History::undo/redo` take a `ListTexts&`. The Library is
    immovable (stores call back into it), so `open_library` returns a
    unique_ptr. Tests: core/tests/library_test.cpp.
-3. **Done (mostly):** both apps on the Library. GUI `store_`, the TUI and
+3. **Done:** both apps on the Library. GUI `store_`, the TUI and
    the CLI hold a `rem::Library`; `open_library(folder, device)` opens every
    configured source, or just a --folder one for the session. Sidebar
    groups are `rem::SidebarGroup{kind, source}`: smart lists, one lists group
@@ -440,13 +440,16 @@ settings in a `[source.NAME]` section; later the apps show several at once.
    settings name lists "source/name" (`view`, `lists-order`, `lists-hidden`);
    `list_entry_matches` lets a bare name from older settings match.
    `Library::label` shows "source/name" only where names clash. GUI: a
-   folder monitor per source; Add Source… (main menu); a source heading's
-   menu has New List… (that source) and Remove Source… (settings only; files
+   folder monitor per source; removing a source only edits settings (files
    stay); settings.ini changes to sources reopen them. TUI: `N` creates in
    the selected group's source. CLI: `lists` grouped by source,
    `new-list --source`, ambiguous names ask for `source/name`.
-   **Still to do:** a Source Info… dialog (title, back end, folder) — today
-   `title=`/`backend=` are edited in settings.ini.
+   Main menu Sources… (dialogs.cpp show_sources_dialog: every source →
+   Source Info…, plus Add Source…); Source Info… (show_source_dialog: title,
+   Syncthing / Local Folder, folder with Change…, Default Source, Remove
+   Source…) is also on a source heading's menu with New List…. Change
+   Folder… left the main menu (the welcome page's Choose Folder… and
+   `reminders folder` set the default source's folder).
 4. New back ends (git, CalDAV, …). `local` keeps watching the folder for
    outside edits (agreed).
 
