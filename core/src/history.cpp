@@ -28,7 +28,7 @@ std::uint64_t History::record(std::string label, const Snapshot& before, const S
     return undo_.back().id;
 }
 
-History::Result History::apply(Store& store, const Step& step, bool backwards) {
+History::Result History::apply(ListTexts& store, const Step& step, bool backwards) {
     Result result{true, {}};
     for (auto& c : step.changes) {
         const auto& target = backwards ? c.before : c.after;
@@ -50,7 +50,7 @@ History::Result History::apply(Store& store, const Step& step, bool backwards) {
     return result;
 }
 
-History::Result History::undo(Store& store) {
+History::Result History::undo(ListTexts& store) {
     if (undo_.empty()) return {};
     auto step = std::move(undo_.back());
     undo_.pop_back();
@@ -59,7 +59,7 @@ History::Result History::undo(Store& store) {
     return result;
 }
 
-History::Result History::redo(Store& store) {
+History::Result History::redo(ListTexts& store) {
     if (redo_.empty()) return {};
     auto step = std::move(redo_.back());
     redo_.pop_back();

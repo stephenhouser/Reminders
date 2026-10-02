@@ -79,7 +79,7 @@ SourceConfig source_for_folder(const fs::path& folder) {
 }
 
 SourceConfig set_default_folder(const fs::path& folder) {
-    auto source = default_source().value_or(SourceConfig{name_for(folder)});
+    auto source = default_source().value_or(SourceConfig{name_for(folder), BackendKind::Syncthing, folder});
     source.folder = folder;
     source.backend = detect_backend(folder);
     save_source(source);

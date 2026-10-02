@@ -400,7 +400,7 @@ only compiled.
     move-group-up [] {}` runs a `win.` action, timed before the screenshot
     hook fires (1.5 s after start-up).
 
-## Sources and back ends (stage 1 of 4, 2026-10-02)
+## Sources and back ends (stages 1–2 of 4 done, 2026-10-02)
 
 Plan agreed with the user: lists come from *sources*, each a back end and its
 settings in a `[source.NAME]` section; later the apps show several at once.
@@ -417,10 +417,21 @@ settings in a `[source.NAME]` section; later the apps show several at once.
    `reminders folder`: detects the back end, creates the source named after
    the folder if needed), `open_source`. `[general] folder=` is no longer
    read (user chose a one-time manual change over migration code).
-2. **Next:** a `Library` of stores, one per source; smart lists across them;
-   lists identified by source and name (`view`, `lists-order`,
-   `lists-hidden` as `source/name`); undo and move-to-list across sources.
-3. Both apps on the Library: one sidebar group per source (agreed), new
+2. **Done (core only; the apps still use one Store):** core library.hpp:
+   `Library` holds a Store per source (`add`, `load_all`, `open_library`
+   from settings, skipping missing folders). Lists are keyed "source/name"
+   (`key_of`, `list(key)`; a bare name works when unambiguous). Store's
+   edits and smart lists are mirrored across sources (scheduled/completed
+   re-sorted after merging). Ids are unique across sources
+   (`Store::set_other_ids`). `move_to_list` works between sources (the
+   reminder keeps its id). Undo: `ListTexts` (snapshot / current_text /
+   restore) is implemented by Store (keys = names) and Library (keys =
+   "source/name"); `History::undo/redo` take a `ListTexts&`. The Library is
+   immovable (stores call back into it), so `open_library` returns a
+   unique_ptr. Tests: core/tests/library_test.cpp.
+3. **Next:** both apps on the Library: one sidebar group per source (agreed),
+   settings that name lists use "source/name" (`view`, `lists-order`,
+   `lists-hidden`), a folder watcher per source, new
    lists into a chosen source, Add Source… / Source Info…; TUI and CLI too.
 4. New back ends (git, CalDAV, …). `local` keeps watching the folder for
    outside edits (agreed).

@@ -13,7 +13,7 @@ namespace rem {
 
 class History {
 public:
-    // Records the difference between two snapshots (Store::snapshot()) as
+    // Records the difference between two snapshots (snapshot()) as
     // one undoable step. Returns its id, or 0 if nothing changed.
     std::uint64_t record(std::string label, const Snapshot& before, const Snapshot& after);
 
@@ -30,8 +30,8 @@ public:
         // (e.g. deleted on another device); left as they are.
         std::vector<std::string> skipped;
     };
-    Result undo(Store& store);
-    Result redo(Store& store);
+    Result undo(ListTexts& lists);
+    Result redo(ListTexts& lists);
     void clear();
 
 private:
@@ -48,7 +48,7 @@ private:
     std::vector<Step> undo_, redo_;
     std::uint64_t next_id_ = 1;
 
-    static Result apply(Store& store, const Step& step, bool backwards);
+    static Result apply(ListTexts& store, const Step& step, bool backwards);
 };
 
 }  // namespace rem

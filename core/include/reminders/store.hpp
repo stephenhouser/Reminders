@@ -4,6 +4,7 @@
 #pragma once
 
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -42,6 +43,17 @@ struct ListFile {
 // Every list's file content, by list name.
 using Snapshot = std::map<std::string, std::string>;
 
+// What undo works on: every list's content by key, and putting one back.
+// A Store's keys are list names; a Library's are "source/name".
+class ListTexts {
+public:
+    virtual ~ListTexts() = default;
+    virtual Snapshot snapshot() const = 0;
+    virtual std::optional<std::string> current_text(const std::string& key) const = 0;
+    // nullopt deletes the list.
+    virtual void restore(const std::string& key, const std::optional<std::string>& text) = 0;
+};
+
 // A reminder found somewhere in the store. Valid until the next change.
 struct Ref {
     ListFile* list = nullptr;
@@ -49,7 +61,7 @@ struct Ref {
     Reminder* parent = nullptr;  // set for subtasks
 };
 
-class Store {
+class Store : public ListTexts {
 public:
     // `state_dir` holds per-device data that must not be synced: the
     // candidates the user declined, and the back end's own records (for
@@ -98,9 +110,13 @@ public:
 
     // For undo: the content of every list, and putting a list back to some
     // content (nullopt deletes the file).
-    Snapshot snapshot() const;
-    std::optional<std::string> current_text(const std::string& name) const;
-    void restore(const std::string& name, const std::optional<std::string>& text);
+    Snapshot snapshot() const override;
+    std::optional<std::string> current_text(const std::string& name) const override;
+    void restore(const std::string& name, const std::optional<std::string>& text) override;
+
+    // Ids in use elsewhere (a Library's other sources), so new ids are unique
+    // across all of them, not just this folder.
+    void set_other_ids(std::function<std::vector<std::string>()> other) { other_ids_ = std::move(other); }
 
     // Edits that save the affected list(s) straight away.
     Reminder& add(ListFile& list, Reminder r, const Reminder* after = nullptr,
@@ -128,6 +144,7 @@ private:
     fs::path folder_;
     fs::path state_dir_;
     std::unique_ptr<Backend> backend_;
+    std::function<std::vector<std::string>()> other_ids_;
     std::vector<std::unique_ptr<ListFile>> lists_;
     std::vector<std::string> candidates_;
 

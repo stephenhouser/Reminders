@@ -91,7 +91,7 @@ fs::path Store::path_of(std::string_view name) const {
 }
 
 std::vector<std::string> Store::taken_ids() {
-    std::vector<std::string> taken;
+    std::vector<std::string> taken = other_ids_ ? other_ids_() : std::vector<std::string>{};
     for (auto& l : lists_)
         l->doc.walk([&](Reminder& r, Reminder*) {
             if (!r.id.empty()) taken.push_back(r.id);
