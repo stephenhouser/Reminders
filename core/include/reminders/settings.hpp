@@ -45,8 +45,8 @@ struct SmartListsLayout {
     bool collapsed = false;  // only meaningful when Collapsible
 
     bool hidden() const { return display == GroupDisplay::Hidden || shown.empty(); }
-    bool has_heading() const { return display == GroupDisplay::Collapsible && !hidden(); }
-    bool folded() const { return has_heading() && collapsed; }
+    bool foldable() const { return display == GroupDisplay::Collapsible && !hidden(); }
+    bool folded() const { return foldable() && collapsed; }
 };
 SmartListsLayout load_smart_lists_layout();
 void save_smart_lists_collapsed(bool collapsed);

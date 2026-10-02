@@ -203,9 +203,10 @@ Ground rules
   gtk_accelerator_get_label() "Ctrl+1" … "Ctrl+0" to the right of the name
   (before the count), in the TUI a "(1)Today" … "(0)…" prefix (the TUI's 0 key jumps to the 10th entry, like Ctrl+0).
   Sidebar groups: smart-lists-display and tags-display are visible |
-  collapsible | hidden (default visible; "collapsable" accepted). Visible smart
-  lists have no heading (a blank gap separates them when they're at the
-  bottom); visible tags have a plain "Tags" heading; collapsible gives a
+  collapsible | hidden (default visible; "collapsable" accepted). Rule: the
+  top group has no heading unless collapsible; every group below it has one
+  (plain "Smart Lists" / "My Lists" / "Tags"). So "My Lists" is untitled
+  when the smart lists are hidden or at the bottom. Collapsible gives a
   heading that folds the group (GUI: click; TUI: select it, Enter/Space),
   remembered as smart-lists-collapsed / tags-collapsed. smart-lists picks
   which and in what order; smart-lists-position is top | bottom. One ordering

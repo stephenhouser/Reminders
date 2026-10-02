@@ -58,12 +58,12 @@ TEST(settings_round_trip_keeps_other_lines) {
     CHECK_EQ(with_key_number("Eleventh", 10, true), "Eleventh");
     CHECK_EQ(with_key_number("Today", 0, false), "Today");
 
-    // Smart lists: all five at the top by default, with no heading.
+    // Smart lists: all five at the top by default, not foldable.
     auto layout = load_smart_lists_layout();
     CHECK_EQ(layout.shown.size(), 5u);
     CHECK(!layout.at_bottom);
     CHECK(layout.display == GroupDisplay::Visible);
-    CHECK(!layout.has_heading());
+    CHECK(!layout.foldable());
     CHECK(!layout.folded());
     save_setting("smart-lists", "Flagged, today,bogus, today");
     save_setting("smart-lists-position", "bottom");
@@ -71,7 +71,7 @@ TEST(settings_round_trip_keeps_other_lines) {
     CHECK(!load_smart_lists_layout().folded());  // folding only applies when collapsible
     save_setting("smart-lists-display", "Collapsable");
     layout = load_smart_lists_layout();
-    CHECK(layout.has_heading());
+    CHECK(layout.foldable());
     CHECK(layout.folded());
     CHECK_EQ(layout.shown.size(), 2u);
     CHECK_EQ(layout.shown[0], "flagged");

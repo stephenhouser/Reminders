@@ -283,9 +283,13 @@ one of three values:
 
 | Value | Smart lists | Tags |
 |---|---|---|
-| `visible` (default) | Shown with no heading | Shown under a "Tags" heading |
+| `visible` (default) | Shown with no heading at the top; under a "Smart Lists" heading at the bottom | Shown under a "Tags" heading |
 | `collapsible` | Under a "Smart Lists" heading; click it to fold or unfold them | Same, with a "Tags" heading |
 | `hidden` | Not shown | Not shown |
+
+Whichever group is at the top of the sidebar has no heading unless it's
+collapsible; the groups below it do. So "My Lists" has a heading only when
+the smart lists are above it.
 
 The app remembers a folded group (`smart-lists-collapsed`, `tags-collapsed`);
 this only applies in `collapsible` mode.

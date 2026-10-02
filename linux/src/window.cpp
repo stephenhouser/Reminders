@@ -146,16 +146,6 @@ GtkWidget* fold_heading(const char* text, bool collapsed, FoldGroup group) {
     return row;
 }
 
-// An empty, inert row: space between groups that have no heading.
-GtkWidget* sidebar_spacer() {
-    auto* row = gtk_list_box_row_new();
-    gtk_list_box_row_set_activatable(GTK_LIST_BOX_ROW(row), FALSE);
-    gtk_list_box_row_set_selectable(GTK_LIST_BOX_ROW(row), FALSE);
-    gtk_widget_set_can_focus(row, FALSE);
-    gtk_widget_set_size_request(row, -1, 12);
-    return row;
-}
-
 GtkWidget* sidebar_heading(const char* text) {
     auto* row = gtk_list_box_row_new();
     gtk_list_box_row_set_activatable(GTK_LIST_BOX_ROW(row), FALSE);
@@ -819,11 +809,11 @@ void Window::rebuild_sidebar() {
     auto smart_group = [&] {
         auto views = smart_views();
         if (views.empty()) return;
-        if (smart_.has_heading()) {
+        if (smart_.foldable()) {
             gtk_list_box_append(list, fold_heading("Smart Lists", smart_.collapsed, kFoldSmartLists));
             if (smart_.folded()) return;
         } else if (smart_.at_bottom) {
-            gtk_list_box_append(list, sidebar_spacer());  // no heading: keep them apart from the tags
+            gtk_list_box_append(list, sidebar_heading("Smart Lists"));
         }
         for (auto& v : views) {
             auto* s = smart_info(v.kind);
@@ -842,7 +832,8 @@ void Window::rebuild_sidebar() {
         }
     };
     auto list_group = [&] {
-        gtk_list_box_append(list, sidebar_heading("My Lists"));
+        if (!smart_.hidden() && !smart_.at_bottom)  // the top group has no heading
+            gtk_list_box_append(list, sidebar_heading("My Lists"));
         for (auto* l : store_->lists()) {
             auto* row = sidebar_row(list_icon_name(l->icon()), l->color(), l->name, open_count(*l), shortcut(index++));
             set_row_view(row, View{View::List, l->name});

@@ -151,8 +151,7 @@ struct SidebarEntry {
     int count = -1;
     // Headings: "My Lists" is just a label; "Smart Lists" and "Tags" can be
     // selected, and Enter/Space folds or unfolds their group.
-    // A Spacer is a blank line between groups that have no heading.
-    enum Kind { Item, Heading, SmartHeading, TagsHeading, Spacer } kind = Item;
+    enum Kind { Item, Heading, SmartHeading, TagsHeading } kind = Item;
 };
 
 struct Line {
@@ -251,22 +250,24 @@ std::vector<SidebarEntry> Tui::sidebar() {
     auto smart_group = [&] {
         auto smart = smart_entries();
         if (smart.empty()) return;
-        if (smart_.has_heading()) {
+        if (smart_.foldable()) {
             SidebarEntry heading{{}, smart_.folded() ? "Smart Lists (folded)" : "Smart Lists", "", -1};
             heading.kind = SidebarEntry::SmartHeading;
             out.push_back(heading);
             if (smart_.folded()) return;
-        } else if (!out.empty()) {
-            SidebarEntry gap{};
-            gap.kind = SidebarEntry::Spacer;  // no heading: keep them apart from the tags
-            out.push_back(gap);
+        } else if (!out.empty()) {  // the top group has no heading
+            SidebarEntry heading{{}, "Smart Lists", "", -1};
+            heading.kind = SidebarEntry::Heading;
+            out.push_back(heading);
         }
         out.insert(out.end(), smart.begin(), smart.end());
     };
     if (!smart_.at_bottom) smart_group();
-    SidebarEntry lists_heading{{}, "My Lists", "", -1};
-    lists_heading.kind = SidebarEntry::Heading;
-    out.push_back(lists_heading);
+    if (!out.empty()) {  // the top group has no heading
+        SidebarEntry lists_heading{{}, "My Lists", "", -1};
+        lists_heading.kind = SidebarEntry::Heading;
+        out.push_back(lists_heading);
+    }
     for (auto* l : store_.lists()) {
         int open = 0;
         l->doc.walk([&](rem::Reminder& r, rem::Reminder*) { open += !r.done; });
@@ -387,7 +388,6 @@ void Tui::draw_sidebar(int width, int height) {
     for (int i = 0; i < static_cast<int>(entries.size()) && y < height - 1; ++i, ++y) {
         auto& e = entries[static_cast<std::size_t>(i)];
         bool selected = i == side_sel_ && !focus_items_;
-        if (e.kind == SidebarEntry::Spacer) continue;  // the loop's own line step is the gap
         if (e.kind != SidebarEntry::Item) {
             if (i > 0) ++y;  // a blank line above each group
             if (y >= height - 1) break;
@@ -753,7 +753,7 @@ void Tui::move_selection(int delta) {
             i += step;
             if (i < 0 || i >= n) break;
             auto k = entries[static_cast<std::size_t>(i)].kind;
-            if (k == SidebarEntry::Heading || k == SidebarEntry::Spacer) continue;
+            if (k == SidebarEntry::Heading) continue;
             side_sel_ = i;
             ++moved;
         }
