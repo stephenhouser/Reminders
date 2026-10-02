@@ -193,15 +193,22 @@ Ground rules
 4. The terminal client: `reminders` (separate binary, no GTK; ncursesw)
 - Settings and the device name live in the core library (shared with the
   GUI): ~/.config/reminders/settings.ini, keeping other lines intact.
-- CLI: lists, list [VIEW] [-a], show, add, edit, done, undone, move, delete
-  [--yes], search, new-list, folder [PATH]; global --folder, --json,
-  --no-color; REF = id or part of a title (prefer open matches; list
-  candidates when ambiguous); field options --title --list --section
-  --parent --due (today/tomorrow/weekday/+3d/YYYY-MM-DD) --time --no-due
-  --flag/--unflag --priority --tag/--untag --repeat/--no-repeat --notes
-  --url; exit codes 0/1/2; colours only on a terminal (NO_COLOR respected).
-- TUI (no command): sidebar + reminders panes, with the keys listed in
-  docs/TERMINAL.md; undo via the same History class; poll the folder every
+- CLI: lists, list [VIEW] [-a], show, add, edit, done, undone, move
+  (--to LIST), delete [--yes], search, new-list, folder [PATH]; global
+  --folder, --json, --no-color. Reminders are referred to by NAME, never by
+  an id the user has to copy: exact title > prefix > substring > all words
+  in any order; open beats completed; --in LIST narrows; if still ambiguous,
+  ask with a numbered list on a terminal, else list the matches (with their
+  lists) and exit 1. Ids are still accepted and appear in --json.
+- Output looks like the Markdown files: "# List", "## Section",
+  "- [ ] Title #tag ⏫ 🚩 📅 2026-10-03 17:30", notes indented, list name in
+  brackets in mixed views; no ^id, no ➕ date, no symbols like ○ ● ⚑ ⟳. Colour
+  only for list names and overdue dates (on a terminal; NO_COLOR respected).
+  Field options --title --list --section --parent --in --due
+  (today/tomorrow/weekday/+3d/YYYY-MM-DD) --time --no-due --flag/--unflag
+  --priority --tag/--untag --repeat/--no-repeat --notes --url; exit codes 0/1/2.
+- TUI (no command): sidebar (plain names, lists in their colour) + reminders
+  pane in the same Markdown form, with the keys listed in docs/TERMINAL.md; undo via the same History class; poll the folder every
   second and reload changed lists; Unicode box drawing (WACS_*), wide-char
   input (get_wch).
 

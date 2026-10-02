@@ -151,6 +151,9 @@ struct Line {
     std::string text;
     std::string color;
     int depth = 0;
+    // Items: the Markdown line in parts, so the date can be coloured.
+    std::string due{}, after{}, where{};
+    bool done = false, overdue = false;
 };
 
 class Tui {
@@ -221,24 +224,30 @@ std::vector<Line> Tui::lines() {
     auto today = rem::local_today();
     auto item = [&](const rem::Ref& ref, int depth, bool show_list) {
         auto& r = *ref.reminder;
-        std::string text = r.done ? "● " : "○ ";
-        if (r.priority != rem::Priority::None) text += term::priority_marks(r.priority) + " ";
-        text += r.title;
-        if (r.due_date) text += "  " + term::due_label(r, today);
-        if (r.repeat) text += " ⟳";
-        for (auto& t : r.tags) text += "  #" + t;
-        if (r.flagged) text += "  ⚑";
-        if (show_list) text += "  · " + ref.list->name;
-        out.push_back({Line::Item, r.id, text, ref.list->color(), depth});
-        if (!r.notes.empty())
-            out.push_back({Line::Note, "", r.notes.substr(0, r.notes.find('\n')), "", depth + 2});
+        auto md = term::markdown_line(r);
+        Line line{Line::Item, r.id, md.before, ref.list->color(), depth};
+        line.due = md.due;
+        line.after = md.after;
+        if (show_list) line.where = "(" + ref.list->name + (ref.parent ? " > " + ref.parent->title : "") + ")";
+        line.done = r.done;
+        line.overdue = term::is_overdue(r, today);
+        out.push_back(std::move(line));
+        for (std::size_t s = 0; !r.notes.empty();) {
+            auto nl = r.notes.find('\n', s);
+            out.push_back({Line::Note, "", r.notes.substr(s, nl - s), "", depth + 2});
+            if (nl == std::string::npos) break;
+            s = nl + 1;
+        }
     };
 
     if (view_.kind == View::List) {
         auto* l = store_.list(view_.name);
         if (!l) return out;
         for (auto& section : l->doc.sections()) {
-            if (section.name) out.push_back({Line::Heading, "", *section.name, l->color(), 0});
+            if (section.name) {
+                if (!out.empty()) out.push_back({Line::Note, "", "", "", 0});  // blank line, as in the file
+                out.push_back({Line::Heading, "", "## " + *section.name, l->color(), 0});
+            }
             for (auto* r : section.reminders) {
                 if (r->done && !show_completed_) continue;
                 item({l, r, nullptr}, 0, false);
@@ -275,7 +284,10 @@ std::vector<Line> Tui::lines() {
         if (by_date) g = *ref.reminder->due_date < today ? "Overdue" : rem::relative_date(*ref.reminder->due_date, today);
         else if (view_.kind != View::Flagged) g = ref.list->name, color = ref.list->color();
         if (g != group) {
-            if (!g.empty()) out.push_back({Line::Heading, "", g, color, 0});
+            if (!g.empty()) {
+                if (!out.empty()) out.push_back({Line::Note, "", "", "", 0});
+                out.push_back({Line::Heading, "", "## " + g, color, 0});
+            }
             group = g;
         }
         item(ref, 0, by_date || view_.kind == View::Flagged || view_.kind == View::Search);
@@ -304,10 +316,10 @@ void Tui::draw_sidebar(int width, int height) {
         if (selected && !focus_items_) attron(COLOR_PAIR(kSelected) | A_BOLD);
         else if (current) attron(A_BOLD);
         mvhline(y, 0, ' ', width - 1);
-        attron(list_color(entries[i].color));
-        put(y, 1, "●", 1);
-        attroff(list_color(entries[i].color));
-        put(y, 3, entries[i].title, width - 9);
+        bool colored = entries[i].view.kind == View::List;
+        if (colored) attron(list_color(entries[i].color));
+        put(y, 1, entries[i].title, width - 8);
+        if (colored) attroff(list_color(entries[i].color));
         if (entries[i].count >= 0) {
             auto count = std::to_string(entries[i].count);
             attron(dim());
@@ -330,7 +342,7 @@ void Tui::draw_items(int x, int width, int height) {
     attron(A_BOLD);
     if (view_.kind == View::List)
         if (auto* l = store_.list(view_.name)) attron(list_color(l->color()));
-    put(0, x + 1, title, width - 2);
+    put(0, x + 1, "# " + title, width - 2);
     attroff(A_BOLD | A_COLOR);
 
     // Keep a valid selection.
@@ -371,13 +383,24 @@ void Tui::draw_items(int x, int width, int height) {
                 break;
             case Line::Item: {
                 bool selected = l.id == item_sel_;
-                if (selected) attron(focus_items_ ? COLOR_PAIR(kSelected) | A_BOLD : A_BOLD);
-                if (selected) mvhline(y, x, ' ', width);
-                attron(list_color(l.color));
-                int used = put(y, x + 2 + l.depth, l.text.substr(0, l.text.find(' ')), 1);
-                attroff(list_color(l.color));
-                put(y, x + 2 + l.depth + used + 1, l.text.substr(l.text.find(' ') + 1), width - 4 - l.depth - used);
-                attroff(COLOR_PAIR(kSelected) | A_BOLD);
+                attr_t base = selected ? (focus_items_ ? COLOR_PAIR(kSelected) | A_BOLD : A_BOLD) : A_NORMAL;
+                attr_t faint = selected ? base : dim();
+                if (selected) {
+                    attron(base);
+                    mvhline(y, x, ' ', width);
+                }
+                int col = x + 1 + l.depth, room = width - 2 - l.depth;
+                auto part = [&](const std::string& text, attr_t a) {
+                    if (text.empty() || room <= 1) return;
+                    attrset(a);
+                    int n = put(y, col, text, room);
+                    col += n + 1, room -= n + 1;
+                };
+                part(l.text, l.done ? faint : base);
+                part(l.due, l.overdue && !selected && has_colors() ? COLOR_PAIR(kRed) : l.done ? faint : base);
+                part(l.after, faint);
+                part(l.where, faint);
+                attrset(A_NORMAL);
                 break;
             }
         }
@@ -490,11 +513,11 @@ void Tui::show_details(const std::string& id) {
     auto ref = store_.find(id);
     if (!ref) return;
     auto& r = *ref->reminder;
-    std::vector<std::string> rows = {r.title, ""};
+    std::vector<std::string> rows = {term::markdown_line(r).text(), ""};
     auto add = [&](const char* label, const std::string& v) {
         if (!v.empty()) rows.push_back(std::format("{:<10}{}", label, v));
     };
-    add("List", ref->list->name + (ref->parent ? " › " + ref->parent->title : ""));
+    add("List", ref->list->name + (ref->parent ? " > " + ref->parent->title : ""));
     add("Status", r.done ? "completed" : "open");
     if (r.due_date) add("Due", rem::format_date(*r.due_date) + (r.due_time ? " " + rem::format_time(*r.due_time) : ""));
     add("Repeat", r.repeat.value_or(""));
@@ -504,7 +527,6 @@ void Tui::show_details(const std::string& id) {
     for (auto& t : r.tags) tags += (tags.empty() ? "#" : " #") + t;
     add("Tags", tags);
     add("URL", r.url.value_or(""));
-    add("Id", r.id);
     if (!r.notes.empty()) {
         rows.push_back("");
         for (std::size_t s = 0;;) {
@@ -514,7 +536,7 @@ void Tui::show_details(const std::string& id) {
             s = nl + 1;
         }
     }
-    for (auto& s : r.subtasks) rows.push_back(std::string(s.done ? "  ● " : "  ○ ") + s.title);
+    for (auto& s : r.subtasks) rows.push_back("  " + term::markdown_line(s).text());
     rows.push_back("");
     rows.push_back("Press any key to close.");
 

@@ -3,6 +3,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <charconv>
 #include <cstdio>
 #include <cstdlib>
 #include <format>
@@ -34,23 +35,28 @@ Commands:
   list [VIEW] [-a]              Reminders in VIEW: a list name, today (default),
                                 scheduled, all, flagged, completed or #tag.
                                 -a also shows completed reminders
-  show REF                      Everything about one reminder
+  show NAME                     Everything about one reminder
   add TEXT… [FIELDS]            Add a reminder (inline fields like "#tag" or
                                 "📅 2026-10-03" work in TEXT too)
-  edit REF [FIELDS]             Change a reminder
-  done REF…                     Complete (repeating reminders roll forward)
-  undone REF…                   Mark as not completed
-  move REF LIST [--section S]   Move to another list
-  delete REF… [--yes]           Delete
+  edit NAME [FIELDS]            Change a reminder
+  done NAME                     Complete (repeating reminders roll forward)
+  undone NAME                   Mark as not completed
+  move NAME --to LIST [--section S]
+                                Move to another list
+  delete NAME [--yes]           Delete
   search TEXT                   Search titles and notes
   new-list NAME [--color C] [--icon I]
   folder [PATH]                 Show or set the folder (shared with the app)
   tui                           Open the interactive interface
 
-REF is a reminder's id (as shown by list, e.g. milk01) or part of its title.
+NAME is a reminder's title, or enough of it: an exact title wins, then one
+starting with NAME, then one containing it, then one containing all its words.
+Open reminders win over completed ones. --in LIST looks in one list only. If
+several still match, you're asked which one (or, in a script, they're listed).
 
 Fields:
-  --title TEXT      --list LIST      --section NAME   --parent REF (add only)
+  --title TEXT      --list LIST (add: where; edit: move there)
+  --section NAME    --parent NAME (add a subtask)    --in LIST (find NAME in LIST)
   --due DATE        DATE: today, tomorrow, fri, +3d, +2w, 2026-10-31
   --time HH:MM      --no-due
   --flag            --unflag
@@ -129,31 +135,31 @@ void print_json(const std::vector<rem::Ref>& refs) {
     std::cout << "]\n";
 }
 
-// One reminder line: "  ○ !!! Milk  Today 17:30  #errands  🚩   milk01"
+// One reminder as it looks in its file: "- [ ] Milk #errands 📅 2026-10-03".
+// Notes follow on indented lines.
 void print_reminder(const rem::Ref& ref, const Style& st, int indent, bool show_list, rem::Date today) {
     auto& r = *ref.reminder;
-    auto color = term::color_rgb(ref.list->color());
+    auto md = term::markdown_line(r);
     std::string line(static_cast<std::size_t>(indent), ' ');
-    line += st.fg(color) + (r.done ? "●" : "○") + st.reset() + " ";
-    if (r.priority != rem::Priority::None) line += st.fg(color) + term::priority_marks(r.priority) + st.reset() + " ";
-    line += r.done ? st.dim() + r.title + st.reset() : r.title;
-    if (r.due_date)
-        line += "  " + (term::is_overdue(r, today) ? st.red() : st.dim()) + term::due_label(r, today) + st.reset();
-    if (r.repeat) line += st.dim() + " ⟳" + st.reset();
-    for (auto& t : r.tags) line += "  " + st.fg(color) + "#" + t + st.reset();
-    if (r.flagged) line += "  " + st.fg(term::color_rgb("orange")) + "⚑" + st.reset();
-    if (show_list) line += "  " + st.dim() + ref.list->name + (ref.parent ? " › " + ref.parent->title : "") + st.reset();
-    line += "  " + st.dim() + r.id + st.reset();
+    line += r.done ? st.dim() + md.before + st.reset() : md.before;
+    if (!md.due.empty()) line += " " + (term::is_overdue(r, today) ? st.red() : std::string()) + md.due + st.reset();
+    if (!md.after.empty()) line += " " + st.dim() + md.after + st.reset();
+    if (show_list)
+        line += "  " + st.dim() + "(" + ref.list->name + (ref.parent ? " > " + ref.parent->title : "") + ")" + st.reset();
     std::cout << line << "\n";
-    if (!r.notes.empty()) {
-        auto first = r.notes.substr(0, r.notes.find('\n'));
-        std::cout << std::string(static_cast<std::size_t>(indent) + 2, ' ') << st.dim() << first << st.reset()
-                  << "\n";
+    for (std::size_t s = 0; !r.notes.empty();) {
+        auto nl = r.notes.find('\n', s);
+        std::cout << std::string(static_cast<std::size_t>(indent) + 2, ' ') << st.dim() << r.notes.substr(s, nl - s)
+                  << st.reset() << "\n";
+        if (nl == std::string::npos) break;
+        s = nl + 1;
     }
 }
 
-void print_heading(const std::string& text, std::optional<term::Rgb> color, const Style& st) {
-    std::cout << st.bold() << (color ? st.fg(*color) : "") << text << st.reset() << "\n";
+// "# Groceries" / "## Party", in the list's colour when there is one.
+void print_heading(int level, const std::string& text, std::optional<term::Rgb> color, const Style& st) {
+    std::cout << st.bold() << (color ? st.fg(*color) : "") << std::string(static_cast<std::size_t>(level), '#') << " "
+              << text << st.reset() << "\n";
 }
 
 // --- argument parsing -------------------------------------------------------
@@ -175,8 +181,8 @@ struct Args {
 };
 
 // Options that take a value; anything else starting with "--" is a flag.
-const std::vector<std::string> kValued = {"title", "list", "section", "parent", "due",    "time",  "priority",
-                                          "tag",   "untag", "repeat", "notes",  "url",   "color", "icon"};
+const std::vector<std::string> kValued = {"title", "list",  "section", "parent", "due",   "time", "priority", "tag",
+                                          "untag", "repeat", "notes",  "url",    "color", "icon", "in",       "to"};
 const std::vector<std::string> kFlags = {"no-due", "flag", "unflag", "no-repeat", "yes", "all"};
 
 Args parse_args(std::span<const std::string> in) {
@@ -239,7 +245,8 @@ private:
 
     rem::ListFile& list_named(const std::string& name);
     rem::ListFile& default_list();
-    rem::Ref resolve(const std::string& ref);
+    // Finds a reminder by name (or id); `in` limits the search to one list.
+    rem::Ref resolve(const std::string& text, const std::optional<std::string>& in);
     void apply_fields(rem::Reminder& r, const Args& a);
     void report(const std::string& verb, const rem::Ref& ref);
 
@@ -268,38 +275,74 @@ rem::ListFile& App::default_list() {
     return *lists.front();
 }
 
-rem::Ref App::resolve(const std::string& ref) {
-    auto id = ref.starts_with('^') ? ref.substr(1) : ref;
-    if (auto r = store_.find(id)) return *r;
-    // Part of a title: prefer an exact title, then a unique match, open ones first.
-    auto q = term::lower(ref);
-    std::vector<rem::Ref> exact, partial;
-    for (auto* l : store_.lists())
-        l->doc.walk([&](rem::Reminder& r, rem::Reminder* parent) {
-            auto t = term::lower(r.title);
-            if (t == q) exact.push_back({l, &r, parent});
-            else if (t.find(q) != std::string::npos) partial.push_back({l, &r, parent});
-        });
-    for (auto* candidates : {&exact, &partial}) {
-        if (candidates->size() > 1) {
-            std::vector<rem::Ref> open;
-            for (auto& c : *candidates)
-                if (!c.reminder->done) open.push_back(c);
-            if (open.size() == 1) return open.front();
-        }
-        if (candidates->size() == 1) return candidates->front();
-        if (candidates->size() > 1) {
-            std::string msg = std::format("“{}” matches several reminders; use an id:\n", ref);
-            for (std::size_t k = 0; k < candidates->size() && k < 10; ++k) {
-                auto& c = (*candidates)[k];
-                msg += std::format("  {}  {}  ({})\n", c.reminder->id, c.reminder->title, c.list->name);
-            }
-            if (candidates->size() > 10) msg += std::format("  … and {} more\n", candidates->size() - 10);
-            msg.pop_back();
-            throw std::runtime_error(msg);
-        }
+rem::Ref App::resolve(const std::string& text, const std::optional<std::string>& in) {
+    rem::ListFile* only = in ? &list_named(*in) : nullptr;
+    auto id = text.starts_with('^') ? text.substr(1) : text;
+    if (auto r = store_.find(id); r && (!only || r->list == only)) return *r;
+
+    // Rank titles: exact, then starting with the text, then containing it,
+    // then containing all its words in any order.
+    auto q = term::lower(text);
+    std::vector<std::string> words;
+    for (std::size_t i = 0; i < q.size();) {
+        auto b = q.find_first_not_of(' ', i);
+        if (b == std::string::npos) break;
+        auto e = q.find(' ', b);
+        words.push_back(q.substr(b, e == std::string::npos ? std::string::npos : e - b));
+        i = e == std::string::npos ? q.size() : e;
     }
-    throw std::runtime_error(std::format("no reminder matches “{}”", ref));
+    auto score = [&](const std::string& title) {
+        auto t = term::lower(title);
+        if (t == q) return 0;
+        if (t.starts_with(q)) return 1;
+        if (t.find(q) != std::string::npos) return 2;
+        if (!words.empty() && std::ranges::all_of(words, [&](auto& w) { return t.find(w) != std::string::npos; }))
+            return 3;
+        return -1;
+    };
+    std::vector<rem::Ref> best;
+    int best_score = 4;
+    for (auto* l : store_.lists()) {
+        if (only && l != only) continue;
+        l->doc.walk([&](rem::Reminder& r, rem::Reminder* parent) {
+            int sc = score(r.title);
+            if (sc < 0 || sc > best_score) return;
+            if (sc < best_score) best.clear(), best_score = sc;
+            best.push_back({l, &r, parent});
+        });
+    }
+    if (best.size() > 1) {  // open reminders win over completed ones
+        std::vector<rem::Ref> open;
+        for (auto& c : best)
+            if (!c.reminder->done) open.push_back(c);
+        if (!open.empty()) best = std::move(open);
+    }
+    if (best.empty())
+        throw std::runtime_error(only ? std::format("nothing in {} matches “{}”", only->name, text)
+                                      : std::format("nothing matches “{}”", text));
+    if (best.size() == 1) return best.front();
+
+    // Several match: ask, when someone is there to answer.
+    auto describe = [&](const rem::Ref& c) {
+        return std::format("{}  ({}{})", term::markdown_line(*c.reminder).text(), c.list->name,
+                           c.parent ? " > " + c.parent->title : "");
+    };
+    if (isatty(STDIN_FILENO) && isatty(STDERR_FILENO)) {
+        std::cerr << std::format("“{}” matches {} reminders:\n", text, best.size());
+        for (std::size_t i = 0; i < best.size(); ++i) std::cerr << std::format("  {}) {}\n", i + 1, describe(best[i]));
+        std::cerr << "Which one? [1-" << best.size() << "] " << std::flush;
+        std::string answer;
+        std::getline(std::cin, answer);
+        int n = 0;
+        auto [p, ec] = std::from_chars(answer.data(), answer.data() + answer.size(), n);
+        if (ec == std::errc{} && n >= 1 && n <= static_cast<int>(best.size())) return best[static_cast<std::size_t>(n - 1)];
+        throw std::runtime_error("nothing chosen");
+    }
+    std::string msg = std::format("“{}” matches {} reminders; be more specific, or add --in LIST:\n", text, best.size());
+    for (std::size_t i = 0; i < best.size() && i < 10; ++i) msg += "  " + describe(best[i]) + "\n";
+    if (best.size() > 10) msg += std::format("  … and {} more\n", best.size() - 10);
+    msg.pop_back();
+    throw std::runtime_error(msg);
 }
 
 void App::apply_fields(rem::Reminder& r, const Args& a) {
@@ -372,8 +415,8 @@ int App::cmd_lists() {
     for (auto* l : lists) {
         int open = 0;
         l->doc.walk([&](rem::Reminder& r, rem::Reminder*) { open += !r.done; });
-        std::cout << st_.fg(term::color_rgb(l->color())) << "● " << st_.reset() << l->name << st_.dim() << "  " << open
-                  << st_.reset() << "\n";
+        std::cout << st_.fg(term::color_rgb(l->color())) << l->name << st_.reset() << st_.dim() << "  (" << open
+                  << " open)" << st_.reset() << "\n";
     }
     if (!store_.candidates().empty() && !g_.json)
         std::cout << st_.dim() << "\nNot lists yet (no “reminders: 1”): " << join(store_.candidates()) << st_.reset()
@@ -419,26 +462,29 @@ int App::cmd_list(const Args& a) {
             print_json(all);
             return 0;
         }
-        print_heading(l.name, term::color_rgb(l.color()), st_);
+        print_heading(1, l.name, term::color_rgb(l.color()), st_);
         int hidden = 0;
         for (auto& section : l.doc.sections()) {
-            if (section.name) std::cout << "\n" << st_.fg(term::color_rgb(l.color())) << "  " << *section.name << st_.reset() << "\n";
+            if (section.name) {
+                std::cout << "\n";
+                print_heading(2, *section.name, term::color_rgb(l.color()), st_);
+            }
             for (auto* r : section.reminders) {
                 if (r->done && !with_done) {
                     ++hidden;
                     continue;
                 }
-                print_reminder({&l, r, nullptr}, st_, 2, false, today_);
+                print_reminder({&l, r, nullptr}, st_, 0, false, today_);
                 for (auto& s : r->subtasks) {
                     if (s.done && !with_done) {
                         ++hidden;
                         continue;
                     }
-                    print_reminder({&l, &s, r}, st_, 4, false, today_);
+                    print_reminder({&l, &s, r}, st_, 2, false, today_);
                 }
             }
         }
-        if (hidden) std::cout << st_.dim() << "\n  " << hidden << " completed (show with -a)" << st_.reset() << "\n";
+        if (hidden) std::cout << st_.dim() << "\n" << hidden << " completed (show with -a)" << st_.reset() << "\n";
         return 0;
     }
 
@@ -446,9 +492,9 @@ int App::cmd_list(const Args& a) {
         print_json(refs);
         return 0;
     }
-    print_heading(title, std::nullopt, st_);
+    print_heading(1, title, std::nullopt, st_);
     if (refs.empty()) {
-        std::cout << st_.dim() << "  Nothing here." << st_.reset() << "\n";
+        std::cout << st_.dim() << "Nothing here." << st_.reset() << "\n";
         return 0;
     }
     if (by_date) {
@@ -466,17 +512,18 @@ int App::cmd_list(const Args& a) {
         if (by_date) g = *ref.reminder->due_date < today_ ? "Overdue" : rem::relative_date(*ref.reminder->due_date, today_);
         else if (!flat) g = ref.list->name;
         if (g != group) {
-            std::cout << "\n" << st_.dim() << "  " << g << st_.reset() << "\n";
+            std::cout << "\n";
+            print_heading(2, g, by_date || flat ? std::nullopt : std::optional{term::color_rgb(ref.list->color())}, st_);
             group = g;
         }
-        print_reminder(ref, st_, 2, by_date || flat, today_);
+        print_reminder(ref, st_, 0, by_date || flat, today_);
     }
     return 0;
 }
 
 int App::cmd_show(const Args& a) {
-    if (a.positional.size() != 1) throw UsageError("show needs one REF");
-    auto ref = resolve(a.positional[0]);
+    if (a.positional.empty()) throw UsageError("show needs the name of a reminder");
+    auto ref = resolve(join(a.positional), a.get("in"));
     if (g_.json) {
         std::cout << json_reminder(ref) << "\n";
         return 0;
@@ -485,9 +532,9 @@ int App::cmd_show(const Args& a) {
     auto row = [&](const char* label, const std::string& value) {
         if (!value.empty()) std::cout << st_.dim() << std::format("{:<10}", label) << st_.reset() << value << "\n";
     };
-    std::cout << st_.bold() << r.title << st_.reset() << "\n";
-    row("id", r.id);
-    row("list", ref.list->name + (ref.parent ? " › " + ref.parent->title : ""));
+    print_reminder(ref, st_, 0, false, today_);
+    std::cout << "\n";
+    row("list", ref.list->name + (ref.parent ? " > " + ref.parent->title : ""));
     row("section", ref.list->doc.section_of(ref.parent ? *ref.parent : r).value_or(""));
     row("status", r.done ? "completed" + (r.completed ? " " + rem::format_date(*r.completed) : std::string()) : "open");
     if (r.due_date)
@@ -500,15 +547,6 @@ int App::cmd_show(const Args& a) {
     for (auto& t : r.tags) tags += (tags.empty() ? "#" : " #") + t;
     row("tags", tags);
     row("url", r.url.value_or(""));
-    if (!r.notes.empty()) {
-        std::cout << st_.dim() << "notes" << st_.reset() << "\n";
-        for (std::size_t s = 0;;) {
-            auto nl = r.notes.find('\n', s);
-            std::cout << "  " << r.notes.substr(s, nl - s) << "\n";
-            if (nl == std::string::npos) break;
-            s = nl + 1;
-        }
-    }
     if (!r.subtasks.empty()) {
         std::cout << st_.dim() << "subtasks" << st_.reset() << "\n";
         for (auto& s : r.subtasks) print_reminder({ref.list, &s, &r}, st_, 2, false, today_);
@@ -525,7 +563,7 @@ int App::cmd_add(const Args& a) {
     apply_fields(r, a);
 
     if (auto parent_ref = a.get("parent")) {
-        auto parent = resolve(*parent_ref);
+        auto parent = resolve(*parent_ref, a.get("in"));
         if (parent.parent) throw std::runtime_error("subtasks can't have subtasks of their own");
         auto id = rem::new_id();
         r.id = id;
@@ -541,8 +579,8 @@ int App::cmd_add(const Args& a) {
 }
 
 int App::cmd_edit(const Args& a) {
-    if (a.positional.size() != 1) throw UsageError("edit needs one REF (then the fields to change)");
-    auto ref = resolve(a.positional[0]);
+    if (a.positional.empty()) throw UsageError("edit needs the name of a reminder (then the fields to change)");
+    auto ref = resolve(join(a.positional), a.get("in"));
     auto id = ref.reminder->id;
     apply_fields(*ref.reminder, a);
     store_.touch(id);
@@ -555,9 +593,12 @@ int App::cmd_edit(const Args& a) {
 }
 
 int App::cmd_done(const Args& a, bool done) {
-    if (a.positional.empty()) throw UsageError(done ? "done needs a REF" : "undone needs a REF");
-    for (auto& ref_text : a.positional) {
-        auto ref = resolve(ref_text);
+    if (a.positional.empty()) throw UsageError(done ? "done needs the name of a reminder" : "undone needs the name of a reminder");
+    // Several names: each word is one reminder only if quoted separately, so
+    // try the whole text first.
+    std::vector<std::string> names = a.positional.size() == 1 ? a.positional : std::vector<std::string>{join(a.positional)};
+    for (auto& ref_text : names) {
+        auto ref = resolve(ref_text, a.get("in"));
         auto id = ref.reminder->id;
         store_.set_done(id, done, today_);
         report(done ? "Completed" : "Reopened", *store_.find(id));
@@ -566,10 +607,13 @@ int App::cmd_done(const Args& a, bool done) {
 }
 
 int App::cmd_move(const Args& a) {
-    if (a.positional.size() < 2) throw UsageError("move needs a REF and a LIST");
-    auto ref = resolve(a.positional[0]);
+    auto to = a.get("to");
+    if (a.positional.empty() || (!to && a.positional.size() < 2))
+        throw UsageError("move needs a reminder and a list: reminders move NAME --to LIST");
+    auto name = to ? join(a.positional) : join(std::vector(a.positional.begin(), a.positional.end() - 1));
+    auto ref = resolve(name, a.get("in"));
     auto id = ref.reminder->id;
-    auto& dest = list_named(join(a.positional, 1));
+    auto& dest = list_named(to ? *to : a.positional.back());
     if (&dest != ref.list) store_.move_to_list(id, dest);
     if (auto section = a.get("section")) {
         dest.doc.move_to_end(id, *section);
@@ -580,12 +624,11 @@ int App::cmd_move(const Args& a) {
 }
 
 int App::cmd_delete(const Args& a) {
-    if (a.positional.empty()) throw UsageError("delete needs a REF");
-    std::vector<rem::Ref> refs;
-    for (auto& r : a.positional) refs.push_back(resolve(r));
+    if (a.positional.empty()) throw UsageError("delete needs the name of a reminder");
+    std::vector<rem::Ref> refs{resolve(join(a.positional), a.get("in"))};
     if (!a.has("yes") && isatty(STDIN_FILENO)) {
-        for (auto& r : refs) print_reminder(r, st_, 2, true, today_);
-        std::cout << (refs.size() == 1 ? "Delete this reminder?" : "Delete these reminders?") << " [y/N] " << std::flush;
+        for (auto& r : refs) print_reminder(r, st_, 0, true, today_);
+        std::cout << "Delete this reminder? [y/N] " << std::flush;
         std::string answer;
         std::getline(std::cin, answer);
         if (term::lower(answer) != "y" && term::lower(answer) != "yes") return 1;

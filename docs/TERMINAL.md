@@ -23,13 +23,13 @@ reminders --folder ~/Sync/Work list   # use another folder for one command
 reminders                        open the interactive interface
 reminders lists                  lists, with how many reminders are open
 reminders list [VIEW] [-a]       reminders in VIEW (default: today)
-reminders show REF               everything about one reminder
+reminders show NAME              everything about one reminder
 reminders add TEXT… [FIELDS]     add a reminder
-reminders edit REF [FIELDS]      change one
-reminders done REF…              complete
-reminders undone REF…            mark as not completed
-reminders move REF LIST [--section S]
-reminders delete REF… [--yes]
+reminders edit NAME [FIELDS]     change one
+reminders done NAME              complete
+reminders undone NAME            mark as not completed
+reminders move NAME --to LIST [--section S]
+reminders delete NAME [--yes]
 reminders search TEXT
 reminders new-list NAME [--color C] [--icon I]
 reminders folder [PATH]
@@ -38,9 +38,15 @@ reminders folder [PATH]
 **VIEW** is a list name (case doesn't matter), `today`, `scheduled`, `all`,
 `flagged`, `completed` or `#tag`. `-a` includes completed reminders.
 
-**REF** is a reminder's id, shown at the end of each line by `list` (`milk01`,
-or `^milk01`), or part of its title. When several reminders match, an open one
-is preferred; if that's still ambiguous, the matches are listed with their ids.
+**NAME** is a reminder's title, or enough of it to pick it out; quotes are
+optional. The best match wins: an exact title, then one starting with NAME,
+then one containing it, then one containing all of NAME's words in any order
+(`pay rent` finds "Pay the rent"). Open reminders win over completed ones.
+
+- `--in LIST` looks in one list only: `reminders done milk --in Groceries`.
+- If several reminders still match, you're shown them, numbered, and asked
+  which one. In a script (no terminal to ask), they're listed with their lists
+  and the command fails, so add `--in` or more of the title.
 
 **FIELDS** (for `add` and `edit`):
 
@@ -49,7 +55,8 @@ is preferred; if that's still ambiguous, the matches are listed with their ids.
 | `--title TEXT` | Title |
 | `--list LIST` | List (`add`: which list; `edit`: move it there). Default for `add`: the first list |
 | `--section NAME` | Section to add into |
-| `--parent REF` | Add as a subtask of REF |
+| `--parent NAME` | Add as a subtask of NAME |
+| `--in LIST` | Find NAME (or `--parent NAME`) in this list only |
 | `--due DATE` | `today`, `tomorrow`, a weekday (`fri`, `friday`: the next one), `+3d`, `+2w`, `+1m`, or `2026-10-31` |
 | `--time HH:MM` | Due time (sets the date to today if there is none) |
 | `--no-due` | Remove the date and time |
@@ -69,10 +76,10 @@ The inline fields from the file format also work in the text you add:
 reminders add "Pay rent" --list Home --due +3d --time 09:00 --priority high --flag
 reminders list                     # today and overdue
 reminders list groceries -a        # a list, including completed ones
-reminders done milk                # by title…
-reminders done milk01 eggs01       # …or by id
-reminders edit milk --due tomorrow --tag errands --notes "2%"
-reminders move bread Work
+reminders done milk                # by name: no quotes needed
+reminders done milk --in Work      # when more than one list has a Milk
+reminders edit pay rent --due tomorrow --tag bills --notes "by transfer"
+reminders move bread --to Work
 reminders list '#errands'
 reminders search dentist
 ```
@@ -92,6 +99,27 @@ reminders search dentist
 # Titles of everything due today, one per line
 reminders --json list today | jq -r '.[].title'
 ```
+
+### What the output looks like
+
+Reminders are shown as they are written in their files, with the list as a
+`#` heading and sections as `##` headings:
+
+```
+# Groceries
+- [ ] Milk #errands ⏫ 🚩 📅 2026-10-03 17:30
+  2% if they have it
+- [x] Eggs ✅ 2026-09-30
+
+## Party
+- [ ] Cake 🔼
+  - [ ] Candles
+```
+
+Views that mix lists (Today, Scheduled, Flagged, search) add the list name in
+brackets: `- [ ] Book flights 📅 2026-10-01  (Work)`. Overdue dates are red.
+The `^id` at the end of each line in the file isn't shown; `--json` includes it
+for scripts.
 
 ## The interactive interface
 

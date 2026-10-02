@@ -60,6 +60,37 @@ inline bool is_overdue(const rem::Reminder& r, rem::Date today) {
     return r.due_time && r.due_time->hour * 60 + r.due_time->minute < rem::local_minutes_now();
 }
 
+// A reminder as it looks in its file, without the bookkeeping (the ^id and
+// the ➕ created date). `due` is split out so callers can colour it.
+struct MarkdownLine {
+    std::string before;  // "- [ ] Title #tag ⏫ 🚩 🔁 every week"
+    std::string due;     // "📅 2026-10-03 17:30" (or "")
+    std::string after;   // "✅ 2026-10-01 🔗 https://…" (or "")
+    std::string text() const {
+        std::string s = before;
+        for (auto* part : {&due, &after})
+            if (!part->empty()) s += " " + *part;
+        return s;
+    }
+};
+
+inline MarkdownLine markdown_line(const rem::Reminder& r) {
+    MarkdownLine m;
+    rem::LineFields f = r.fields();
+    f.created.reset();
+    auto due = f.due_date;
+    auto time = f.due_time;
+    auto done_on = f.completed;
+    auto url = f.url;
+    f.due_date.reset(), f.due_time.reset(), f.completed.reset(), f.url.reset();
+    m.before = (r.done ? "- [x] " : "- [ ] ") + rem::format_fields(f, "");
+    while (m.before.ends_with(' ')) m.before.pop_back();
+    if (due) m.due = "📅 " + rem::format_date(*due) + (time ? " " + rem::format_time(*time) : "");
+    if (done_on) m.after = "✅ " + rem::format_date(*done_on);
+    if (url) m.after += (m.after.empty() ? "" : " ") + ("🔗 " + *url);
+    return m;
+}
+
 inline std::string lower(std::string_view s) {
     std::string out(s);
     for (auto& c : out) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
