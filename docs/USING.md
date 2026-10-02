@@ -289,7 +289,7 @@ sources, which have a section each (below).
 
 ```ini
 [general]
-# The source to open (set with Change Folder…)
+# The source for new lists, and Change Folder…'s (set by Change Folder…)
 default-source=personal
 # The list that last had focus
 view=list:Groceries
@@ -328,12 +328,15 @@ to them. In the app the shortcut is shown to the right of the name, e.g.
 `Today  Ctrl+1  4`, through `Ctrl+0`. In the terminal client it's a prefix,
 e.g. `(1)Today`, for the keys `1`–`9` and `0`. It accepts `true`, `yes` or `1`, and is off when missing.
 
-**Sidebar groups.** The sidebar has three groups: the smart lists, your lists
-(My Lists) and tags.
+**Sidebar groups.** The sidebar has the smart lists, your lists and tags.
+Your lists are one group per [source](#sources): with one source it's
+"My Lists"; with several, each source's group is headed by its title.
 
 `sidebar-order` sets their order, e.g. `sidebar-order=my-lists, tags,
-smart-lists`. A group you leave out or misspell goes at the end, so a typo
-can't make your lists disappear. You can also rearrange them without editing
+smart-lists`. With several sources, `lists:NAME` places one source's group
+(`sidebar-order=lists:work, smart-lists, lists:home, tags`), and `my-lists`
+stands for the sources not named. A group you leave out or misspell goes at
+the end, so a typo can't make your lists disappear. You can also rearrange them without editing
 the file:
 
 - **In the app:** right-click (or long-press) a group's heading in the
@@ -362,8 +365,8 @@ So the group at the top has no heading unless it's collapsible, and the
 groups below it always have one.
 
 The app remembers a folded group (`smart-lists-collapsed`,
-`my-lists-collapsed`, `tags-collapsed`); this only applies in `collapsible`
-mode.
+`lists-collapsed.NAME` for each source, `tags-collapsed`); this only applies
+in `collapsible` mode. `my-lists-display` applies to every source's group.
 
 - **`smart-lists`** chooses which smart lists appear and in what order, e.g.
   `smart-lists=today, flagged`.
@@ -436,7 +439,24 @@ folder=/home/you/Sync/Reminders
   it, the first one.
 - **A folder given on the command line** uses its source's settings if it is
   one, else the back end it needs, for that run only.
-- For now the apps open one source at a time; several at once is coming.
+- **Several sources** are open at once: each gets its own sidebar group, and
+  the smart lists, tags and search cover all of them. Reminders can be
+  moved (dragged, or the List field in Details) between sources. Undo works
+  across them.
+- **Add Source…** (main menu) adds a folder as a new source, named after it
+  (`[source.NAME]`), with the back end it needs. A source group's heading
+  menu (right-click it) has **New List…** for that source and **Remove
+  Source…**, which takes it out of the app and leaves its folder and files as
+  they are.
+- **`title=`** in a source's section sets the heading shown for its group;
+  without it, the name capitalised (`personal` → "Personal").
+- **New lists** go into the source of the list you're viewing, else the
+  default one. In the terminal: `reminders new-list NAME --source NAME`.
+- **List names** only need to be unique within a source. Where two sources
+  have a list of the same name, it's shown as `source/name` (in mixed views,
+  the Details list field and the terminal), and settings name it that way:
+  `view=list:home/Todo`, `lists-order`, `lists-hidden`. A bare `Todo`
+  still works when only one source has it.
 - **Settings from before sources** had `folder=` in `[general]`; it's no
   longer read. Choose the folder again with Change Folder… (or
   `reminders folder PATH`), or write the section above by hand.

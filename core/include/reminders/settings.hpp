@@ -26,6 +26,8 @@ std::string load_section_setting(const std::string& section, const std::string& 
 void save_section_setting(const std::string& section, const std::string& key, const std::string& value);
 // Every [section] in the file, in order ("general", "source.personal", …).
 std::vector<std::string> section_names();
+// Removes a section and everything in it.
+void remove_section(const std::string& section);
 
 // A true/false setting ("true", "yes", "1" / "false", "no", "0"), or
 // `fallback` if it's unset or unreadable.
@@ -41,18 +43,33 @@ std::string with_key_number(const std::string& title, std::size_t index, bool sh
 // at all.
 enum class GroupDisplay { Visible, Collapsible, Hidden };
 
+// A sidebar group: the smart lists, one source's lists, or the tags.
+struct SidebarGroup {
+    enum Kind { SmartLists, Lists, Tags };
+    Kind kind = SmartLists;
+    std::string source;  // Lists: the source's name
+
+    bool operator==(const SidebarGroup&) const = default;
+    static SidebarGroup smart_lists() { return {SmartLists, {}}; }
+    static SidebarGroup tags() { return {Tags, {}}; }
+    static SidebarGroup lists(std::string source) { return {Lists, std::move(source)}; }
+};
+
 // The sidebar's groups, in the order the settings give:
-//   sidebar-order=smart-lists, my-lists, tags
-// A group left out or misspelled goes after the others, in this default order.
-enum class SidebarGroup { SmartLists, MyLists, Tags };
-std::vector<SidebarGroup> load_sidebar_order();
+//   sidebar-order=smart-lists, lists:home, lists:work, tags
+// "my-lists" stands for every source not named on its own (with one source,
+// it's the only lists group). A group left out or unknown goes after the
+// others, in the default order: smart lists, each source, tags. `sources`
+// are the sources' names, in order.
+std::vector<SidebarGroup> load_sidebar_order(const std::vector<std::string>& sources);
 void save_sidebar_order(const std::vector<SidebarGroup>& order);
-// "Smart Lists", "My Lists", "Tags".
-const char* group_title(SidebarGroup group);
+// "Smart Lists", "Tags", and for a lists group `lists_title` ("My Lists" with
+// one source, else the source's title).
+std::string group_title(const SidebarGroup& group, const std::string& lists_title = "My Lists");
 // Moves `group` past the next group showing before it (delta < 0) or after
 // it (delta > 0), skipping groups not in `showing`. False if it's already
 // first or last.
-bool move_sidebar_group(std::vector<SidebarGroup>& order, SidebarGroup group, int delta,
+bool move_sidebar_group(std::vector<SidebarGroup>& order, const SidebarGroup& group, int delta,
                         const std::vector<SidebarGroup>& showing);
 
 // The smart lists (Today, Scheduled, All, Flagged, Completed), from the
@@ -71,10 +88,10 @@ struct SmartListsLayout {
 };
 SmartListsLayout load_smart_lists_layout();
 
-// The My Lists and Tags groups:
-//   my-lists-display=visible | collapsible      (your lists can't be hidden)
+// The lists groups and the Tags group:
+//   my-lists-display=visible | collapsible      (every source's lists; can't be hidden)
 //   tags-display=visible | collapsible | hidden
-//   my-lists-collapsed, tags-collapsed=true | false   (set by the apps when folded)
+//   lists-collapsed.NAME, tags-collapsed=true | false   (set by the apps when folded)
 struct GroupLayout {
     GroupDisplay display = GroupDisplay::Visible;
     bool collapsed = false;
@@ -83,18 +100,24 @@ struct GroupLayout {
     bool foldable() const { return display == GroupDisplay::Collapsible; }
     bool folded() const { return foldable() && collapsed; }
 };
-GroupLayout load_my_lists_layout();
+GroupLayout load_lists_layout(const std::string& source);
 GroupLayout load_tags_layout();
 
-// Remembers whether a group is folded (smart-lists-collapsed, …).
-void save_group_collapsed(SidebarGroup group, bool collapsed);
-// Sets how a group appears (smart-lists-display, …).
-void save_group_display(SidebarGroup group, GroupDisplay display);
+// Remembers whether a group is folded (smart-lists-collapsed,
+// lists-collapsed.NAME, tags-collapsed).
+void save_group_collapsed(const SidebarGroup& group, bool collapsed);
+// Sets how a group appears (smart-lists-display, my-lists-display for every
+// source's lists, tags-display).
+void save_group_display(const SidebarGroup& group, GroupDisplay display);
 
 // A comma-separated list of names; a name with a comma in it is quoted:
 //   lists-hidden=Work, "Smith, Jo"
 std::vector<std::string> load_names_setting(const std::string& key);
 void save_names_setting(const std::string& key, const std::vector<std::string>& names);
+
+// Lists in settings are named "source/list". A bare "list" (as written
+// before sources) still matches a list of that name in any source.
+bool list_entry_matches(std::string_view entry, std::string_view key);
 
 // Hidden sidebar entries. They show (dimmed) only with show-hidden=true,
 // which the app's main menu toggles:
@@ -104,7 +127,7 @@ struct HiddenEntries {
     std::vector<std::string> lists, tags;
     bool show = false;  // show-hidden
 
-    bool list_hidden(std::string_view name) const;
+    bool list_hidden(std::string_view key) const;  // key: "source/list"
     bool tag_hidden(std::string_view tag) const;
 };
 HiddenEntries load_hidden();

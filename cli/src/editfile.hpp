@@ -8,12 +8,14 @@
 #include <string>
 #include <vector>
 
-#include "reminders/store.hpp"
+#include "reminders/library.hpp"
 
 namespace editfile {
 
-// The editable text for a reminder.
-std::string render(const rem::Ref& ref, const std::vector<std::string>& lists, rem::Date today);
+// The editable text for a reminder. `lists` are the lists' labels
+// (Library::label) and `list` this one's.
+std::string render(const rem::Ref& ref, const std::vector<std::string>& lists, const std::string& list,
+                   rem::Date today);
 
 struct Edited {
     rem::LineFields fields;
@@ -30,7 +32,7 @@ std::optional<Edited> parse(const std::string& text, rem::Date today);
 
 // Applies an edit to reminder `id` (fields, notes, subtasks, list, section,
 // completion). Throws if the list doesn't exist.
-void apply(rem::Store& store, const std::string& id, const Edited& e, rem::Date today);
+void apply(rem::Library& store, const std::string& id, const Edited& e, rem::Date today);
 
 // Runs $VISUAL / $EDITOR (nano, else vi) on `text`; nullopt if the editor
 // failed. The caller must have released the terminal.
@@ -45,7 +47,7 @@ enum class Outcome { Saved, Unchanged, Reverted };
 // problem, asks on the terminal whether to edit it again (the default) or
 // revert to how the reminder was. `apply_fn` wraps the apply (e.g. to record
 // an undo step). Must run with the terminal in normal (not curses) mode.
-Outcome edit(rem::Store& store, const std::string& id,
+Outcome edit(rem::Library& store, const std::string& id,
              const std::function<void(const std::function<void()>&)>& apply_fn = {});
 
 }  // namespace editfile

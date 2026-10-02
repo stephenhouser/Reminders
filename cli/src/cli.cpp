@@ -17,6 +17,7 @@
 #include "reminders/dates.hpp"
 #include "reminders/format.hpp"
 #include "reminders/settings.hpp"
+#include "reminders/library.hpp"
 #include "reminders/sources.hpp"
 #include "reminders/store.hpp"
 #include "reminders/syncthing.hpp"
@@ -122,6 +123,12 @@ std::string json_escape(std::string_view s) {
     return out + "\"";
 }
 
+// The open library, for showing list names: a list's name, or "source/name"
+// when another source has a list of that name (see Library::label).
+const rem::Library* g_library = nullptr;
+
+std::string list_label(const rem::ListFile& l) { return g_library ? g_library->label(l) : l.name; }
+
 std::string json_reminder(const rem::Ref& ref) {
     auto& r = *ref.reminder;
     std::string tags = "[";
@@ -132,7 +139,7 @@ std::string json_reminder(const rem::Ref& ref) {
     return std::format(
         R"({{"id":{},"list":{},"section":{},"parent":{},"title":{},"done":{},"due":{},"time":{},)"
         R"("completed":{},"flagged":{},"priority":"{}","tags":{},"repeat":{},"url":{},"notes":{}}})",
-        json_escape(r.id), json_escape(ref.list->name), opt(section),
+        json_escape(r.id), json_escape(list_label(*ref.list)), opt(section),
         ref.parent ? json_escape(ref.parent->id) : "null", json_escape(r.title), r.done ? "true" : "false",
         r.due_date ? json_escape(rem::format_date(*r.due_date)) : "null",
         r.due_time ? json_escape(rem::format_time(*r.due_time)) : "null",
@@ -156,7 +163,8 @@ void print_reminder(const rem::Ref& ref, const Style& st, int indent, bool show_
     if (!md.due.empty()) line += " " + (term::is_overdue(r, today) ? st.red() : std::string()) + md.due + st.reset();
     if (!md.after.empty()) line += " " + st.dim() + md.after + st.reset();
     if (show_list)
-        line += "  " + st.dim() + "(" + ref.list->name + (ref.parent ? " > " + ref.parent->title : "") + ")" + st.reset();
+        line += "  " + st.dim() + "(" + list_label(*ref.list) + (ref.parent ? " > " + ref.parent->title : "") + ")" +
+                st.reset();
     std::cout << line << "\n";
     for (std::size_t s = 0; !r.notes.empty();) {
         auto nl = r.notes.find('\n', s);
@@ -193,7 +201,8 @@ struct Args {
 
 // Options that take a value; anything else starting with "--" is a flag.
 const std::vector<std::string> kValued = {"title", "list",  "section", "parent", "due",   "time", "priority", "tag",
-                                          "untag", "repeat", "notes",  "url",    "color", "icon", "in",       "to"};
+                                          "untag", "repeat", "notes",  "url",    "color", "icon", "in",       "to",
+                                          "source"};
 const std::vector<std::string> kFlags = {"no-due", "flag", "unflag", "no-repeat", "yes", "all"};
 
 Args parse_args(std::span<const std::string> in) {
@@ -237,31 +246,23 @@ std::string join(const std::vector<std::string>& v, std::size_t from = 0) {
 class App {
 public:
     // `own_folder`: this is the saved folder, so the saved view applies to it.
-    App(Global g, rem::fs::path folder, bool own_folder)
-        : g_(g), st_{g.color}, owned_(open(folder)), store_(*owned_), today_(rem::local_today()),
+    // `library`: every source, or the --folder one (see rem::open_library).
+    App(Global g, std::unique_ptr<rem::Library> library, bool own_folder)
+        : g_(g), st_{g.color}, owned_(std::move(library)), store_(*owned_), today_(rem::local_today()),
           own_folder_(own_folder) {
         store_.load_all();
+        g_library = owned_.get();
     }
 
     int run(const std::string& cmd, const Args& a);
-    rem::Store& store() { return store_; }
+    rem::Library& store() { return store_; }
 
 private:
     Global g_;
     Style st_;
-    std::unique_ptr<rem::Store> owned_;
-    rem::Store& store_;
+    std::unique_ptr<rem::Library> owned_;
+    rem::Library& store_;
     rem::Date today_;
-
-    // The configured source for this folder, or one with its detected back end.
-    static std::unique_ptr<rem::Store> open(const rem::fs::path& folder) {
-        auto source = rem::source_for_folder(folder);
-        try {
-            return rem::open_source(source, rem::device_name());
-        } catch (const std::exception&) {  // the back end's set-up (.stignore) failed: open it anyway
-            return std::make_unique<rem::Store>(folder, rem::state_dir(folder, rem::device_name()), source.backend);
-        }
-    }
     bool own_folder_;
 
     rem::ListFile& list_named(const std::string& name);
@@ -284,10 +285,20 @@ private:
     int cmd_new_list(const Args& a);
 };
 
+// A list by name ("Groceries", any case) or, when two sources have one of
+// that name, "source/name".
 rem::ListFile& App::list_named(const std::string& name) {
     if (auto* l = store_.list(name)) return *l;
+    std::vector<rem::ListFile*> found;
     for (auto* l : store_.lists())
-        if (term::lower(l->name) == term::lower(name)) return *l;
+        if (term::lower(l->name) == term::lower(name) || term::lower(store_.key_of(*l)) == term::lower(name))
+            found.push_back(l);
+    if (found.size() == 1) return *found.front();
+    if (found.size() > 1) {
+        std::string keys;
+        for (auto* l : found) keys += (keys.empty() ? "" : ", ") + store_.key_of(*l);
+        throw std::runtime_error(std::format("more than one list called “{}”: say which ({})", name, keys));
+    }
     throw std::runtime_error(std::format("no list called “{}”", name));
 }
 
@@ -356,7 +367,7 @@ rem::Ref App::resolve(const std::string& text, const std::optional<std::string>&
 
     // Several match: ask, when someone is there to answer.
     auto describe = [&](const rem::Ref& c) {
-        return std::format("{}  ({}{})", term::markdown_line(*c.reminder).text(), c.list->name,
+        return std::format("{}  ({}{})", term::markdown_line(*c.reminder).text(), list_label(*c.list),
                            c.parent ? " > " + c.parent->title : "");
     };
     if (isatty(STDIN_FILENO) && isatty(STDERR_FILENO)) {
@@ -438,17 +449,25 @@ int App::cmd_lists() {
             int open = 0;
             lists[i]->doc.walk([&](rem::Reminder& r, rem::Reminder*) { open += !r.done; });
             std::cout << (i ? ",\n " : "")
-                      << std::format(R"({{"name":{},"color":"{}","icon":"{}","open":{}}})", json_escape(lists[i]->name),
-                                     lists[i]->color(), lists[i]->icon(), open);
+                      << std::format(R"({{"name":{},"source":{},"color":"{}","icon":"{}","open":{}}})",
+                                     json_escape(lists[i]->name),
+                                     json_escape(store_.source_of(*lists[i])->config.name), lists[i]->color(),
+                                     lists[i]->icon(), open);
         }
         std::cout << "]\n";
         return 0;
     }
-    for (auto* l : lists) {
-        int open = 0;
-        l->doc.walk([&](rem::Reminder& r, rem::Reminder*) { open += !r.done; });
-        std::cout << st_.fg(term::color_rgb(l->color())) << l->name << st_.reset() << st_.dim() << "  (" << open
-                  << " open)" << st_.reset() << "\n";
+    // With several sources, under a heading each.
+    bool several = store_.sources().size() > 1;
+    for (auto& source : store_.sources()) {
+        if (several) print_heading(1, rem::source_title(source.config), std::nullopt, st_);
+        for (auto* l : store_.lists(source.config.name)) {
+            int open = 0;
+            l->doc.walk([&](rem::Reminder& r, rem::Reminder*) { open += !r.done; });
+            std::cout << st_.fg(term::color_rgb(l->color())) << l->name << st_.reset() << st_.dim() << "  (" << open
+                      << " open)" << st_.reset() << "\n";
+        }
+        if (several && &source != &store_.sources().back()) std::cout << "\n";
     }
     if (!store_.candidates().empty() && !g_.json)
         std::cout << st_.dim() << "\nNot lists yet (no “reminders: 1”): " << join(store_.candidates()) << st_.reset()
@@ -552,7 +571,7 @@ int App::cmd_list(const Args& a) {
     for (auto& ref : refs) {
         std::string g;
         if (by_date) g = *ref.reminder->due_date < today_ ? "Overdue" : rem::relative_date(*ref.reminder->due_date, today_);
-        else if (!flat) g = ref.list->name;
+        else if (!flat) g = list_label(*ref.list);
         if (g != group) {
             std::cout << "\n";
             print_heading(2, g, by_date || flat ? std::nullopt : std::optional{term::color_rgb(ref.list->color())}, st_);
@@ -576,7 +595,7 @@ int App::cmd_show(const Args& a) {
     };
     print_reminder(ref, st_, 0, false, today_);
     std::cout << "\n";
-    row("list", ref.list->name + (ref.parent ? " > " + ref.parent->title : ""));
+    row("list", list_label(*ref.list) + (ref.parent ? " > " + ref.parent->title : ""));
     row("section", ref.list->doc.section_of(ref.parent ? *ref.parent : r).value_or(""));
     row("status", r.done ? "completed" + (r.completed ? " " + rem::format_date(*r.completed) : std::string()) : "open");
     if (r.due_date)
@@ -720,7 +739,9 @@ int App::cmd_new_list(const Args& a) {
     if (name.empty() || name.front() == '.' || name.find_first_of("/\\<>:\"|?*") != std::string::npos ||
         name.find(".sync-conflict-") != std::string::npos)
         throw UsageError("list names can't be empty, start with a dot, or contain / \\ < > : \" | ? *");
-    for (auto* l : store_.lists())
+    auto source = a.get("source").value_or(store_.default_source());
+    if (!store_.store(source)) throw std::runtime_error(std::format("no source called “{}”", source));
+    for (auto* l : store_.lists(source))
         if (term::lower(l->name) == term::lower(name)) throw std::runtime_error("a list with that name already exists");
     auto color = a.get("color").value_or("blue");
     auto icon = a.get("icon").value_or("list");
@@ -728,8 +749,8 @@ int App::cmd_new_list(const Args& a) {
         throw UsageError("colours: red orange yellow green cyan blue indigo purple pink brown gray");
     if (std::ranges::find(rem::kIcons, icon) == std::end(rem::kIcons))
         throw UsageError("unknown icon; see docs/FORMAT.md for the names");
-    store_.create_list(name, color, icon);
-    if (!g_.json) std::cout << "Created " << name << "\n";
+    store_.create_list(source, name, color, icon);
+    if (!g_.json) std::cout << "Created " << name << (store_.sources().size() > 1 ? " in " + source : "") << "\n";
     return 0;
 }
 
@@ -811,23 +832,24 @@ int main(int argc, char** argv) {
             return 0;
         }
 
-        auto folder = g.folder ? std::optional{rem::fs::absolute(*g.folder)} : rem::saved_folder();
-        if (!folder) throw std::runtime_error("no folder: pass --folder PATH, or set one with `reminders folder PATH`");
-        if (!rem::fs::is_directory(*folder)) throw std::runtime_error(std::format("“{}” is not a folder", folder->string()));
-
-        // A --folder other than the saved one is for this run only: the saved
-        // view belongs to the saved folder.
-        bool own_folder = true;
+        // Every configured source, or just the --folder one for this run.
+        std::optional<rem::fs::path> folder;
         if (g.folder) {
-            std::error_code ec;
-            auto saved = rem::saved_folder();
-            own_folder = saved && rem::fs::equivalent(*saved, *folder, ec);
+            folder = rem::fs::absolute(*g.folder).lexically_normal();
+            if (!rem::fs::is_directory(*folder)) throw std::runtime_error(std::format("“{}” is not a folder", folder->string()));
         }
-        App app(g, *folder, own_folder);
+        auto library = rem::open_library(folder, rem::device_name());
+        if (library->sources().empty())
+            throw std::runtime_error("no folder: pass --folder PATH, or set one with `reminders folder PATH`");
+
+        // A --folder that isn't a configured source is for this run only: the
+        // saved view belongs to the configured ones.
+        bool own_folder = !g.folder || !library->sources().front().config.name.empty();
+        App app(g, std::move(library), own_folder);
         if (cmd == "tui") {
             if (!isatty(STDIN_FILENO) || !isatty(STDOUT_FILENO))
                 throw UsageError("the interactive interface needs a terminal; see reminders --help for commands");
-            return run_tui(app.store(), *folder, own_folder, g.key_numbers);
+            return run_tui(app.store(), own_folder, g.key_numbers);
         }
         return app.run(cmd, parse_args(rest));
     } catch (const UsageError& e) {

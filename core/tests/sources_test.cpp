@@ -49,6 +49,17 @@ TEST(sources_from_settings) {
     CHECK_EQ(s.name, "reminders");
     CHECK(s.backend == BackendKind::Local);
 
+    // Adding and removing sources.
+    auto added = add_source(dir / "Notes Todo");
+    CHECK_EQ(added.name, "notes-todo");
+    CHECK_EQ(add_source(dir / "Notes Todo").name, "notes-todo-2");  // names are unique
+    remove_source("notes-todo-2");
+    remove_source("scratch");
+    CHECK_EQ(load_sources().size(), 2u);
+    remove_source(added.name);
+    CHECK_EQ(load_sources().size(), 1u);
+    CHECK_EQ(default_source()->name, "reminders");
+
     unsetenv("XDG_CONFIG_HOME");
     fs::remove_all(dir);
 }

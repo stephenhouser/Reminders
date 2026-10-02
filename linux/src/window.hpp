@@ -5,6 +5,7 @@
 #include <adwaita.h>
 
 #include <filesystem>
+#include <map>
 #include <memory>
 #include <optional>
 #include <set>
@@ -13,7 +14,7 @@
 #include "gtk_util.hpp"
 #include "reminders/history.hpp"
 #include "reminders/settings.hpp"
-#include "reminders/store.hpp"
+#include "reminders/library.hpp"
 
 namespace ui {
 
@@ -45,11 +46,17 @@ private:
     void build();
     void add_actions();
 
-    // Folder handling.
-    void choose_folder();
+    // Sources. choose_folder: Change Folder… (the default source's folder);
+    // choose_source: Add Source….
+    void choose_folder(bool new_source = false);
+    void remove_source(const std::string& name);
 public:
-    // `remember` makes it the folder opened on the next start.
-    void open_folder(const std::filesystem::path& folder, bool remember = true);
+    // With `folder` (from the command line), just that folder for this
+    // session; otherwise every configured source, remembered.
+    void open_sources(std::optional<std::filesystem::path> folder = std::nullopt);
+    // Change Folder… / a folder chosen on the welcome page: it becomes the
+    // default source's folder, then every source is opened.
+    void open_folder(const std::filesystem::path& folder);
 
 private:
     void on_file_changed(GFile* file, GFile* other);
@@ -81,8 +88,7 @@ private:
     void indent(const std::string& id, bool in);  // false: outdent
     std::vector<View> smart_views();
     // Your lists and tags the sidebar shows: hidden ones only with Show Hidden.
-    std::vector<rem::ListFile*> sidebar_lists();  // in lists-order
-    std::vector<std::string> list_names();       // every list, in the store's order
+    std::vector<rem::ListFile*> sidebar_lists(const std::string& source);  // in lists-order
     std::vector<std::string> sidebar_tags();
     bool entry_hidden(const View& v);  // hidden by the settings (shown or not)
     void set_entry_hidden(const View& v, bool hidden);
@@ -92,11 +98,16 @@ private:
     void edit_tag(const std::string& tag);
     std::vector<View> sidebar_views(bool include_folded = false);  // in sidebar order
     std::vector<rem::SidebarGroup> showing_groups();  // the groups with something to show
-    rem::GroupLayout* layout_of(rem::SidebarGroup group);  // nullptr for the smart lists
-    bool group_foldable(rem::SidebarGroup group);
-    bool group_folded(rem::SidebarGroup group);
-    void toggle_fold(rem::SidebarGroup group);
-    void move_group(rem::SidebarGroup group, int delta);
+    std::vector<std::string> source_names();
+    std::string group_title(const rem::SidebarGroup& group);  // "My Lists" with one source
+    rem::GroupLayout* layout_of(const rem::SidebarGroup& group);  // nullptr for the smart lists
+    bool group_foldable(const rem::SidebarGroup& group);
+    bool group_folded(const rem::SidebarGroup& group);
+    void toggle_fold(const rem::SidebarGroup& group);
+    void move_group(const rem::SidebarGroup& group, int delta);
+    std::vector<std::string> list_keys();  // every list, as "source/name"
+    std::string list_label(const rem::ListFile& list);  // its name, or "source/name" if names clash
+    rem::ListFile* list_by_label(const std::string& label);
     void sidebar_menu(GtkListBoxRow* row, double x, double y);
     View home_view();
     struct ViewInfo {
@@ -125,7 +136,7 @@ private:
     void paste_reminders();
     void add_pasted(const std::string& text);
     void show_details(const std::string& id);
-    void new_list();
+    void new_list(std::string source = {});
     void edit_list(const std::string& name);
     void delete_list(const std::string& name);
     void add_section(const std::string& list);
@@ -163,14 +174,18 @@ private:
     bool clamp_pending_ = false;  // offers Markdown checklists that aren't lists yet
     GSimpleAction* show_completed_action_ = nullptr;
 
-    std::unique_ptr<rem::Store> store_;
-    Obj<GFileMonitor> monitor_;
+    std::unique_ptr<rem::Library> store_;  // every source
+    struct FolderWatch {
+        Obj<GFileMonitor> monitor;
+        gulong handler = 0;
+    };
+    std::vector<FolderWatch> monitors_;  // one per source's folder
+    void stop_watching();
     Obj<GFileMonitor> settings_monitor_;  // settings.ini, to apply edits made elsewhere
     gulong settings_handler_ = 0;
     guint settings_timer_ = 0;
     std::string settings_text_;  // settings.ini as last applied
     std::optional<bool> key_numbers_override_;  // --show-key-numbers / --hide-key-numbers
-    gulong monitor_handler_ = 0;
     GtkWidget* first_new_entry_ = nullptr;  // "New Reminder" entry of the current list
     std::set<std::string> pending_reload_;
     guint reload_timer_ = 0;
@@ -184,11 +199,11 @@ private:
     bool show_key_numbers_ = false;  // settings.ini: show-key-numbers
     std::vector<rem::SidebarGroup> order_;  // settings.ini: sidebar-order
     rem::SmartListsLayout smart_;    // settings.ini: smart-lists, -display, -collapsed
-    rem::GroupLayout lists_;         // settings.ini: my-lists-display, -collapsed
+    std::map<std::string, rem::GroupLayout> lists_layouts_;  // per source: my-lists-display, lists-collapsed.NAME
     rem::GroupLayout tags_;          // settings.ini: tags-display, tags-collapsed
     rem::HiddenEntries hidden_;      // settings.ini: lists-hidden, tags-hidden, show-hidden
     GSimpleAction* show_hidden_action_ = nullptr;
-    rem::SidebarGroup menu_group_ = rem::SidebarGroup::MyLists;  // the sidebar menu's group
+    rem::SidebarGroup menu_group_;  // the sidebar menu's group
     GSimpleAction* collapsible_action_ = nullptr;  // the sidebar menu's "Collapsible" check item
     std::set<std::string> collapsed_;  // reminders whose subtasks are hidden (this session)
     bool remember_view_ = true;  // false for a folder opened just for this session

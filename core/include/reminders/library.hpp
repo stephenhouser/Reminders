@@ -29,6 +29,9 @@ public:
     // Adds an opened source (see open_source); it's loaded by load_all().
     // Sources keep the order they were added in.
     void add(SourceConfig config, std::unique_ptr<Store> store);
+    // Opens a source (open_source; if its back end's set-up fails, opens it
+    // anyway) and adds it.
+    void add(const SourceConfig& config, const std::string& device);
     void load_all();
 
     const std::vector<Source>& sources() const { return sources_; }
@@ -39,6 +42,11 @@ public:
     // A list's key: "source/name" (neither may contain "/").
     static std::string key(std::string_view source, std::string_view list);
     std::string key_of(const ListFile& list) const;
+    // How to show a list where all sources' lists mix: its name, or
+    // "source/name" when another source has a list of that name too.
+    std::string label(const ListFile& list) const;
+    // Where new lists go: default-source, if it's open, else the first source.
+    std::string default_source() const;
     // A list by key. A bare name finds the list when only one source has it.
     ListFile* list(std::string_view key);
     // Every list: sources in order, each in its own order (by "order", then name).
@@ -46,6 +54,19 @@ public:
     std::vector<ListFile*> lists(std::string_view source);
 
     std::optional<Ref> find(std::string_view id);
+
+    // The list key a file in one of the sources' folders belongs to (see
+    // Store::list_name_for), or nullopt.
+    std::optional<std::string> key_for_path(const fs::path& file);
+    // Re-reads a list after its file changed (Store::reload).
+    bool reload(std::string_view key);
+    fs::path path_of(std::string_view key);
+
+    // Files that could be lists, across sources (keys), and Store's
+    // adopt / decline for one.
+    std::vector<std::string> candidates();
+    void adopt(std::string_view key);
+    void decline(std::string_view key);
 
     // As Store's, on the list's own source.
     void save(ListFile& list);
@@ -90,5 +111,9 @@ private:
 // Every configured source, opened (not loaded). A source whose folder is
 // missing is left out.
 std::unique_ptr<Library> open_library(const std::string& device);
+
+// What the apps open: with `folder` (from the command line), just that
+// folder's source (source_for_folder); otherwise every configured source.
+std::unique_ptr<Library> open_library(const std::optional<fs::path>& folder, const std::string& device);
 
 }  // namespace rem

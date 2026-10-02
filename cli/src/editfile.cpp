@@ -45,7 +45,8 @@ bool parse_bool(const std::string& key, const std::string& v) {
 
 }  // namespace
 
-std::string render(const rem::Ref& ref, const std::vector<std::string>& lists, rem::Date today) {
+std::string render(const rem::Ref& ref, const std::vector<std::string>& lists, const std::string& list,
+                   rem::Date today) {
     auto& r = *ref.reminder;
     std::string list_names;
     for (auto& l : lists) list_names += (list_names.empty() ? "" : ", ") + l;
@@ -58,7 +59,7 @@ std::string render(const rem::Ref& ref, const std::vector<std::string>& lists, r
         "#   due: today, tomorrow, fri, +3d, 2026-10-31     time: 17:30\n"
         "#   repeat: never, every day, every weekday, every week, every 2 weeks, every month, every year\n"
         "#   priority: none, low, medium, high              list: {}\n",
-        r.title, ref.list->name, list_names);
+        r.title, list, list_names);
     if (!ref.parent) out += "#   subtasks: Markdown lines; add, remove, or tick them with [x]\n";
     out += std::format("title: {}\n", r.title);
     out += std::format("done: {}\n", r.done ? "true" : "false");
@@ -68,7 +69,7 @@ std::string render(const rem::Ref& ref, const std::vector<std::string>& lists, r
     out += std::format("priority: {}\n", term::priority_name(r.priority));
     out += std::format("flagged: {}\n", r.flagged ? "true" : "false");
     out += std::format("tags: {}\n", tags);
-    out += std::format("list: {}\n", ref.list->name);
+    out += std::format("list: {}\n", list);
     if (!ref.parent) out += std::format("section: {}\n", ref.list->doc.section_of(r).value_or(""));
     out += std::format("url: {}\n", r.url.value_or(""));
     if (r.notes.empty()) {
@@ -180,13 +181,13 @@ std::optional<Edited> parse(const std::string& text, rem::Date today) {
     return e;
 }
 
-void apply(rem::Store& store, const std::string& id, const Edited& e, rem::Date today) {
+void apply(rem::Library& store, const std::string& id, const Edited& e, rem::Date today) {
     auto ref = store.find(id);
     if (!ref) throw std::runtime_error("the reminder was changed elsewhere");
-    auto* dest = store.list(e.list);
+    auto* dest = store.list(e.list);  // "source/name", or a name only one source has
     if (!dest)
         for (auto* l : store.lists())
-            if (term::lower(l->name) == term::lower(e.list)) dest = l;
+            if (term::lower(store.label(*l)) == term::lower(e.list)) dest = l;
     if (!dest) throw std::runtime_error(std::format("list: there's no list called “{}”", e.list));
 
     auto& r = *ref->reminder;
@@ -286,15 +287,15 @@ bool ask_edit_again(const std::string& problem) {
 
 }  // namespace
 
-Outcome edit(rem::Store& store, const std::string& id,
+Outcome edit(rem::Library& store, const std::string& id,
              const std::function<void(const std::function<void()>&)>& apply_fn) {
     auto ref = store.find(id);
     if (!ref) return Outcome::Unchanged;
     auto today = rem::local_today();
     std::vector<std::string> lists;
-    for (auto* l : store.lists()) lists.push_back(l->name);
+    for (auto* l : store.lists()) lists.push_back(store.label(*l));
 
-    auto original = render(*ref, lists, today);
+    auto original = render(*ref, lists, store.label(*ref->list), today);
     auto text = original;
     while (true) {
         auto edited = run_editor(text);

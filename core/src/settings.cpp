@@ -92,6 +92,33 @@ std::vector<std::string> section_names() {
     return out;
 }
 
+namespace {
+
+void write_lines(const fs::path& file, const std::vector<std::string>& lines) {
+    fs::create_directories(file.parent_path());
+    auto tmp = file.parent_path() / ".settings.ini.tmp";
+    {
+        std::ofstream out(tmp, std::ios::trunc);
+        for (auto& l : lines) out << l << '\n';
+    }
+    fs::rename(tmp, file);
+}
+
+}  // namespace
+
+void remove_section(const std::string& section) {
+    auto file = settings_file();
+    std::vector<std::string> kept;
+    bool in_section = false;
+    for (auto& l : read_lines(file)) {
+        auto t = trimmed(l);
+        if (t.starts_with('[')) in_section = t == "[" + section + "]";
+        if (!in_section) kept.push_back(l);
+    }
+    while (kept.size() >= 2 && kept.back().empty() && kept[kept.size() - 2].empty()) kept.pop_back();
+    write_lines(file, kept);
+}
+
 void save_section_setting(const std::string& section, const std::string& key, const std::string& value) {
     auto file = settings_file();
     auto lines = read_lines(file);
@@ -162,78 +189,101 @@ SmartListsLayout load_smart_lists_layout() {
     return layout;
 }
 
-GroupLayout load_my_lists_layout() {
+GroupLayout load_lists_layout(const std::string& source) {
     auto display = load_display("my-lists-display");
     if (display == GroupDisplay::Hidden) display = GroupDisplay::Visible;
-    return GroupLayout{display, load_bool_setting("my-lists-collapsed")};
+    return GroupLayout{display, load_bool_setting("lists-collapsed." + source)};
 }
 
 GroupLayout load_tags_layout() {
     return GroupLayout{load_display("tags-display"), load_bool_setting("tags-collapsed")};
 }
 
-namespace {
-
-constexpr SidebarGroup kGroups[] = {SidebarGroup::SmartLists, SidebarGroup::MyLists, SidebarGroup::Tags};
-
-const char* group_key(SidebarGroup group) {
-    switch (group) {
-        case SidebarGroup::SmartLists: return "smart-lists";
-        case SidebarGroup::MyLists: return "my-lists";
-        case SidebarGroup::Tags: return "tags";
-    }
-    return "";
-}
-
-}  // namespace
-
-const char* group_title(SidebarGroup group) {
-    switch (group) {
+std::string group_title(const SidebarGroup& group, const std::string& lists_title) {
+    switch (group.kind) {
         case SidebarGroup::SmartLists: return "Smart Lists";
-        case SidebarGroup::MyLists: return "My Lists";
+        case SidebarGroup::Lists: return lists_title;
         case SidebarGroup::Tags: return "Tags";
     }
     return "";
 }
 
-void save_group_collapsed(SidebarGroup group, bool collapsed) {
-    save_setting(std::string(group_key(group)) + "-collapsed", collapsed ? "true" : "false");
+void save_group_collapsed(const SidebarGroup& group, bool collapsed) {
+    auto key = group.kind == SidebarGroup::SmartLists ? std::string("smart-lists-collapsed")
+               : group.kind == SidebarGroup::Tags     ? std::string("tags-collapsed")
+                                                      : "lists-collapsed." + group.source;
+    save_setting(key, collapsed ? "true" : "false");
 }
 
-void save_group_display(SidebarGroup group, GroupDisplay display) {
+void save_group_display(const SidebarGroup& group, GroupDisplay display) {
     const char* value = display == GroupDisplay::Collapsible ? "collapsible"
                         : display == GroupDisplay::Hidden    ? "hidden"
                                                              : "visible";
-    save_setting(std::string(group_key(group)) + "-display", value);
+    const char* key = group.kind == SidebarGroup::SmartLists ? "smart-lists-display"
+                      : group.kind == SidebarGroup::Tags     ? "tags-display"
+                                                             : "my-lists-display";
+    save_setting(key, value);
 }
 
-std::vector<SidebarGroup> load_sidebar_order() {
-    std::vector<SidebarGroup> order;
+std::vector<SidebarGroup> load_sidebar_order(const std::vector<std::string>& sources) {
+    // The words, as written; "smart-lists", "smart_lists" and "SmartLists"
+    // all count, but a source's name is kept exactly.
+    std::vector<std::string> words;
     std::string word;
     for (char c : load_setting("sidebar-order") + ",") {
-        if (c != ',' && c != ' ' && c != '\t') {
-            if (c != '-' && c != '_') word += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-            continue;
+        if (c == ',' || c == ' ' || c == '\t') {
+            if (!word.empty()) words.push_back(word);
+            word.clear();
+        } else {
+            word += c;
         }
-        std::optional<SidebarGroup> g;
-        if (word == "smartlists" || word == "smart") g = SidebarGroup::SmartLists;
-        else if (word == "mylists" || word == "lists") g = SidebarGroup::MyLists;
-        else if (word == "tags") g = SidebarGroup::Tags;
-        if (g && std::ranges::find(order, *g) == order.end()) order.push_back(*g);
-        word.clear();
     }
-    for (auto g : kGroups)
+    auto keyword = [](std::string w) {
+        std::string out;
+        for (char c : w)
+            if (c != '-' && c != '_') out += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return out;
+    };
+    std::vector<std::string> named;  // sources with a place of their own
+    for (auto& w : words)
+        if (keyword(w).starts_with("lists:")) named.push_back(w.substr(w.find(':') + 1));
+
+    std::vector<SidebarGroup> order;
+    auto put = [&](const SidebarGroup& g) {
         if (std::ranges::find(order, g) == order.end()) order.push_back(g);
+    };
+    for (auto& w : words) {
+        auto k = keyword(w);
+        if (k == "smartlists" || k == "smart") put(SidebarGroup::smart_lists());
+        else if (k == "tags") put(SidebarGroup::tags());
+        else if (k == "mylists" || k == "lists") {
+            for (auto& s : sources)
+                if (std::ranges::find(named, s) == named.end()) put(SidebarGroup::lists(s));
+        } else if (k.starts_with("lists:")) {
+            auto name = w.substr(w.find(':') + 1);
+            if (std::ranges::find(sources, name) != sources.end()) put(SidebarGroup::lists(name));
+        }
+    }
+    put(SidebarGroup::smart_lists());
+    for (auto& s : sources) put(SidebarGroup::lists(s));
+    put(SidebarGroup::tags());
     return order;
 }
 
 void save_sidebar_order(const std::vector<SidebarGroup>& order) {
+    auto lists_groups = std::ranges::count_if(order, [](auto& g) { return g.kind == SidebarGroup::Lists; });
     std::string value;
-    for (auto g : order) value += (value.empty() ? "" : ", ") + std::string(group_key(g));
+    for (auto& g : order) {
+        std::string w = g.kind == SidebarGroup::SmartLists ? "smart-lists"
+                        : g.kind == SidebarGroup::Tags     ? "tags"
+                        : lists_groups == 1                ? "my-lists"
+                                                           : "lists:" + g.source;
+        value += (value.empty() ? "" : ", ") + w;
+    }
     save_setting("sidebar-order", value);
 }
 
-bool move_sidebar_group(std::vector<SidebarGroup>& order, SidebarGroup group, int delta,
+bool move_sidebar_group(std::vector<SidebarGroup>& order, const SidebarGroup& group, int delta,
                         const std::vector<SidebarGroup>& showing) {
     auto at = std::ranges::find(order, group);
     if (at == order.end() || delta == 0) return false;
@@ -287,7 +337,15 @@ void save_names_setting(const std::string& key, const std::vector<std::string>& 
     save_setting(key, value);
 }
 
-bool HiddenEntries::list_hidden(std::string_view name) const { return std::ranges::find(lists, name) != lists.end(); }
+bool list_entry_matches(std::string_view entry, std::string_view key) {
+    if (entry == key) return true;
+    auto slash = key.find('/');
+    return entry.find('/') == std::string_view::npos && slash != std::string_view::npos && key.substr(slash + 1) == entry;
+}
+
+bool HiddenEntries::list_hidden(std::string_view key) const {
+    return std::ranges::any_of(lists, [&](auto& e) { return list_entry_matches(e, key); });
+}
 bool HiddenEntries::tag_hidden(std::string_view tag) const { return std::ranges::find(tags, tag) != tags.end(); }
 
 HiddenEntries load_hidden() {
@@ -308,7 +366,14 @@ void set_in_names(const std::string& key, const std::string& name, bool present)
 
 }  // namespace
 
-void set_list_hidden(const std::string& name, bool hidden) { set_in_names("lists-hidden", name, hidden); }
+void set_list_hidden(const std::string& key, bool hidden) {
+    auto names = load_names_setting("lists-hidden");
+    if (hidden && std::ranges::find(names, key) != names.end()) return;  // already
+    auto before = names;
+    std::erase_if(names, [&](auto& e) { return list_entry_matches(e, key); });  // a bare "Work" too
+    if (hidden) names.push_back(key);
+    if (names != before) save_names_setting("lists-hidden", names);
+}
 void set_tag_hidden(const std::string& tag, bool hidden) { set_in_names("tags-hidden", tag, hidden); }
 
 void set_smart_list_hidden(const std::string& name, bool hidden) {
@@ -338,8 +403,12 @@ std::vector<std::string> order_tags(std::vector<std::string> tags) {
 
 std::vector<std::string> order_lists(const std::vector<std::string>& names) {
     std::vector<std::string> out;
-    for (auto& n : load_names_setting("lists-order"))
-        if (std::ranges::find(names, n) != names.end()) out.push_back(n);
+    for (auto& entry : load_names_setting("lists-order"))
+        for (auto& n : names)
+            if (list_entry_matches(entry, n) && std::ranges::find(out, n) == out.end()) {
+                out.push_back(n);
+                break;
+            }
     for (auto& n : names)
         if (std::ranges::find(out, n) == out.end()) out.push_back(n);
     return out;

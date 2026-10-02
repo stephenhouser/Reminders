@@ -160,7 +160,7 @@ struct SidebarEntry {
     // Headings: a plain Heading is just a label; a FoldHeading (a collapsible
     // group's) can be selected, and Enter/Space folds or unfolds the group.
     enum Kind { Item, Heading, FoldHeading } kind = Item;
-    rem::SidebarGroup group = rem::SidebarGroup::MyLists;  // the group the row belongs to
+    rem::SidebarGroup group = rem::SidebarGroup::smart_lists();  // the group the row belongs to
     bool hidden = false;  // hidden in settings.ini, showing because of show-hidden (dimmed)
 };
 
@@ -177,14 +177,13 @@ struct Line {
 
 class Tui {
 public:
-    Tui(rem::Store& store, fs::path folder, bool remember)
-        : store_(store), folder_(std::move(folder)), remember_(remember) {}
+    Tui(rem::Library& store, bool remember)
+        : store_(store), remember_(remember) {}
     int run();
     void set_show_key_numbers(bool on) { show_key_numbers_ = on, key_numbers_override_ = on; }
 
 private:
-    rem::Store& store_;
-    fs::path folder_;
+    rem::Library& store_;  // every source
     bool remember_;
     rem::History history_;
     View view_;
@@ -194,9 +193,9 @@ private:
     bool hide_sidebar_ = !rem::load_bool_setting("show-sidebar", true);  // Ctrl+B; shared with the app
     bool show_key_numbers_ = rem::load_bool_setting("show-key-numbers");
     std::optional<bool> key_numbers_override_;  // --show-key-numbers / --hide-key-numbers
-    std::vector<rem::SidebarGroup> order_ = rem::load_sidebar_order();
+    std::vector<rem::SidebarGroup> order_ = rem::load_sidebar_order(source_names());
     rem::SmartListsLayout smart_ = rem::load_smart_lists_layout();
-    rem::GroupLayout lists_ = rem::load_my_lists_layout();
+    std::map<std::string, rem::GroupLayout> lists_layouts_;  // by source; loaded as needed
     rem::GroupLayout tags_ = rem::load_tags_layout();
     rem::HiddenEntries hidden_ = rem::load_hidden();  // lists-hidden, tags-hidden, show-hidden
     // Extended key codes for the GUI's modified keys, 0 if the terminal lacks them.
@@ -212,9 +211,12 @@ private:
     std::vector<SidebarEntry> sidebar_items();  // the selectable lists, in order (numbered)
     std::vector<SidebarEntry> smart_entries();  // the smart lists the settings show
     std::vector<rem::SidebarGroup> showing_groups();
-    rem::GroupLayout* layout_of(rem::SidebarGroup group);  // nullptr for the smart lists
-    bool folded(rem::SidebarGroup group);
-    void toggle_fold(rem::SidebarGroup group);
+    std::vector<std::string> source_names();
+    std::string group_title(const rem::SidebarGroup& group);  // "My Lists" with one source, else its title
+    std::vector<std::string> list_keys();                     // every list, as "source/name"
+    rem::GroupLayout* layout_of(const rem::SidebarGroup& group);  // nullptr for the smart lists
+    bool folded(const rem::SidebarGroup& group);
+    void toggle_fold(const rem::SidebarGroup& group);
     void move_group(int delta);
     void move_entry(int delta);
     void edit_settings();
@@ -284,8 +286,8 @@ std::vector<SidebarEntry> Tui::smart_entries() {
 std::vector<rem::SidebarGroup> Tui::showing_groups() {
     std::vector<rem::SidebarGroup> out;
     for (auto g : order_) {
-        if (g == rem::SidebarGroup::SmartLists && smart_entries().empty()) continue;
-        if (g == rem::SidebarGroup::Tags && (tags_.hidden() || std::ranges::none_of(store_.tags(), [&](auto& t) {
+        if (g.kind == rem::SidebarGroup::SmartLists && smart_entries().empty()) continue;
+        if (g.kind == rem::SidebarGroup::Tags && (tags_.hidden() || std::ranges::none_of(store_.tags(), [&](auto& t) {
                                                  return hidden_.show || !hidden_.tag_hidden(t);
                                              })))
             continue;
@@ -294,18 +296,41 @@ std::vector<rem::SidebarGroup> Tui::showing_groups() {
     return out;
 }
 
-rem::GroupLayout* Tui::layout_of(rem::SidebarGroup group) {
-    if (group == rem::SidebarGroup::MyLists) return &lists_;
-    if (group == rem::SidebarGroup::Tags) return &tags_;
+std::vector<std::string> Tui::source_names() {
+    std::vector<std::string> out;
+    for (auto& s : store_.sources()) out.push_back(s.config.name);
+    return out;
+}
+
+std::string Tui::group_title(const rem::SidebarGroup& group) {
+    if (group.kind != rem::SidebarGroup::Lists || store_.sources().size() <= 1) return rem::group_title(group);
+    for (auto& s : store_.sources())
+        if (s.config.name == group.source) return rem::group_title(group, rem::source_title(s.config));
+    return rem::group_title(group);
+}
+
+std::vector<std::string> Tui::list_keys() {
+    std::vector<std::string> out;
+    for (auto* l : store_.lists()) out.push_back(store_.key_of(*l));
+    return out;
+}
+
+rem::GroupLayout* Tui::layout_of(const rem::SidebarGroup& group) {
+    if (group.kind == rem::SidebarGroup::Lists) {
+        auto at = lists_layouts_.find(group.source);
+        if (at == lists_layouts_.end()) at = lists_layouts_.emplace(group.source, rem::load_lists_layout(group.source)).first;
+        return &at->second;
+    }
+    if (group.kind == rem::SidebarGroup::Tags) return &tags_;
     return nullptr;
 }
 
-bool Tui::folded(rem::SidebarGroup group) {
+bool Tui::folded(const rem::SidebarGroup& group) {
     auto* l = layout_of(group);
     return l ? l->folded() : smart_.folded();
 }
 
-void Tui::toggle_fold(rem::SidebarGroup group) {
+void Tui::toggle_fold(const rem::SidebarGroup& group) {
     auto* l = layout_of(group);
     bool& collapsed = l ? l->collapsed : smart_.collapsed;
     collapsed = !collapsed;
@@ -324,7 +349,7 @@ std::vector<SidebarEntry> Tui::sidebar() {
         auto* l = layout_of(g);
         bool foldable = l ? l->foldable() : smart_.foldable();
         if (foldable || !out.empty()) {
-            std::string title = rem::group_title(g);
+            std::string title = group_title(g);
             if (folded(g)) title += " (folded)";
             SidebarEntry heading{{}, title, "", -1};
             heading.kind = foldable ? SidebarEntry::FoldHeading : SidebarEntry::Heading;
@@ -333,19 +358,19 @@ std::vector<SidebarEntry> Tui::sidebar() {
             if (folded(g)) continue;
         }
         std::vector<SidebarEntry> rows;
-        switch (g) {
+        switch (g.kind) {
             case rem::SidebarGroup::SmartLists: rows = smart_entries(); break;
-            case rem::SidebarGroup::MyLists: {
-                std::vector<std::string> names;
-                for (auto* l : store_.lists()) names.push_back(l->name);
-                for (auto& n : rem::order_lists(names)) {
-                    auto* list = store_.list(n);
+            case rem::SidebarGroup::Lists: {  // one source's lists, in lists-order
+                std::vector<std::string> keys;
+                for (auto* l : store_.lists(g.source)) keys.push_back(store_.key_of(*l));
+                for (auto& key : rem::order_lists(keys)) {
+                    auto* list = store_.list(key);
                     if (!list) continue;
-                    bool hidden = hidden_.list_hidden(list->name);
+                    bool hidden = hidden_.list_hidden(key);
                     if (hidden && !hidden_.show) continue;
                     int open = 0;
                     list->doc.walk([&](rem::Reminder& r, rem::Reminder*) { open += !r.done; });
-                    rows.push_back({{View::List, list->name}, list->name, list->color(), open});
+                    rows.push_back({{View::List, key}, list->name, list->color(), open});
                     rows.back().hidden = hidden;
                 }
                 break;
@@ -431,7 +456,7 @@ std::vector<Line> Tui::lines() {
         Line line{Line::Item, r.id, md.before, ref.list->color(), depth};
         line.due = md.due;
         line.after = md.after;
-        if (show_list) line.where = "(" + ref.list->name + (ref.parent ? " > " + ref.parent->title : "") + ")";
+        if (show_list) line.where = "(" + store_.label(*ref.list) + (ref.parent ? " > " + ref.parent->title : "") + ")";
         line.done = r.done;
         line.overdue = term::is_overdue(r, today);
         out.push_back(std::move(line));
@@ -476,7 +501,7 @@ std::vector<Line> Tui::lines() {
     for (auto& ref : refs) {
         std::string g, color;
         if (by_date) g = *ref.reminder->due_date < today ? "Overdue" : rem::relative_date(*ref.reminder->due_date, today);
-        else if (view_.kind != View::Flagged) g = ref.list->name, color = ref.list->color();
+        else if (view_.kind != View::Flagged) g = store_.label(*ref.list), color = ref.list->color();
         if (g != group) {
             if (!g.empty()) {
                 if (!out.empty()) out.push_back({Line::Note, "", "", "", 0});
@@ -538,7 +563,10 @@ void Tui::draw_items(int x, int width, int height) {
     auto ls = lines();
     // Title
     std::string title;
-    if (view_.kind == View::List) title = view_.name;
+    if (view_.kind == View::List) {
+        auto* l = store_.list(view_.name);
+        title = l ? l->name : view_.name;
+    }
     else if (view_.kind == View::Tag) title = "#" + view_.name;
     else if (view_.kind == View::Search) title = std::format("Search: {}", view_.name);
     else {
@@ -849,17 +877,15 @@ void Tui::move_entry(int delta) {
         if (e.kind == SidebarEntry::Item && e.group == selected.group) showing.push_back(name_of(e));
     auto name = name_of(selected);
     try {
-        switch (selected.group) {
+        switch (selected.group.kind) {
             case rem::SidebarGroup::SmartLists: {
                 auto order = smart_.shown;  // a hidden smart list has no place to move
                 if (!rem::move_in_order(order, name, delta, order)) return;
                 rem::save_smart_lists(order);
                 break;
             }
-            case rem::SidebarGroup::MyLists: {
-                std::vector<std::string> names;
-                for (auto* l : store_.lists()) names.push_back(l->name);
-                auto order = rem::order_lists(names);
+            case rem::SidebarGroup::Lists: {  // every source's lists keep their places
+                auto order = rem::order_lists(list_keys());
                 if (!rem::move_in_order(order, name, delta, showing)) return;
                 rem::save_names_setting("lists-order", order);
                 break;
@@ -885,9 +911,9 @@ void Tui::move_entry(int delta) {
 
 void Tui::load_layout() {
     show_key_numbers_ = key_numbers_override_.value_or(rem::load_bool_setting("show-key-numbers"));
-    order_ = rem::load_sidebar_order();
+    order_ = rem::load_sidebar_order(source_names());
     smart_ = rem::load_smart_lists_layout();
-    lists_ = rem::load_my_lists_layout();
+    lists_layouts_.clear();
     tags_ = rem::load_tags_layout();
     hidden_ = rem::load_hidden();
 }
@@ -1023,7 +1049,8 @@ void Tui::restore_view() {
     auto saved = term::parse_view_setting(rem::load_setting("view"));
     for (auto [kind, name] : kViewSettings)
         if (saved.kind == name) view_ = {static_cast<View::Kind>(kind), ""};
-    if (saved.kind == "list" && store_.list(saved.name)) view_ = {View::List, saved.name};
+    if (saved.kind == "list")  // "source/name" (or a name only one source has)
+        if (auto* l = store_.list(saved.name)) view_ = {View::List, store_.key_of(*l)};
     auto tags = store_.tags();
     if (saved.kind == "tag" && !tags_.hidden() && std::ranges::find(tags, saved.name) != tags.end())
         view_ = {View::Tag, saved.name};
@@ -1095,11 +1122,12 @@ void Tui::move_selection(int delta) {
 void Tui::check_folder() {
     std::map<std::string, std::pair<fs::file_time_type, std::uintmax_t>> now;
     std::error_code ec;
-    for (auto& e : fs::directory_iterator(folder_, ec)) {
-        auto name = e.path().filename().string();
-        if (!name.ends_with(".md") || name.starts_with('.')) continue;
-        now[name] = {e.last_write_time(ec), e.file_size(ec)};
-    }
+    for (auto& source : store_.sources())
+        for (auto& e : fs::directory_iterator(source.config.folder, ec)) {
+            auto name = e.path().filename().string();
+            if (!name.ends_with(".md") || name.starts_with('.')) continue;
+            now[e.path().string()] = {e.last_write_time(ec), e.file_size(ec)};
+        }
     if (now == seen_) return;
     bool first = seen_.empty();
     seen_ = std::move(now);
@@ -1223,8 +1251,10 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
                     auto findable = sidebar_items();  // plus folded groups' entries
                     if (smart_.folded())
                         for (auto& e : smart_entries()) findable.push_back(e);
-                    if (lists_.folded())
-                        for (auto* l : store_.lists()) findable.push_back({{View::List, l->name}, l->name, l->color(), -1});
+                    for (auto& s : store_.sources())
+                        if (folded(rem::SidebarGroup::lists(s.config.name)))
+                            for (auto* l : store_.lists(s.config.name))
+                                findable.push_back({{View::List, store_.key_of(*l)}, l->name, l->color(), -1});
                     if (tags_.folded() && !tags_.hidden())
                         for (auto& t : store_.tags()) findable.push_back({{View::Tag, t}, "#" + t, "gray", -1});
                     for (auto& e : findable) {
@@ -1238,12 +1268,20 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
                 }
                 return true;
             case 'N':
+                // Into the source whose group is selected, else the default one.
                 if (auto name = prompt("New list name:"); name && !name->empty()) {
-                    if (store_.list(*name)) {
+                    auto source = store_.default_source();
+                    auto entries = sidebar();
+                    if (!focus_items_ && side_sel_ >= 0 && side_sel_ < static_cast<int>(entries.size()) &&
+                        entries[static_cast<std::size_t>(side_sel_)].group.kind == rem::SidebarGroup::Lists)
+                        source = entries[static_cast<std::size_t>(side_sel_)].group.source;
+                    else if (auto* l = view_.kind == View::List ? store_.list(view_.name) : nullptr)
+                        source = store_.source_of(*l)->config.name;
+                    if (store_.list(rem::Library::key(source, *name))) {
                         message_ = "A list with that name already exists";
                     } else {
-                        undoable("New List", [&] { store_.create_list(*name, "blue", "list"); });
-                        select_view({View::List, *name});
+                        undoable("New List", [&] { store_.create_list(source, *name, "blue", "list"); });
+                        select_view({View::List, rem::Library::key(source, *name)});
                     }
                 }
                 return true;
@@ -1392,7 +1430,8 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
             if (auto name = prompt("Move to list:"); name && !name->empty()) {
                 rem::ListFile* dest = nullptr;
                 for (auto* l : store_.lists())
-                    if (term::lower(l->name).starts_with(term::lower(*name))) {
+                    if (term::lower(store_.label(*l)).starts_with(term::lower(*name)) ||
+                        term::lower(store_.key_of(*l)).starts_with(term::lower(*name))) {
                         dest = l;
                         break;
                     }
@@ -1507,8 +1546,8 @@ int Tui::run() {
 
 }  // namespace
 
-int run_tui(rem::Store& store, const std::filesystem::path& folder, bool remember, std::optional<bool> key_numbers) {
-    Tui tui(store, folder, remember);
+int run_tui(rem::Library& store, bool remember, std::optional<bool> key_numbers) {
+    Tui tui(store, remember);
     if (key_numbers) tui.set_show_key_numbers(*key_numbers);
     return tui.run();
 }

@@ -18,8 +18,16 @@ reminders --folder ~/Sync/Work list   # use another folder for one command
 ```
 
 The folder belongs to the default *source*, which also says how it's synced
-(`syncthing` or `local`); `reminders folder PATH` picks that by itself. See
-[sources](USING.md#sources).
+(`syncthing` or `local`); `reminders folder PATH` picks that by itself. With
+several sources (see [sources](USING.md#sources)), every command and the
+interactive interface use all of them:
+
+- `reminders lists` shows each source's lists under its title.
+- A list is named by its name, or `source/name` when two sources have a list
+  of that name (`reminders list work/Todo`; a bare `Todo` then asks which).
+- `reminders new-list NAME --source S` creates it in source S; without
+  `--source`, in the default source. In the interactive interface, `N`
+  creates it in the source whose group is selected.
 
 ## Commands
 
@@ -35,7 +43,7 @@ reminders undone NAME            mark as not completed
 reminders move NAME --to LIST [--section S]
 reminders delete NAME [--yes]
 reminders search TEXT
-reminders new-list NAME [--color C] [--icon I]
+reminders new-list NAME [--color C] [--icon I] [--source S]
 reminders folder [PATH]
 ```
 

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <format>
 
 #include "reminders/settings.hpp"
 #include "reminders/syncthing.hpp"
@@ -19,6 +20,7 @@ SourceConfig read_source(const std::string& name) {
     s.name = name;
     s.backend = parse_backend(load_section_setting(section_of(name), "backend")).value_or(BackendKind::Syncthing);
     s.folder = load_section_setting(section_of(name), "folder");
+    s.title = load_section_setting(section_of(name), "title");
     return s;
 }
 
@@ -55,6 +57,13 @@ std::optional<SourceConfig> default_source() {
     return sources.front();
 }
 
+std::string source_title(const SourceConfig& source) {
+    if (!source.title.empty()) return source.title;
+    auto t = source.name.empty() ? source.folder.filename().string() : source.name;
+    if (!t.empty()) t[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(t[0])));
+    return t;
+}
+
 std::optional<fs::path> saved_folder() {
     auto source = default_source();
     std::error_code ec;
@@ -65,6 +74,7 @@ std::optional<fs::path> saved_folder() {
 void save_source(const SourceConfig& source) {
     save_section_setting(section_of(source.name), "backend", std::string(backend_name(source.backend)));
     save_section_setting(section_of(source.name), "folder", source.folder.string());
+    if (!source.title.empty()) save_section_setting(section_of(source.name), "title", source.title);
 }
 
 BackendKind detect_backend(const fs::path& folder) {
@@ -85,6 +95,25 @@ SourceConfig set_default_folder(const fs::path& folder) {
     save_source(source);
     if (load_setting("default-source").empty()) save_setting("default-source", source.name);
     return source;
+}
+
+SourceConfig add_source(const fs::path& folder) {
+    auto existing = load_sources();
+    auto base = name_for(folder), name = base;
+    for (int n = 2; std::ranges::any_of(existing, [&](auto& s) { return s.name == name; }); ++n)
+        name = std::format("{}-{}", base, n);
+    SourceConfig source{name, detect_backend(folder), folder, {}};
+    save_source(source);
+    if (existing.empty()) save_setting("default-source", name);
+    return source;
+}
+
+void remove_source(const std::string& name) {
+    remove_section(section_of(name));
+    if (load_setting("default-source") == name) {
+        auto rest = load_sources();
+        save_setting("default-source", rest.empty() ? "" : rest.front().name);
+    }
 }
 
 std::unique_ptr<Store> open_source(const SourceConfig& source, const std::string& device) {

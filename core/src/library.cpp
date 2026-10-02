@@ -4,6 +4,7 @@
 #include <cctype>
 #include <stdexcept>
 
+#include "reminders/settings.hpp"
 #include "reminders/syncthing.hpp"
 
 namespace rem {
@@ -66,6 +67,20 @@ std::string Library::key_of(const ListFile& list) const {
     return key(s ? s->config.name : "", list.name);
 }
 
+std::string Library::label(const ListFile& list) const {
+    int same = 0;
+    for (auto& s : sources_)
+        if (s.store->list(list.name)) ++same;
+    return same > 1 ? key_of(list) : list.name;
+}
+
+std::string Library::default_source() const {
+    auto name = load_setting("default-source");
+    for (auto& s : sources_)
+        if (s.config.name == name) return name;
+    return sources_.empty() ? std::string() : sources_.front().config.name;
+}
+
 std::pair<Store*, std::string> Library::split(std::string_view key) {
     auto slash = key.find('/');
     if (slash == std::string_view::npos) return {nullptr, std::string(key)};
@@ -102,6 +117,42 @@ std::optional<Ref> Library::find(std::string_view id) {
     for (auto& s : sources_)
         if (auto r = s.store->find(id)) return r;
     return std::nullopt;
+}
+
+std::optional<std::string> Library::key_for_path(const fs::path& file) {
+    std::error_code ec;
+    for (auto& s : sources_) {
+        if (!fs::equivalent(file.parent_path(), s.config.folder, ec)) continue;
+        if (auto name = s.store->list_name_for(file)) return key(s.config.name, *name);
+    }
+    return std::nullopt;
+}
+
+bool Library::reload(std::string_view key) {
+    auto [st, name] = split(key);
+    return st && st->reload(name);
+}
+
+fs::path Library::path_of(std::string_view key) {
+    auto [st, name] = split(key);
+    return st ? st->path_of(name) : fs::path();
+}
+
+std::vector<std::string> Library::candidates() {
+    std::vector<std::string> out;
+    for (auto& s : sources_)
+        for (auto& c : s.store->candidates()) out.push_back(key(s.config.name, c));
+    return out;
+}
+
+void Library::adopt(std::string_view key) {
+    auto [st, name] = split(key);
+    if (st) st->adopt(name);
+}
+
+void Library::decline(std::string_view key) {
+    auto [st, name] = split(key);
+    if (st) st->decline(name);
 }
 
 void Library::save(ListFile& list) {
@@ -249,19 +300,29 @@ void Library::restore(const std::string& key, const std::optional<std::string>& 
     if (st) st->restore(name, text);
 }
 
+void Library::add(const SourceConfig& config, const std::string& device) {
+    std::unique_ptr<Store> store;
+    try {
+        store = open_source(config, device);
+    } catch (const std::exception&) {  // the back end's set-up failed: open it anyway
+        store = std::make_unique<Store>(config.folder, state_dir(config.folder, device), config.backend);
+    }
+    add(config, std::move(store));
+}
+
 std::unique_ptr<Library> open_library(const std::string& device) {
     auto library = std::make_unique<Library>();
     for (auto& source : load_sources()) {
         std::error_code ec;
-        if (!fs::is_directory(source.folder, ec)) continue;
-        std::unique_ptr<Store> store;
-        try {
-            store = open_source(source, device);
-        } catch (const std::exception&) {  // the back end's set-up failed: open it anyway
-            store = std::make_unique<Store>(source.folder, state_dir(source.folder, device), source.backend);
-        }
-        library->add(source, std::move(store));
+        if (fs::is_directory(source.folder, ec)) library->add(source, device);
     }
+    return library;
+}
+
+std::unique_ptr<Library> open_library(const std::optional<fs::path>& folder, const std::string& device) {
+    if (!folder) return open_library(device);
+    auto library = std::make_unique<Library>();
+    library->add(source_for_folder(*folder), device);
     return library;
 }
 

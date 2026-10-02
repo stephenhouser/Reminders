@@ -133,23 +133,24 @@ GtkWidget* sidebar_row(const char* icon_name, std::string_view color, const std:
 }
 
 // Every sidebar row carries its group, for the menu and Alt+↑/↓.
-void set_row_group(GtkWidget* row, rem::SidebarGroup group) {
-    g_object_set_data(G_OBJECT(row), "sidebar-group", GINT_TO_POINTER(static_cast<int>(group) + 1));
+void set_row_group(GtkWidget* row, const rem::SidebarGroup& group) {
+    g_object_set_data_full(G_OBJECT(row), "sidebar-group", new rem::SidebarGroup(group),
+                           [](gpointer p) { delete static_cast<rem::SidebarGroup*>(p); });
 }
 
 std::optional<rem::SidebarGroup> row_group(GtkListBoxRow* row) {
-    int g = row ? GPOINTER_TO_INT(g_object_get_data(G_OBJECT(row), "sidebar-group")) : 0;
+    auto* g = row ? static_cast<rem::SidebarGroup*>(g_object_get_data(G_OBJECT(row), "sidebar-group")) : nullptr;
     if (!g) return std::nullopt;
-    return static_cast<rem::SidebarGroup>(g - 1);
+    return *g;
 }
 
 // A collapsible group's heading, which folds or unfolds the group when
 // clicked. "fold-group" marks it for the click handler.
-GtkWidget* fold_heading(const char* text, bool collapsed, rem::SidebarGroup group) {
+GtkWidget* fold_heading(const std::string& text, bool collapsed, const rem::SidebarGroup& group) {
     auto* row = gtk_list_box_row_new();
     gtk_list_box_row_set_selectable(GTK_LIST_BOX_ROW(row), FALSE);
     auto* box = hbox(6);
-    auto* l = label(text, {"heading", "dim-label"});
+    auto* l = label(text.c_str(), {"heading", "dim-label"});
     gtk_widget_set_hexpand(l, TRUE);
     append(box, {l, icon(collapsed ? "pan-end-symbolic" : "pan-down-symbolic", {"dim-label"})});
     gtk_widget_add_css_class(box, "sidebar-heading");
@@ -160,7 +161,7 @@ GtkWidget* fold_heading(const char* text, bool collapsed, rem::SidebarGroup grou
     return row;
 }
 
-GtkWidget* sidebar_heading(const char* text) {
+GtkWidget* sidebar_heading(const std::string& text) {
     auto* row = gtk_list_box_row_new();
     gtk_list_box_row_set_activatable(GTK_LIST_BOX_ROW(row), FALSE);
     gtk_list_box_row_set_selectable(GTK_LIST_BOX_ROW(row), FALSE);
@@ -416,12 +417,24 @@ void Window::reload_settings() {
     if (text == settings_text_) return;
     settings_text_ = std::move(text);
     show_key_numbers_ = key_numbers_override_.value_or(rem::load_bool_setting("show-key-numbers"));
-    order_ = rem::load_sidebar_order();
+    order_ = rem::load_sidebar_order(source_names());
     smart_ = rem::load_smart_lists_layout();
-    lists_ = rem::load_my_lists_layout();
+    lists_layouts_.clear();
     tags_ = rem::load_tags_layout();
     hidden_ = rem::load_hidden();
     if (show_hidden_action_) g_simple_action_set_state(show_hidden_action_, g_variant_new_boolean(hidden_.show));
+    // Sources added, removed or changed (and this isn't a --folder session):
+    // open them again.
+    if (remember_view_) {
+        auto configured = rem::load_sources();
+        bool same = store_ && configured.size() == store_->sources().size();
+        for (std::size_t i = 0; same && i < configured.size(); ++i) {
+            auto& open = store_->sources()[i].config;
+            same = configured[i].name == open.name && configured[i].folder == open.folder &&
+                   configured[i].backend == open.backend && configured[i].title == open.title;
+        }
+        if (!same) return open_sources();
+    }
     if (!store_) return;
     // The view may have just been hidden.
     auto smart = smart_views();
@@ -454,15 +467,14 @@ void Window::show_reminder(const std::string& id) {
     if (!store_) return;
     auto ref = store_->find(id);
     if (!ref) return;
-    select(View{View::List, ref->list->name});
+    select(View{View::List, store_->key_of(*ref->list)});
     show_content();
     show_details(id);
 }
 
 Window::Window(AdwApplication* app, std::optional<std::filesystem::path> folder)
     : app_(app), show_key_numbers_(rem::load_bool_setting("show-key-numbers")),
-      order_(rem::load_sidebar_order()), smart_(rem::load_smart_lists_layout()),
-      lists_(rem::load_my_lists_layout()), tags_(rem::load_tags_layout()), hidden_(rem::load_hidden()) {
+      smart_(rem::load_smart_lists_layout()), tags_(rem::load_tags_layout()), hidden_(rem::load_hidden()) {
     build();
     add_actions();
     {
@@ -470,11 +482,7 @@ Window::Window(AdwApplication* app, std::optional<std::filesystem::path> folder)
         settings_text_.assign(std::istreambuf_iterator<char>(in), {});
     }
     watch_settings();
-    if (folder) {
-        open_folder(*folder, false);
-    } else if (auto saved = load_folder(); saved && std::filesystem::is_directory(*saved)) {
-        open_folder(*saved);
-    }
+    open_sources(folder);
     last_notify_check_ = g_get_real_time() / G_USEC_PER_SEC;
     notify_timer_ = timeout(30'000, [this] {
         check_notifications();
@@ -489,10 +497,7 @@ Window::~Window() {
         g_signal_handler_disconnect(settings_monitor_.get(), settings_handler_);
         g_file_monitor_cancel(settings_monitor_.get());
     }
-    if (monitor_) {
-        g_signal_handler_disconnect(monitor_.get(), monitor_handler_);
-        g_file_monitor_cancel(monitor_.get());
-    }
+    stop_watching();
 }
 
 void Window::build() {
@@ -524,6 +529,7 @@ void Window::build() {
     auto* primary_menu = g_menu_new();
     auto* s1 = menu_section(primary_menu);
     g_menu_append(s1, "_New List…", "win.new-list");
+    g_menu_append(s1, "_Add Source…", "win.add-source");
     g_menu_append(s1, "_Change Folder…", "win.change-folder");
     g_menu_append(menu_section(primary_menu), "Show _Hidden Lists", "win.show-hidden");
     auto* s2 = menu_section(primary_menu);
@@ -783,6 +789,7 @@ void Window::build() {
 
 void Window::add_actions() {
     add_action(window_, "change-folder", [this] { choose_folder(); });
+    add_action(window_, "add-source", [this] { choose_folder(true); });
     add_action(window_, "settings", [this] { open_settings(); });
     // "go-1" … "go-10": the sidebar's entries in order (Ctrl+1 … Ctrl+9, Ctrl+0).
     for (int n = 1; n <= 10; ++n)
@@ -878,17 +885,19 @@ void Window::add_actions() {
 
 // --- folder ----------------------------------------------------------------
 
-void Window::choose_folder() {
+void Window::choose_folder(bool new_source) {
     auto* dialog = gtk_file_dialog_new();
-    gtk_file_dialog_set_title(dialog, "Choose Syncthing Folder");
-    if (store_) {
-        auto current = Obj<GFile>::adopt(g_file_new_for_path(store_->folder().c_str()));
+    gtk_file_dialog_set_title(dialog, new_source ? "Add Source: Choose a Folder" : "Choose Folder");
+    if (store_ && !store_->sources().empty()) {
+        auto current = Obj<GFile>::adopt(g_file_new_for_path(store_->sources().front().config.folder.c_str()));
         gtk_file_dialog_set_initial_folder(dialog, current.get());
     }
+    auto* add = new bool(new_source);
     gtk_file_dialog_select_folder(
         dialog, GTK_WINDOW(window_), nullptr,
         [](GObject* source, GAsyncResult* res, gpointer data) {
-            auto* self = static_cast<Window*>(data);
+            auto* self = static_cast<Window*>(g_object_get_data(G_OBJECT(source), "window"));
+            std::unique_ptr<bool> add(static_cast<bool*>(data));
             GError* error = nullptr;
             auto file = Obj<GFile>::adopt(gtk_file_dialog_select_folder_finish(GTK_FILE_DIALOG(source), res, &error));
             if (error) {
@@ -900,62 +909,120 @@ void Window::choose_folder() {
                 self->toast("That folder isn't on a local disk");
                 return;
             }
-            self->open_folder(path);
+            if (!*add) return self->open_folder(path);
+            try {
+                for (auto& s : rem::load_sources())
+                    if (std::error_code ec; std::filesystem::equivalent(s.folder, path, ec)) {
+                        self->toast(std::format("That folder is already the source “{}”", rem::source_title(s)));
+                        return;
+                    }
+                auto added = rem::add_source(path);
+                self->toast(std::format("Added “{}” ({})", rem::source_title(added), rem::backend_name(added.backend)));
+            } catch (const std::exception& e) {
+                self->toast(std::format("Couldn't add the source: {}", e.what()));
+                return;
+            }
+            self->open_sources();
         },
-        this);
+        add);
+    g_object_set_data(G_OBJECT(dialog), "window", this);
     g_object_unref(dialog);
 }
 
-void Window::open_folder(const std::filesystem::path& folder, bool remember) {
-    // The configured source for the folder, with its back end. A folder that
-    // isn't one yet becomes the default source (remembered) or is used with
-    // its detected back end for this session only.
-    auto source = rem::source_for_folder(folder);
+void Window::open_folder(const std::filesystem::path& folder) {
+    // A configured source's folder becomes the default; any other folder
+    // becomes the default source's folder (created if there's none).
     try {
-        if (remember && source.name.empty()) source = rem::set_default_folder(folder);
-        else if (remember && rem::load_setting("default-source") != source.name)
-            rem::save_setting("default-source", source.name);
+        auto source = rem::source_for_folder(folder);
+        if (source.name.empty()) rem::set_default_folder(folder);
+        else rem::save_setting("default-source", source.name);
     } catch (const std::exception& e) {
         toast(std::format("Couldn't save the folder: {}", e.what()));
     }
+    open_sources();
+}
+
+// Removes a source from the app (settings.ini), after asking. Its folder and
+// files stay as they are.
+void Window::remove_source(const std::string& name) {
+    std::string title = name;
+    for (auto& s : store_->sources())
+        if (s.config.name == name) title = rem::source_title(s.config);
+    auto* dialog = adw_alert_dialog_new(std::format("Remove “{}”?", title).c_str(),
+                                        "Its lists leave the app. The folder and its files stay where they are, "
+                                        "and you can add it again with Add Source….");
+    adw_alert_dialog_add_responses(ADW_ALERT_DIALOG(dialog), "cancel", "_Cancel", "remove", "_Remove", nullptr);
+    adw_alert_dialog_set_response_appearance(ADW_ALERT_DIALOG(dialog), "remove", ADW_RESPONSE_DESTRUCTIVE);
+    adw_alert_dialog_set_close_response(ADW_ALERT_DIALOG(dialog), "cancel");
+    connect<void(AdwAlertDialog*, const char*)>(dialog, "response", [this, name](AdwAlertDialog*, const char* response) {
+        if (std::string_view(response) != "remove") return;
+        try {
+            rem::remove_source(name);
+        } catch (const std::exception& e) {
+            toast(std::format("Couldn't remove the source: {}", e.what()));
+            return;
+        }
+        idle([this] { open_sources(); });
+    });
+    adw_dialog_present(ADW_DIALOG(dialog), window_);
+}
+
+void Window::stop_watching() {
+    for (auto& w : monitors_) {
+        g_signal_handler_disconnect(w.monitor.get(), w.handler);
+        g_file_monitor_cancel(w.monitor.get());
+    }
+    monitors_.clear();
+}
+
+void Window::open_sources(std::optional<std::filesystem::path> folder) {
+    std::unique_ptr<rem::Library> library;
     try {
-        auto store = std::make_unique<rem::Store>(folder, rem::state_dir(folder, device_name()), source.backend);
-        store->load_all();
-        store_ = std::move(store);
+        library = rem::open_library(folder, device_name());
+        library->load_all();
     } catch (const std::exception& e) {
-        toast(std::format("Couldn't open the folder: {}", e.what()));
+        toast(std::format("Couldn't open the lists: {}", e.what()));
         return;
     }
-    try {
-        store_->prepare();
-    } catch (const std::exception&) {
-        // Not fatal: Syncthing would just sync the per-device state too.
-    }
-    history_.clear();  // steps refer to the old folder's lists
+    stop_watching();
+    store_ = std::move(library);
+    history_.clear();  // steps refer to the old lists
     update_undo_actions();
-    // The saved view belongs to the saved folder.
+    order_ = rem::load_sidebar_order(source_names());
+    lists_layouts_.clear();
+    // A folder that isn't a configured source is for this session only: the
+    // saved view belongs to the configured ones.
+    bool remember = !folder || (!store_->sources().empty() && !store_->sources().front().config.name.empty());
     remember_view_ = remember;
-
-    if (monitor_) {
-        g_signal_handler_disconnect(monitor_.get(), monitor_handler_);
-        g_file_monitor_cancel(monitor_.get());
-        monitor_.reset();
+    if (store_->sources().empty()) {
+        gtk_stack_set_visible_child_name(GTK_STACK(main_stack_), "welcome");
+        return;
     }
-    auto dir = Obj<GFile>::adopt(g_file_new_for_path(folder.c_str()));
-    GError* error = nullptr;
-    monitor_ = Obj<GFileMonitor>::adopt(g_file_monitor_directory(dir.get(), G_FILE_MONITOR_WATCH_MOVES, nullptr, &error));
-    if (error) {
-        toast("Changes from other devices won't show until restart: can't watch the folder");
-        g_error_free(error);
-    } else {
-        monitor_handler_ = connect<void(GFileMonitor*, GFile*, GFile*, GFileMonitorEvent)>(
-            monitor_.get(), "changed",
+
+    // Changes made elsewhere (Syncthing, an editor, the TUI) show up.
+    for (auto& source : store_->sources()) {
+        auto dir = Obj<GFile>::adopt(g_file_new_for_path(source.config.folder.c_str()));
+        GError* error = nullptr;
+        FolderWatch w;
+        w.monitor = Obj<GFileMonitor>::adopt(g_file_monitor_directory(dir.get(), G_FILE_MONITOR_WATCH_MOVES, nullptr, &error));
+        if (error) {
+            toast(std::format("Changes to “{}” from elsewhere won't show until restart: can't watch its folder",
+                              rem::source_title(source.config)));
+            g_error_free(error);
+            continue;
+        }
+        w.handler = connect<void(GFileMonitor*, GFile*, GFile*, GFileMonitorEvent)>(
+            w.monitor.get(), "changed",
             [this](GFileMonitor*, GFile* file, GFile* other, GFileMonitorEvent) { on_file_changed(file, other); });
+        monitors_.push_back(std::move(w));
     }
 
     gtk_stack_set_visible_child_name(GTK_STACK(main_stack_), "main");
     view_ = remember ? view_from_string(load_last_view()) : home_view();
-    if (view_.kind == View::List && !store_->list(view_.name)) view_ = home_view();
+    if (view_.kind == View::List) {  // "source/name", or a bare name only one source has
+        auto* l = store_->list(view_.name);
+        view_ = l ? View{View::List, store_->key_of(*l)} : home_view();
+    }
     if (smart_info(view_.kind)) {  // a smart list the settings hide
         auto smart = smart_views();
         if (std::ranges::find(smart, view_) == smart.end()) view_ = home_view();
@@ -969,7 +1036,7 @@ void Window::on_file_changed(GFile* file, GFile* other) {
     for (auto* f : {file, other}) {
         if (!f) continue;
         auto path = take_string(g_file_get_path(f));
-        if (auto name = store_->list_name_for(path)) pending_reload_.insert(*name);
+        if (auto key = store_->key_for_path(path)) pending_reload_.insert(*key);
     }
     if (pending_reload_.empty()) return;
     // Wait for a burst of changes (Syncthing renames, writes, conflict copies) to settle.
@@ -1050,9 +1117,9 @@ void Window::rebuild_sidebar() {
     bool first = true;
     for (auto g : showing_groups()) {
         if (group_foldable(g)) {
-            gtk_list_box_append(list, fold_heading(rem::group_title(g), group_folded(g), g));
+            gtk_list_box_append(list, fold_heading(group_title(g), group_folded(g), g));
         } else if (!first) {
-            auto* heading = sidebar_heading(rem::group_title(g));
+            auto* heading = sidebar_heading(group_title(g));
             set_row_group(heading, g);
             gtk_list_box_append(list, heading);
         }
@@ -1062,7 +1129,7 @@ void Window::rebuild_sidebar() {
             set_row_group(row, g);
             gtk_list_box_append(list, row);
         };
-        switch (g) {
+        switch (g.kind) {
             case rem::SidebarGroup::SmartLists:
                 for (auto& v : smart_views()) {
                     auto* s = smart_info(v.kind);
@@ -1082,13 +1149,14 @@ void Window::rebuild_sidebar() {
                     add(row);
                 }
                 break;
-            case rem::SidebarGroup::MyLists:
-                for (auto* l : sidebar_lists()) {
+            case rem::SidebarGroup::Lists:  // one source's lists
+                for (auto* l : sidebar_lists(g.source)) {
+                    auto key = store_->key_of(*l);
                     auto* row = sidebar_row(list_icon_name(l->icon()), l->color(), l->name, open_count(*l), shortcut(index++));
-                    set_row_view(row, View{View::List, l->name});
-                    if (hidden_.list_hidden(l->name)) gtk_widget_add_css_class(row, "hidden-entry");
-                    make_drop_target(row, DropStyle::Into, "", [this, name = l->name](std::string dropped, rem::Document::Place) {
-                        move_to_list(dropped, name);
+                    set_row_view(row, View{View::List, key});
+                    if (hidden_.list_hidden(key)) gtk_widget_add_css_class(row, "hidden-entry");
+                    make_drop_target(row, DropStyle::Into, "", [this, key](std::string dropped, rem::Document::Place) {
+                        move_to_list(dropped, key);
                     });
                     add(row);
                 }
@@ -1401,7 +1469,7 @@ GtkWidget* Window::build_smart_view() {
         } else if (flat) {
             box = group_for("", "");
         } else {
-            box = group_for(ref.list->name, ref.list->color());
+            box = group_for(store_->label(*ref.list), ref.list->color());
         }
         gtk_list_box_append(GTK_LIST_BOX(box), build_reminder_row(ref, by_date || flat));
     }
@@ -1505,7 +1573,7 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
         add_meta(link);
     }
     if (show_list || ref.parent) {
-        std::string where = show_list ? ref.list->name : "";
+        std::string where = show_list ? store_->label(*ref.list) : "";
         if (ref.parent && show_list) where += " › " + ref.parent->title;
         if (!where.empty()) {
             auto* where_label = label(where, {"caption", "dim-label"});
@@ -2043,9 +2111,10 @@ void Window::delete_reminder(const std::string& id) {
 void Window::show_details(const std::string& id) {
     auto ref = store_->find(id);
     if (!ref) return;
-    std::vector<std::string> names;
-    for (auto* l : store_->lists()) names.push_back(l->name);
-    show_reminder_dialog(window_, *ref->reminder, ref->parent != nullptr, ref->list->name, names, [this, id](ReminderEdit e) {
+    std::vector<std::string> names;  // labels: "Name", or "source/Name" when names clash
+    for (auto* l : store_->lists()) names.push_back(store_->label(*l));
+    show_reminder_dialog(window_, *ref->reminder, ref->parent != nullptr, store_->label(*ref->list), names,
+                         [this, id](ReminderEdit e) {
         if (e.deleted) return delete_reminder(id);
         auto ref = store_->find(id);
         if (!ref) {
@@ -2067,8 +2136,8 @@ void Window::show_details(const std::string& id) {
         }
         try {
             store_->touch(id);
-            if (e.list != ref->list->name)
-                if (auto* dest = store_->list(e.list)) store_->move_to_list(id, *dest);
+            if (e.list != store_->label(*ref->list))
+                if (auto* dest = list_by_label(e.list)) store_->move_to_list(id, *dest);
         } catch (const std::exception& ex) {
             toast(std::format("Couldn't save: {}", ex.what()));
         }
@@ -2077,47 +2146,57 @@ void Window::show_details(const std::string& id) {
     });
 }
 
-void Window::new_list() {
+// A new list in `source`; by default the source of the list showing, else
+// the default source.
+void Window::new_list(std::string source) {
+    if (source.empty()) {
+        auto* l = view_.kind == View::List ? store_->list(view_.name) : nullptr;
+        source = l ? store_->source_of(*l)->config.name : store_->default_source();
+    }
     show_list_dialog(
         window_, std::nullopt,
-        [this](const ListEdit& e) -> std::string {
+        [this, source](const ListEdit& e) -> std::string {
             if (auto err = list_name_error(e.name); !err.empty()) return err;
-            for (auto* l : store_->lists())
+            for (auto* l : store_->lists(source))
                 if (lower(l->name) == lower(e.name)) return "A list with that name already exists";
             return {};
         },
-        [this](ListEdit e) {
+        [this, source](ListEdit e) {
             bool ok = true;
             undoable("New List", [&] {
                 try {
-                    store_->create_list(e.name, e.color, e.icon);
+                    store_->create_list(source, e.name, e.color, e.icon);
                 } catch (const std::exception& ex) {
                     toast(std::format("Couldn't create the list: {}", ex.what()));
                     ok = false;
                 }
             });
             if (!ok) return;
-            select(View{View::List, e.name});
+            select(View{View::List, rem::Library::key(source, e.name)});
             show_content();
         });
 }
 
-void Window::edit_list(const std::string& name) {
-    auto* l = store_->list(name);
+// List Info… for the list with key `key` ("source/name").
+void Window::edit_list(const std::string& key) {
+    auto* l = store_->list(key);
     if (!l) return;
+    auto name = l->name;
+    auto source = store_->source_of(*l)->config.name;
     show_list_dialog(
         window_, ListEdit{l->name, l->color(), l->icon()},
-        [this, name](const ListEdit& e) -> std::string {
+        [this, name, source](const ListEdit& e) -> std::string {
             if (auto err = list_name_error(e.name); !err.empty()) return err;
-            for (auto* other : store_->lists())
+            for (auto* other : store_->lists(source))  // names are unique within a source
                 if (other->name != name && lower(other->name) == lower(e.name))
                     return "A list with that name already exists";
             return {};
         },
-        [this, name](ListEdit e) {
-            auto* l = store_->list(name);
+        [this, key, name, source](ListEdit e) {
+            auto* l = store_->list(key);
             if (!l) return;
             bool ok = true;
+            auto new_key = rem::Library::key(source, e.name);
             undoable("Edit List", [&] {
                 try {
                     if (e.name != name && !store_->rename_list(*l, e.name)) {
@@ -2127,14 +2206,13 @@ void Window::edit_list(const std::string& name) {
                     }
                     if (e.name != name) {  // keeps its place in lists-order under its new name
                         auto order = rem::load_names_setting("lists-order");
-                        if (auto at = std::ranges::find(order, name); at != order.end()) {
-                            *at = e.name;
-                            rem::save_names_setting("lists-order", order);
-                        }
+                        for (auto& entry : order)
+                            if (rem::list_entry_matches(entry, key)) entry = new_key;
+                        rem::save_names_setting("lists-order", order);
                     }
-                    if (e.name != name && hidden_.list_hidden(name)) {  // stays hidden under its new name
-                        rem::set_list_hidden(name, false);
-                        rem::set_list_hidden(e.name, true);
+                    if (e.name != name && hidden_.list_hidden(key)) {  // stays hidden under its new name
+                        rem::set_list_hidden(key, false);
+                        rem::set_list_hidden(new_key, true);
                         hidden_ = rem::load_hidden();
                     }
                     l->doc.set_meta("color", e.color);
@@ -2145,23 +2223,26 @@ void Window::edit_list(const std::string& name) {
                 }
             });
             if (!ok) return;
-            if (view_.kind == View::List && view_.name == name) {
-                view_.name = l->name;
+            if (view_.kind == View::List && view_.name == key) {
+                view_.name = new_key;
                 if (remember_view_) save_last_view(view_to_string(view_));
             }
             refresh();
         });
 }
 
+// Deletes the list with key `name` ("source/name"), after asking.
 void Window::delete_list(const std::string& name) {
-    auto* dialog = adw_alert_dialog_new(std::format("Delete “{}”?", name).c_str(),
+    auto* list = store_->list(name);
+    auto shown = list ? list->name : name;
+    auto* dialog = adw_alert_dialog_new(std::format("Delete “{}”?", shown).c_str(),
                                         "The list and all its reminders will be deleted on every synced device. "
                                         "On this computer the file is moved to the Trash.");
     adw_alert_dialog_add_responses(ADW_ALERT_DIALOG(dialog), "cancel", "_Cancel", "delete", "_Delete", nullptr);
     adw_alert_dialog_set_response_appearance(ADW_ALERT_DIALOG(dialog), "delete", ADW_RESPONSE_DESTRUCTIVE);
     adw_alert_dialog_set_default_response(ADW_ALERT_DIALOG(dialog), "cancel");
     adw_alert_dialog_set_close_response(ADW_ALERT_DIALOG(dialog), "cancel");
-    connect<void(AdwAlertDialog*, const char*)>(dialog, "response", [this, name](AdwAlertDialog*, const char* response) {
+    connect<void(AdwAlertDialog*, const char*)>(dialog, "response", [this, name, shown](AdwAlertDialog*, const char* response) {
         if (std::string_view(response) != "delete") return;
         auto step = undoable("Delete List", [&] {
             auto file = Obj<GFile>::adopt(g_file_new_for_path(store_->path_of(name).c_str()));
@@ -2174,7 +2255,7 @@ void Window::delete_list(const std::string& name) {
         });
         if (view_.kind == View::List && view_.name == name) view_ = home_view();
         refresh();
-        toast(std::format("“{}” deleted", name), "_Undo", [this, step, name] {
+        toast(std::format("“{}” deleted", shown), "_Undo", [this, step, name] {
             if (history_.next_undo() != step) return;
             undo();
             select(View{View::List, name});
@@ -2224,7 +2305,8 @@ Window::ViewInfo Window::view_info(const View& v) {
     if (auto* s = smart_info(v.kind)) return {v, s->title, s->icon, s->color};
     if (v.kind == View::List) {
         auto* l = store_->list(v.name);
-        return {v, v.name, l ? list_icon_name(l->icon()) : "view-list-bullet-symbolic", l ? l->color() : "gray"};
+        return {v, l ? store_->label(*l) : v.name, l ? list_icon_name(l->icon()) : "view-list-bullet-symbolic",
+                l ? l->color() : "gray"};
     }
     if (v.kind == View::Tag) {
         auto style = rem::load_tag_style(v.name);
@@ -2356,18 +2438,43 @@ std::vector<View> Window::smart_views() {
     return out;
 }
 
-std::vector<rem::ListFile*> Window::sidebar_lists() {
+std::vector<rem::ListFile*> Window::sidebar_lists(const std::string& source) {
+    std::vector<std::string> keys;
+    for (auto* l : store_->lists(source)) keys.push_back(store_->key_of(*l));
     std::vector<rem::ListFile*> out;
-    for (auto& name : rem::order_lists(list_names()))
-        if (hidden_.show || !hidden_.list_hidden(name))
-            if (auto* l = store_->list(name)) out.push_back(l);
+    for (auto& key : rem::order_lists(keys))
+        if (hidden_.show || !hidden_.list_hidden(key))
+            if (auto* l = store_->list(key)) out.push_back(l);
     return out;
 }
 
-std::vector<std::string> Window::list_names() {
-    std::vector<std::string> names;
-    for (auto* l : store_->lists()) names.push_back(l->name);
-    return names;
+std::vector<std::string> Window::list_keys() {
+    std::vector<std::string> keys;
+    for (auto* l : store_->lists()) keys.push_back(store_->key_of(*l));
+    return keys;
+}
+
+std::string Window::list_label(const rem::ListFile& list) { return store_->label(list); }
+
+rem::ListFile* Window::list_by_label(const std::string& label) {
+    if (auto* l = store_->list(label)) return l;
+    for (auto* l : store_->lists())
+        if (store_->label(*l) == label) return l;
+    return nullptr;
+}
+
+std::vector<std::string> Window::source_names() {
+    std::vector<std::string> out;
+    if (store_)
+        for (auto& s : store_->sources()) out.push_back(s.config.name);
+    return out;
+}
+
+std::string Window::group_title(const rem::SidebarGroup& group) {
+    if (group.kind != rem::SidebarGroup::Lists || !store_ || store_->sources().size() <= 1) return rem::group_title(group);
+    for (auto& s : store_->sources())
+        if (s.config.name == group.source) return rem::group_title(group, rem::source_title(s.config));
+    return rem::group_title(group);
 }
 
 std::vector<std::string> Window::sidebar_tags() {
@@ -2419,12 +2526,12 @@ std::vector<View> Window::sidebar_views(bool include_folded) {
     std::vector<View> out;
     for (auto g : showing_groups()) {
         if (group_folded(g) && !include_folded) continue;
-        switch (g) {
+        switch (g.kind) {
             case rem::SidebarGroup::SmartLists:
                 for (auto& v : smart_views()) out.push_back(v);
                 break;
-            case rem::SidebarGroup::MyLists:
-                for (auto* l : sidebar_lists()) out.push_back(View{View::List, l->name});
+            case rem::SidebarGroup::Lists:
+                for (auto* l : sidebar_lists(g.source)) out.push_back(View{View::List, store_->key_of(*l)});
                 break;
             case rem::SidebarGroup::Tags:
                 for (auto& t : sidebar_tags()) out.push_back(View{View::Tag, t});
@@ -2437,30 +2544,34 @@ std::vector<View> Window::sidebar_views(bool include_folded) {
 std::vector<rem::SidebarGroup> Window::showing_groups() {
     std::vector<rem::SidebarGroup> out;
     for (auto g : order_) {
-        if (g == rem::SidebarGroup::SmartLists && smart_views().empty()) continue;
-        if (g == rem::SidebarGroup::Tags && (tags_.hidden() || sidebar_tags().empty())) continue;
+        if (g.kind == rem::SidebarGroup::SmartLists && smart_views().empty()) continue;
+        if (g.kind == rem::SidebarGroup::Tags && (tags_.hidden() || sidebar_tags().empty())) continue;
         out.push_back(g);
     }
     return out;
 }
 
-rem::GroupLayout* Window::layout_of(rem::SidebarGroup group) {
-    if (group == rem::SidebarGroup::MyLists) return &lists_;
-    if (group == rem::SidebarGroup::Tags) return &tags_;
+rem::GroupLayout* Window::layout_of(const rem::SidebarGroup& group) {
+    if (group.kind == rem::SidebarGroup::Lists) {
+        auto at = lists_layouts_.find(group.source);
+        if (at == lists_layouts_.end()) at = lists_layouts_.emplace(group.source, rem::load_lists_layout(group.source)).first;
+        return &at->second;
+    }
+    if (group.kind == rem::SidebarGroup::Tags) return &tags_;
     return nullptr;
 }
 
-bool Window::group_foldable(rem::SidebarGroup group) {
+bool Window::group_foldable(const rem::SidebarGroup& group) {
     auto* l = layout_of(group);
     return l ? l->foldable() : smart_.foldable();
 }
 
-bool Window::group_folded(rem::SidebarGroup group) {
+bool Window::group_folded(const rem::SidebarGroup& group) {
     auto* l = layout_of(group);
     return l ? l->folded() : smart_.folded();
 }
 
-void Window::toggle_fold(rem::SidebarGroup group) {
+void Window::toggle_fold(const rem::SidebarGroup& group) {
     auto* l = layout_of(group);
     bool& collapsed = l ? l->collapsed : smart_.collapsed;
     collapsed = !collapsed;
@@ -2474,7 +2585,7 @@ void Window::toggle_fold(rem::SidebarGroup group) {
 
 // Moves a group past its neighbour and saves the order. Focus stays on the
 // row that had it (or the group's first row).
-void Window::move_group(rem::SidebarGroup group, int delta) {
+void Window::move_group(const rem::SidebarGroup& group, int delta) {
     if (!store_ || !rem::move_sidebar_group(order_, group, delta, showing_groups())) return;
     try {
         rem::save_sidebar_order(order_);
@@ -2501,9 +2612,10 @@ void Window::move_group(rem::SidebarGroup group, int delta) {
 
 bool Window::can_move_entry(const View& v, int delta) {
     if (v.kind == View::List) {
-        auto order = rem::order_lists(list_names());
+        auto order = rem::order_lists(list_keys());  // every source's, each keeping its place
         std::vector<std::string> showing;
-        for (auto* l : sidebar_lists()) showing.push_back(l->name);
+        if (auto* l = store_->list(v.name))
+            for (auto* x : sidebar_lists(store_->source_of(*l)->config.name)) showing.push_back(store_->key_of(*x));
         return rem::move_in_order(order, v.name, delta, showing);
     }
     if (smart_info(v.kind)) {
@@ -2530,9 +2642,10 @@ void Window::move_entry(const View& v, int delta) {
             if (!rem::move_in_order(order, v.name, delta, sidebar_tags())) return;
             rem::save_names_setting("tags-order", order);
         } else if (v.kind == View::List) {
-            auto order = rem::order_lists(list_names());
-            std::vector<std::string> showing;
-            for (auto* l : sidebar_lists()) showing.push_back(l->name);
+            auto order = rem::order_lists(list_keys());  // every source's, each keeping its place
+            std::vector<std::string> showing;  // this list's group
+            if (auto* l = store_->list(v.name))
+                for (auto* x : sidebar_lists(store_->source_of(*l)->config.name)) showing.push_back(store_->key_of(*x));
             if (!rem::move_in_order(order, v.name, delta, showing)) return;
             rem::save_names_setting("lists-order", order);
         } else {
@@ -2610,7 +2723,7 @@ void Window::sidebar_menu(GtkListBoxRow* row, double x, double y) {
         // popover size itself wrongly (clipped, with scrollbars).
         auto* m = g_menu_new();
         auto* moves = menu_section(m);
-        auto title = std::string(rem::group_title(*group));
+        auto title = group_title(*group);
         g_menu_append(moves, std::format("Move “{}” _Up", title).c_str(), "win.move-group-up");
         g_menu_append(moves, std::format("Move “{}” _Down", title).c_str(), "win.move-group-down");
         auto enable = [this](const char* name, bool on) {
@@ -2620,6 +2733,16 @@ void Window::sidebar_menu(GtkListBoxRow* row, double x, double y) {
         enable("move-group-down", can(1));
         g_menu_append(menu_section(m), "_Collapsible", "win.group-collapsible");
         g_simple_action_set_state(collapsible_action_, g_variant_new_boolean(group_foldable(*group)));
+        if (group->kind == rem::SidebarGroup::Lists) {  // a source's lists
+            auto source = group->source;
+            auto* actions = g_simple_action_group_new();
+            add_action(actions, "new-list", [this, source] { idle([this, source] { new_list(source); }); });
+            add_action(actions, "remove", [this, source] { idle([this, source] { remove_source(source); }); });
+            gtk_widget_insert_action_group(sidebar_menu_button_, "sidebar-source", G_ACTION_GROUP(actions));
+            g_object_unref(actions);
+            g_menu_append(menu_section(m), "_New List…", "sidebar-source.new-list");
+            g_menu_append(menu_section(m), "_Remove Source…", "sidebar-source.remove");
+        }
         menu = Obj<GMenuModel>::adopt(G_MENU_MODEL(m));
     }
     // The menu belongs to an invisible menu button over the sidebar, not to
@@ -2726,7 +2849,9 @@ void Window::update_undo_actions() {
 }
 
 void Window::update_banner() {
-    auto& files = store_->candidates();
+    auto files = store_->candidates();
+    if (store_->sources().size() == 1)  // just the file names
+        for (auto& f : files) f = f.substr(f.find('/') + 1);
     if (files.empty()) {
         adw_banner_set_revealed(ADW_BANNER(banner_), FALSE);
         return;
@@ -2754,7 +2879,8 @@ void Window::review_candidates() {
     std::vector<std::pair<std::string, GtkWidget*>> switches;
     for (auto& name : files) {
         auto* row = adw_switch_row_new();
-        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), (name + ".md").c_str());
+        auto shown = store_->sources().size() == 1 ? name.substr(name.find('/') + 1) : name;
+        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), (shown + ".md").c_str());
         adw_preferences_row_set_use_markup(ADW_PREFERENCES_ROW(row), FALSE);
         adw_switch_row_set_active(ADW_SWITCH_ROW(row), TRUE);
         gtk_list_box_append(GTK_LIST_BOX(rows), row);
@@ -2794,7 +2920,7 @@ void Window::check_notifications() {
         g_date_time_unref(due);
         if (at <= last_notify_check_ || at > now) continue;
         auto* n = g_notification_new(r.title.empty() ? "Reminder" : r.title.c_str());
-        auto body = ref.list->name;
+        auto body = store_->label(*ref.list);
         if (!r.notes.empty()) body += " — " + r.notes.substr(0, r.notes.find('\n'));
         g_notification_set_body(n, body.c_str());
         g_notification_set_default_action_and_target(n, "app.show-reminder", "s", r.id.c_str());

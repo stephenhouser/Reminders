@@ -58,31 +58,45 @@ TEST(settings_round_trip_keeps_other_lines) {
     CHECK_EQ(with_key_number("Eleventh", 10, true), "Eleventh");
     CHECK_EQ(with_key_number("Today", 0, false), "Today");
 
-    // Group order: smart lists, my lists, tags by default; missing ones go last.
-    using enum SidebarGroup;
-    CHECK((load_sidebar_order() == std::vector{SmartLists, MyLists, Tags}));
+    // Group order: smart lists, each source's lists, tags by default;
+    // missing ones go last.
+    auto Smart = SidebarGroup::smart_lists(), Tags = SidebarGroup::tags();
+    auto Mine = SidebarGroup::lists("mine");
+    std::vector<std::string> one{"mine"};
+    CHECK((load_sidebar_order(one) == std::vector{Smart, Mine, Tags}));
     save_setting("sidebar-order", "tags, My Lists, bogus, tags");
-    CHECK((load_sidebar_order() == std::vector{Tags, MyLists, SmartLists}));
-    auto order = load_sidebar_order();
-    CHECK((move_sidebar_group(order, SmartLists, -1, {SmartLists, MyLists, Tags})));
-    CHECK((order == std::vector{Tags, SmartLists, MyLists}));
-    CHECK((!move_sidebar_group(order, SmartLists, -1, {SmartLists, MyLists})));  // only hidden Tags above
-    CHECK((move_sidebar_group(order, Tags, 1, {SmartLists, MyLists, Tags})));
-    CHECK((move_sidebar_group(order, MyLists, -1, {SmartLists, MyLists})));  // past Tags, which isn't showing
-    CHECK((order == std::vector{MyLists, Tags, SmartLists}));
-    CHECK((!move_sidebar_group(order, SmartLists, 1, {SmartLists, MyLists, Tags})));
+    CHECK((load_sidebar_order(one) == std::vector{Tags, Mine, Smart}));
+    auto order = load_sidebar_order(one);
+    CHECK((move_sidebar_group(order, Smart, -1, {Smart, Mine, Tags})));
+    CHECK((order == std::vector{Tags, Smart, Mine}));
+    CHECK((!move_sidebar_group(order, Smart, -1, {Smart, Mine})));  // only hidden Tags above
+    CHECK((move_sidebar_group(order, Tags, 1, {Smart, Mine, Tags})));
+    CHECK((move_sidebar_group(order, Mine, -1, {Smart, Mine})));  // past Tags, which isn't showing
+    CHECK((order == std::vector{Mine, Tags, Smart}));
+    CHECK((!move_sidebar_group(order, Smart, 1, {Smart, Mine, Tags})));
     save_sidebar_order(order);
-    CHECK_EQ(load_setting("sidebar-order"), "my-lists, tags, smart-lists");
-    CHECK(load_sidebar_order() == order);
+    CHECK_EQ(load_setting("sidebar-order"), "my-lists, tags, smart-lists");  // one source: my-lists
+    CHECK(load_sidebar_order(one) == order);
 
-    // My Lists: visible or collapsible, never hidden.
-    CHECK(!load_my_lists_layout().foldable());
+    // Several sources: my-lists stands for the ones not named on their own.
+    auto Home = SidebarGroup::lists("home"), Work = SidebarGroup::lists("work-2"), Old = SidebarGroup::lists("old");
+    std::vector<std::string> three{"home", "work-2", "old"};
+    save_setting("sidebar-order", "lists:work-2, smart-lists, my-lists, lists:gone");
+    CHECK((load_sidebar_order(three) == std::vector{Work, Smart, Home, Old, Tags}));
+    save_sidebar_order({Work, Smart, Home, Old, Tags});
+    CHECK_EQ(load_setting("sidebar-order"), "lists:work-2, smart-lists, lists:home, lists:old, tags");
+    CHECK_EQ(group_title(Home, "Home"), "Home");
+    CHECK_EQ(group_title(Smart), "Smart Lists");
+
+    // Lists groups: visible or collapsible (never hidden), folded per source.
+    CHECK(!load_lists_layout("home").foldable());
     save_setting("my-lists-display", "hidden");
-    CHECK(!load_my_lists_layout().hidden());
-    save_group_display(MyLists, GroupDisplay::Collapsible);
+    CHECK(!load_lists_layout("home").hidden());
+    save_group_display(Home, GroupDisplay::Collapsible);
     CHECK_EQ(load_setting("my-lists-display"), "collapsible");
-    save_group_collapsed(MyLists, true);
-    CHECK(load_my_lists_layout().folded());
+    save_group_collapsed(Home, true);
+    CHECK(load_lists_layout("home").folded());
+    CHECK(!load_lists_layout("old").folded());
 
     // Smart lists: all six by default, not foldable.
     auto layout = load_smart_lists_layout();
@@ -91,7 +105,7 @@ TEST(settings_round_trip_keeps_other_lines) {
     CHECK(!layout.foldable());
     CHECK(!layout.folded());
     save_setting("smart-lists", "Flagged, today,bogus, today");
-    save_group_collapsed(SmartLists, true);
+    save_group_collapsed(Smart, true);
     CHECK(!load_smart_lists_layout().folded());  // folding only applies when collapsible
     save_setting("smart-lists-display", "Collapsable");
     layout = load_smart_lists_layout();

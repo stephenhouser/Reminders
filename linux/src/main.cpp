@@ -105,7 +105,7 @@ void present(AdwApplication* app, std::optional<std::filesystem::path> folder,
              std::optional<bool> key_numbers = std::nullopt) {
     if (auto* existing = gtk_application_get_active_window(GTK_APPLICATION(app))) {
         if (auto* w = ui::Window::from(existing)) {
-            if (folder) w->open_folder(*folder, false);
+            if (folder) w->open_sources(*folder);
             if (key_numbers) w->set_show_key_numbers(*key_numbers);
         }
         gtk_window_present(existing);
