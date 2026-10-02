@@ -34,25 +34,25 @@ std::string trimmed(std::string_view s) {
     return std::string(s.substr(b, e - b + 1));
 }
 
-// Locates `key` in [general]: the line's index, or where to insert it.
+// Locates `key` in [section]: the line's index, or where to insert it.
 struct Found {
     std::optional<std::size_t> line;
     std::optional<std::size_t> section_end;  // insert position if the key is missing
 };
 
-Found find_key(const std::vector<std::string>& lines, const std::string& key) {
+Found find_key(const std::vector<std::string>& lines, const std::string& section, const std::string& key) {
     Found f;
-    bool in_general = false;
+    bool in_section = false;
+    auto header = "[" + section + "]";
     for (std::size_t i = 0; i < lines.size(); ++i) {
         auto t = trimmed(lines[i]);
         if (t.starts_with('[')) {
-            if (in_general) f.section_end = i;
-            in_general = t == "[general]";
-            if (in_general) f.section_end = i + 1;
+            in_section = t == header;
+            if (in_section) f.section_end = i + 1;
             continue;
         }
-        if (!in_general) continue;
-        f.section_end = i + 1;
+        if (!in_section) continue;
+        if (!t.empty() && !t.starts_with('#') && !t.starts_with(';')) f.section_end = i + 1;
         auto eq = t.find('=');
         if (eq != std::string::npos && trimmed(t.substr(0, eq)) == key) f.line = i;
     }
@@ -68,26 +68,42 @@ fs::path settings_file() {
     return fs::path(home ? home : ".") / ".config" / "reminders" / "settings.ini";
 }
 
-std::string load_setting(const std::string& key) {
+std::string load_setting(const std::string& key) { return load_section_setting("general", key); }
+
+void save_setting(const std::string& key, const std::string& value) { save_section_setting("general", key, value); }
+
+std::string load_section_setting(const std::string& section, const std::string& key) {
     auto lines = read_lines(settings_file());
-    auto f = find_key(lines, key);
+    auto f = find_key(lines, section, key);
     if (!f.line) return {};
     auto& l = lines[*f.line];
     return trimmed(std::string_view(l).substr(l.find('=') + 1));
 }
 
-void save_setting(const std::string& key, const std::string& value) {
+std::vector<std::string> section_names() {
+    std::vector<std::string> out;
+    for (auto& l : read_lines(settings_file())) {
+        auto t = trimmed(l);
+        if (t.size() > 2 && t.front() == '[' && t.back() == ']') {
+            auto name = t.substr(1, t.size() - 2);
+            if (std::ranges::find(out, name) == out.end()) out.push_back(name);
+        }
+    }
+    return out;
+}
+
+void save_section_setting(const std::string& section, const std::string& key, const std::string& value) {
     auto file = settings_file();
     auto lines = read_lines(file);
-    auto f = find_key(lines, key);
+    auto f = find_key(lines, section, key);
     auto entry = key + "=" + value;
     if (f.line) {
         lines[*f.line] = entry;
     } else if (f.section_end) {
         lines.insert(lines.begin() + static_cast<long>(*f.section_end), entry);
-    } else {
+    } else {  // a new section at the end
         if (!lines.empty() && !lines.back().empty()) lines.emplace_back();
-        lines.emplace_back("[general]");
+        lines.push_back("[" + section + "]");
         lines.push_back(entry);
     }
     fs::create_directories(file.parent_path());
@@ -356,13 +372,6 @@ TagStyle load_tag_style(const std::string& tag) {
 void save_tag_style(const std::string& tag, const TagStyle& style) {
     save_setting("tag-color." + tag, style.color);
     save_setting("tag-icon." + tag, style.icon);
-}
-
-std::optional<fs::path> saved_folder() {
-    auto folder = load_setting("folder");
-    std::error_code ec;
-    if (folder.empty() || !fs::is_directory(folder, ec)) return std::nullopt;
-    return fs::path(folder);
 }
 
 std::string device_name() {

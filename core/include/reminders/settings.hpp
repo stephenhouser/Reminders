@@ -20,6 +20,13 @@ std::string load_setting(const std::string& key);
 // Sets a value in [general], keeping every other line of the file as it was.
 void save_setting(const std::string& key, const std::string& value);
 
+// The same in another section ("source.personal" is [source.personal]); a
+// missing section is added at the end of the file.
+std::string load_section_setting(const std::string& section, const std::string& key);
+void save_section_setting(const std::string& section, const std::string& key, const std::string& value);
+// Every [section] in the file, in order ("general", "source.personal", …).
+std::vector<std::string> section_names();
+
 // A true/false setting ("true", "yes", "1" / "false", "no", "0"), or
 // `fallback` if it's unset or unreadable.
 bool load_bool_setting(const std::string& key, bool fallback = false);
@@ -136,8 +143,6 @@ void save_tag_style(const std::string& tag, const TagStyle& style);
 // show-sidebar=true | false: whether the sidebar is shown (Ctrl+B), saved by
 // both apps and read at start-up (load_bool_setting("show-sidebar", true)).
 
-// The folder chosen in the app ("folder" setting), if it is set and exists.
-std::optional<fs::path> saved_folder();
 
 // This device's name for <folder>/.reminders/<device>/: the host name plus 4
 // hex digits from the machine id (so two machines both called "fedora" differ).

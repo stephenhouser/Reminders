@@ -284,13 +284,13 @@ In the app, **main menu → Settings…** opens it in your default text editor
 terminal client, `S` opens it in your editor and applies the changes when you
 quit the editor.
 [settings.example.ini](settings.example.ini) lists every setting with its
-default, ready to copy. Settings must be under the `[general]` line; anything
-outside it is ignored.
+default, ready to copy. Settings go under the `[general]` line, except
+sources, which have a section each (below).
 
 ```ini
 [general]
-# The folder to open (set with Change Folder…)
-folder=/home/you/Sync/Reminders
+# The source to open (set with Change Folder…)
+default-source=personal
 # The list that last had focus
 view=list:Groceries
 # Whether the sidebar is shown (Ctrl+B in either app)
@@ -411,6 +411,35 @@ For one run, `--show-key-numbers` or `--hide-key-numbers` on the command line
 overrides it without changing the file (`Reminders --show-key-numbers`, or
 `reminders --hide-key-numbers`). Passing one to an app that's already running
 switches its sidebar.
+
+### Sources
+
+Where the lists come from is a *source*: a folder and the back end that
+handles it, in a section of its own at the end of the file:
+
+```ini
+[source.personal]
+backend=syncthing
+folder=/home/you/Sync/Reminders
+```
+
+| Back end | What it does |
+|---|---|
+| `syncthing` | The folder is synced by Syncthing. Conflict copies are merged; per-device records live in `<folder>/.reminders/`, which `.stignore` keeps out of the sync. |
+| `local` | Just the folder: list files are read and saved as they are, and changes made by other programs still show up. |
+
+- **Change Folder…** (or `reminders folder PATH`) sets the default source's
+  folder, and its back end: `syncthing` inside a Syncthing folder (one with
+  `.stfolder`), else `local`. With no source yet, it creates one named after
+  the folder. To choose the back end yourself, edit `backend=`.
+- **`default-source=`** in `[general]` says which source to open; without
+  it, the first one.
+- **A folder given on the command line** uses its source's settings if it is
+  one, else the back end it needs, for that run only.
+- For now the apps open one source at a time; several at once is coming.
+- **Settings from before sources** had `folder=` in `[general]`; it's no
+  longer read. Choose the folder again with Change Folder… (or
+  `reminders folder PATH`), or write the section above by hand.
 
 ## Troubleshooting
 

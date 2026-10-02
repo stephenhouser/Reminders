@@ -1,5 +1,6 @@
-// The synced folder: loading and saving list files, merging Syncthing
-// conflict copies, and the queries behind the smart lists.
+// A source's folder: loading and saving list files, the queries behind the
+// smart lists, and (through its back end) what its kind of syncing needs,
+// such as merging Syncthing conflict copies.
 #pragma once
 
 #include <filesystem>
@@ -10,6 +11,7 @@
 #include <string_view>
 #include <vector>
 
+#include "reminders/backend.hpp"
 #include "reminders/model.hpp"
 
 namespace rem {
@@ -49,10 +51,15 @@ struct Ref {
 
 class Store {
 public:
-    // `state_dir` holds per-device data that must not be synced: per list, the
-    // version used as the base for three-way merges and a fingerprint of the
-    // last version this device wrote.
-    Store(fs::path folder, fs::path state_dir);
+    // `state_dir` holds per-device data that must not be synced: the
+    // candidates the user declined, and the back end's own records (for
+    // Syncthing, per list, the merge base and a fingerprint of the last
+    // version this device wrote).
+    Store(fs::path folder, fs::path state_dir, BackendKind backend = BackendKind::Syncthing);
+
+    BackendKind backend() const { return backend_->kind(); }
+    // Back-end set-up when the source is opened (Syncthing: .stignore).
+    void prepare() { backend_->prepare(folder_); }
 
     const fs::path& folder() const { return folder_; }
     fs::path path_of(std::string_view list_name) const;
@@ -65,7 +72,7 @@ public:
     // Maps any file in the folder to the list it would belong to (including
     // conflict copies), or nullopt if it can't be a list file. Whether it
     // is one depends on the marker in its front matter.
-    static std::optional<std::string> list_name_for(const fs::path& file);
+    std::optional<std::string> list_name_for(const fs::path& file) const { return backend_->list_name_for(file); }
 
     // Markdown files with checklists but no marker, which the user may want
     // to use as lists. Excludes ones they declined.
@@ -120,6 +127,7 @@ public:
 private:
     fs::path folder_;
     fs::path state_dir_;
+    std::unique_ptr<Backend> backend_;
     std::vector<std::unique_ptr<ListFile>> lists_;
     std::vector<std::string> candidates_;
 
@@ -130,15 +138,6 @@ private:
     template <class Pred> std::vector<Ref> collect(Pred&& pred);
     std::vector<std::string> taken_ids();
     void write_file(ListFile& list, const std::string& text);
-    fs::path base_path(std::string_view name) const;
-    fs::path written_path(std::string_view name) const;
-    std::optional<std::string> read_base(std::string_view name) const;
-    void write_base(std::string_view name, const std::string& text) const;
-    void remember_written(std::string_view name, const std::string& text) const;
-    bool is_own_write(std::string_view name, const std::string& text) const;
-    void move_state(std::string_view from, std::string_view to) const;
-    void drop_state(std::string_view name) const;
-    std::vector<fs::path> conflict_copies(std::string_view name) const;
 };
 
 }  // namespace rem

@@ -17,6 +17,10 @@ reminders folder                      # show
 reminders --folder ~/Sync/Work list   # use another folder for one command
 ```
 
+The folder belongs to the default *source*, which also says how it's synced
+(`syncthing` or `local`); `reminders folder PATH` picks that by itself. See
+[sources](USING.md#sources).
+
 ## Commands
 
 ```

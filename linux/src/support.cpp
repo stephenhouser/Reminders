@@ -6,6 +6,7 @@
 
 #include "gtk_util.hpp"
 #include "reminders/settings.hpp"
+#include "reminders/sources.hpp"
 
 namespace ui {
 
@@ -119,8 +120,6 @@ bool is_overdue(const rem::Reminder& r, rem::Date today) {
 }
 
 std::optional<std::filesystem::path> load_folder() { return rem::saved_folder(); }
-
-void save_folder(const std::filesystem::path& folder) { rem::save_setting("folder", folder.string()); }
 
 std::string load_last_view() { return rem::load_setting("view"); }
 

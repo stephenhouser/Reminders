@@ -29,7 +29,6 @@ bool is_overdue(const rem::Reminder& r, rem::Date today);
 
 // Persistent settings in ~/.config/reminders/settings.ini.
 std::optional<std::filesystem::path> load_folder();
-void save_folder(const std::filesystem::path& folder);
 // The last view, as "today", "list:Groceries", "tag:errands", ...
 std::string load_last_view();
 void save_last_view(const std::string& view);

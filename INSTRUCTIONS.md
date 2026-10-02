@@ -400,6 +400,31 @@ only compiled.
     move-group-up [] {}` runs a `win.` action, timed before the screenshot
     hook fires (1.5 s after start-up).
 
+## Sources and back ends (stage 1 of 4, 2026-10-02)
+
+Plan agreed with the user: lists come from *sources*, each a back end and its
+settings in a `[source.NAME]` section; later the apps show several at once.
+
+1. **Done:** back ends inside one source. core backend.hpp: `Backend` with
+   `syncthing` (conflict copies, merge base and own-write fingerprints in
+   `<folder>/.reminders/<device>/`, .stignore) and `local` (nothing extra).
+   `Store(folder, state_dir, BackendKind)`; `Store::list_name_for` is now a
+   member (the back end decides what a conflict copy is). settings.ini reads
+   and writes any section (`load_section_setting` / `save_section_setting` /
+   `section_names`). core sources.hpp: `SourceConfig`, `load_sources`,
+   `default_source` (`default-source=`, else the first), `source_for_folder`
+   (configured, else detected), `set_default_folder` (Change Folder… /
+   `reminders folder`: detects the back end, creates the source named after
+   the folder if needed), `open_source`. `[general] folder=` is no longer
+   read (user chose a one-time manual change over migration code).
+2. **Next:** a `Library` of stores, one per source; smart lists across them;
+   lists identified by source and name (`view`, `lists-order`,
+   `lists-hidden` as `source/name`); undo and move-to-list across sources.
+3. Both apps on the Library: one sidebar group per source (agreed), new
+   lists into a chosen source, Add Source… / Source Info…; TUI and CLI too.
+4. New back ends (git, CalDAV, …). `local` keeps watching the folder for
+   outside edits (agreed).
+
 ## Where things stand (2026-10-01)
 
 - **Done:**

@@ -9,6 +9,7 @@
 #include "reminders/clipboard.hpp"
 #include "reminders/format.hpp"
 #include "reminders/settings.hpp"
+#include "reminders/sources.hpp"
 #include "reminders/syncthing.hpp"
 #include "support.hpp"
 
@@ -906,19 +907,29 @@ void Window::choose_folder() {
 }
 
 void Window::open_folder(const std::filesystem::path& folder, bool remember) {
+    // The configured source for the folder, with its back end. A folder that
+    // isn't one yet becomes the default source (remembered) or is used with
+    // its detected back end for this session only.
+    auto source = rem::source_for_folder(folder);
     try {
-        auto store = std::make_unique<rem::Store>(folder, rem::state_dir(folder, device_name()));
+        if (remember && source.name.empty()) source = rem::set_default_folder(folder);
+        else if (remember && rem::load_setting("default-source") != source.name)
+            rem::save_setting("default-source", source.name);
+    } catch (const std::exception& e) {
+        toast(std::format("Couldn't save the folder: {}", e.what()));
+    }
+    try {
+        auto store = std::make_unique<rem::Store>(folder, rem::state_dir(folder, device_name()), source.backend);
         store->load_all();
         store_ = std::move(store);
     } catch (const std::exception& e) {
         toast(std::format("Couldn't open the folder: {}", e.what()));
         return;
     }
-    if (remember) save_folder(folder);
     try {
-        rem::ignore_state_in_syncthing(folder);
+        store_->prepare();
     } catch (const std::exception&) {
-        // Not fatal: the per-device state would just be synced too.
+        // Not fatal: Syncthing would just sync the per-device state too.
     }
     history_.clear();  // steps refer to the old folder's lists
     update_undo_actions();
@@ -958,7 +969,7 @@ void Window::on_file_changed(GFile* file, GFile* other) {
     for (auto* f : {file, other}) {
         if (!f) continue;
         auto path = take_string(g_file_get_path(f));
-        if (auto name = rem::Store::list_name_for(path)) pending_reload_.insert(*name);
+        if (auto name = store_->list_name_for(path)) pending_reload_.insert(*name);
     }
     if (pending_reload_.empty()) return;
     // Wait for a burst of changes (Syncthing renames, writes, conflict copies) to settle.

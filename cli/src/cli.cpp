@@ -17,6 +17,7 @@
 #include "reminders/dates.hpp"
 #include "reminders/format.hpp"
 #include "reminders/settings.hpp"
+#include "reminders/sources.hpp"
 #include "reminders/store.hpp"
 #include "reminders/syncthing.hpp"
 #include "editfile.hpp"
@@ -237,12 +238,8 @@ class App {
 public:
     // `own_folder`: this is the saved folder, so the saved view applies to it.
     App(Global g, rem::fs::path folder, bool own_folder)
-        : g_(g), st_{g.color}, store_(folder, rem::state_dir(folder, rem::device_name())), today_(rem::local_today()),
+        : g_(g), st_{g.color}, owned_(open(folder)), store_(*owned_), today_(rem::local_today()),
           own_folder_(own_folder) {
-        try {
-            rem::ignore_state_in_syncthing(folder);
-        } catch (const std::exception&) {
-        }
         store_.load_all();
     }
 
@@ -252,8 +249,19 @@ public:
 private:
     Global g_;
     Style st_;
-    rem::Store store_;
+    std::unique_ptr<rem::Store> owned_;
+    rem::Store& store_;
     rem::Date today_;
+
+    // The configured source for this folder, or one with its detected back end.
+    static std::unique_ptr<rem::Store> open(const rem::fs::path& folder) {
+        auto source = rem::source_for_folder(folder);
+        try {
+            return rem::open_source(source, rem::device_name());
+        } catch (const std::exception&) {  // the back end's set-up (.stignore) failed: open it anyway
+            return std::make_unique<rem::Store>(folder, rem::state_dir(folder, rem::device_name()), source.backend);
+        }
+    }
     bool own_folder_;
 
     rem::ListFile& list_named(const std::string& name);
@@ -797,8 +805,9 @@ int main(int argc, char** argv) {
             std::error_code ec;
             auto path = rem::fs::absolute(rest[0], ec);
             if (ec || !rem::fs::is_directory(path)) throw std::runtime_error(std::format("“{}” is not a folder", rest[0]));
-            rem::save_setting("folder", path.lexically_normal().string());
-            std::cout << "Folder set to " << path.lexically_normal().string() << "\n";
+            auto source = rem::set_default_folder(path.lexically_normal());
+            std::cout << std::format("Folder set to {} (source “{}”, {})\n", source.folder.string(), source.name,
+                                     rem::backend_name(source.backend));
             return 0;
         }
 

@@ -15,19 +15,6 @@ namespace rem {
 
 namespace {
 
-constexpr std::string_view kConflictMarker = ".sync-conflict-";
-
-// 64-bit FNV-1a, as 16 hex digits: enough to recognise our own last write
-// without keeping a copy of it.
-std::string fingerprint(std::string_view text) {
-    std::uint64_t h = 0xcbf29ce484222325ULL;
-    for (unsigned char c : text) {
-        h ^= c;
-        h *= 0x100000001b3ULL;
-    }
-    return std::format("{:016x}", h);
-}
-
 std::optional<std::string> read_file(const fs::path& p) {
     std::ifstream in(p, std::ios::binary);
     if (!in) return std::nullopt;
@@ -96,69 +83,11 @@ std::optional<int> ListFile::order() const {
     return n;
 }
 
-Store::Store(fs::path folder, fs::path state_dir)
-    : folder_(std::move(folder)), state_dir_(std::move(state_dir)) {}
+Store::Store(fs::path folder, fs::path state_dir, BackendKind backend)
+    : folder_(std::move(folder)), state_dir_(std::move(state_dir)), backend_(make_backend(backend, state_dir_)) {}
 
 fs::path Store::path_of(std::string_view name) const {
     return folder_ / (std::string(name) + ".md");
-}
-
-std::optional<std::string> Store::list_name_for(const fs::path& file) {
-    auto fname = file.filename().string();
-    if (fname.empty() || fname[0] == '.' || !fname.ends_with(".md")) return std::nullopt;
-    auto stem = fname.substr(0, fname.size() - 3);
-    if (auto at = stem.find(kConflictMarker); at != std::string::npos) stem.resize(at);
-    if (stem.empty()) return std::nullopt;
-    return stem;
-}
-
-std::vector<fs::path> Store::conflict_copies(std::string_view name) const {
-    std::vector<fs::path> out;
-    std::error_code ec;
-    auto prefix = std::string(name) + std::string(kConflictMarker);
-    for (auto& e : fs::directory_iterator(folder_, ec)) {
-        auto fname = e.path().filename().string();
-        if (fname.starts_with(prefix) && fname.ends_with(".md")) out.push_back(e.path());
-    }
-    std::ranges::sort(out);
-    return out;
-}
-
-// Per-device state for each list, kept outside the synced folder:
-//   base/<list>.md  the last version that came from another device (merge base)
-//   written/<list>  a fingerprint of the last version this device wrote
-fs::path Store::base_path(std::string_view name) const {
-    return state_dir_ / "base" / (std::string(name) + ".md");
-}
-
-fs::path Store::written_path(std::string_view name) const { return state_dir_ / "written" / std::string(name); }
-
-std::optional<std::string> Store::read_base(std::string_view name) const { return read_file(base_path(name)); }
-
-void Store::write_base(std::string_view name, const std::string& text) const {
-    fs::create_directories(base_path(name).parent_path());
-    write_atomic(base_path(name), text);
-}
-
-void Store::remember_written(std::string_view name, const std::string& text) const {
-    fs::create_directories(written_path(name).parent_path());
-    write_atomic(written_path(name), fingerprint(text));
-}
-
-bool Store::is_own_write(std::string_view name, const std::string& text) const {
-    return read_file(written_path(name)) == fingerprint(text);
-}
-
-void Store::move_state(std::string_view from, std::string_view to) const {
-    std::error_code ec;
-    for (auto [a, b] : {std::pair{base_path(from), base_path(to)}, std::pair{written_path(from), written_path(to)}})
-        if (fs::exists(a, ec)) fs::rename(a, b, ec);
-}
-
-void Store::drop_state(std::string_view name) const {
-    std::error_code ec;
-    fs::remove(base_path(name), ec);
-    fs::remove(written_path(name), ec);
 }
 
 std::vector<std::string> Store::taken_ids() {
@@ -175,7 +104,7 @@ void Store::load_all() {
     std::error_code ec;
     for (auto& e : fs::directory_iterator(folder_, ec)) {
         if (!e.is_regular_file()) continue;
-        if (auto n = list_name_for(e.path()); n && std::ranges::find(names, *n) == names.end())
+        if (auto n = backend_->list_name_for(e.path()); n && std::ranges::find(names, *n) == names.end())
             names.push_back(*n);
     }
     std::erase_if(lists_, [&](auto& l) { return std::ranges::find(names, l->name) == names.end(); });
@@ -224,7 +153,7 @@ void Store::adopt(const std::string& name) {
 
 bool Store::reload(const std::string& name) {
     auto path = path_of(name);
-    auto conflicts = conflict_copies(name);
+    auto conflicts = backend_->conflict_copies(folder_, name);
     auto text = read_file(path);
 
     // Only Markdown files carrying the marker are lists. A conflict copy can
@@ -236,7 +165,7 @@ bool Store::reload(const std::string& name) {
         if (conflicts.empty()) {
             // Deleted (here or on another device): its state goes too.
             std::erase(candidates_, name);
-            drop_state(name);
+            backend_->drop_state(name);
             return forget(name);
         }
         // Only a conflict copy is left: promote it.
@@ -266,7 +195,7 @@ bool Store::reload(const std::string& name) {
     };
 
     if (!conflicts.empty()) {
-        auto base_text = read_base(name);
+        auto base_text = backend_->read_base(name);
         auto base = base_text ? std::optional{parse(*base_text)} : std::nullopt;
         auto doc = parse(*text);
         for (auto& c : conflicts)
@@ -275,8 +204,8 @@ bool Store::reload(const std::string& name) {
         auto merged = serialize(doc);
         write_atomic(path, merged);
         for (auto& c : conflicts) fs::remove(c);
-        write_base(name, merged);
-        remember_written(name, merged);
+        backend_->write_base(name, merged);
+        backend_->remember_written(name, merged);
         if (!doc.is_list()) {  // the marker was removed on one side
             update_candidate(name, merged);
             return forget(name);
@@ -289,7 +218,7 @@ bool Store::reload(const std::string& name) {
 
     // A version we didn't write ourselves is the latest one shared with the
     // other devices: it becomes the base for future merges.
-    if (!is_own_write(name, *text)) write_base(name, *text);
+    if (!backend_->is_own_write(name, *text)) backend_->write_base(name, *text);
     ensure_list();
     lf->doc = parse(*text);
     lf->doc.ensure_ids(taken);  // in memory only; written with the next save
@@ -318,7 +247,7 @@ ListFile* Store::list(std::string_view name) {
 void Store::write_file(ListFile& list, const std::string& text) {
     fs::create_directories(folder_);
     write_atomic(path_of(list.name), text);
-    remember_written(list.name, text);
+    backend_->remember_written(list.name, text);
     list.disk_text = text;
 }
 
@@ -344,7 +273,7 @@ bool Store::rename_list(ListFile& list, const std::string& new_name) {
         fs::exists(path_of(new_name)))
         return false;
     fs::rename(path_of(list.name), path_of(new_name));
-    move_state(list.name, new_name);
+    backend_->move_state(list.name, new_name);
     list.name = new_name;
     return true;
 }
@@ -352,7 +281,7 @@ bool Store::rename_list(ListFile& list, const std::string& new_name) {
 void Store::delete_list(const std::string& name) {
     std::error_code ec;
     fs::remove(path_of(name), ec);
-    drop_state(name);
+    backend_->drop_state(name);
     std::erase_if(lists_, [&](auto& l) { return l->name == name; });
 }
 

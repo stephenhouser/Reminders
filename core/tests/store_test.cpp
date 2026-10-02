@@ -94,7 +94,7 @@ TEST(syncthing_conflict_is_merged_with_base) {
     // version and keeps ours as a conflict copy.
     fs::rename(file, t.sync() / "Groceries.sync-conflict-20261001-120000-ABCDEFG.md");
     write(file, MARK "- [ ] Milk ^milk01\n- [ ] Eggs 🚩 ^eggs01\n");
-    CHECK_EQ(Store::list_name_for(t.sync() / "Groceries.sync-conflict-20261001-120000-ABCDEFG.md")
+    CHECK_EQ(s.list_name_for(t.sync() / "Groceries.sync-conflict-20261001-120000-ABCDEFG.md")
                  .value_or(""),
              "Groceries");
 
@@ -322,4 +322,37 @@ TEST(count_labels) {
     CHECK_EQ(count_short(CountStyle::WithComplete, 8, 2), "8/2");
     CHECK_EQ(count_short(CountStyle::WithComplete, 8, 0), "8");
     CHECK_EQ(count_short(CountStyle::OpenOnly, 5), "5");
+}
+
+TEST(local_backend_has_no_sync_handling) {
+    TempDir t;
+    auto file = t.sync() / "Groceries.md";
+    write(file, MARK "- [ ] Milk ^milk01\n");
+    // A file named like a Syncthing conflict copy is just another file here.
+    write(t.sync() / "Groceries.sync-conflict-20261001-120000-ABCDEFG.md", MARK "- [ ] Eggs ^eggs01\n");
+    Store s(t.sync(), t.state(), BackendKind::Local);
+    s.load_all();
+    CHECK(s.backend() == BackendKind::Local);
+    CHECK_EQ(s.list_name_for(t.sync() / "Groceries.sync-conflict-20261001-120000-ABCDEFG.md").value_or(""),
+             "Groceries.sync-conflict-20261001-120000-ABCDEFG");
+    CHECK_EQ(s.lists().size(), 2u);  // not merged
+    CHECK_EQ(read(file), MARK "- [ ] Milk ^milk01\n");
+
+    // Saving writes the file and nothing else: no per-device records.
+    s.set_done("milk01", true, d(2026, 10, 1));
+    CHECK(s.list("Groceries")->doc.find("milk01")->done);
+    CHECK(!fs::exists(t.state() / "base"));
+    CHECK(!fs::exists(t.state() / "written"));
+
+    // A change made by another program is picked up on reload.
+    write(file, MARK "- [ ] Milk ^milk01\n- [ ] Bread ^brea01\n");
+    CHECK(s.reload("Groceries"));
+    CHECK(s.list("Groceries")->doc.find("brea01") != nullptr);
+}
+
+TEST(backend_names) {
+    CHECK(parse_backend("Syncthing") == BackendKind::Syncthing);
+    CHECK(parse_backend("local") == BackendKind::Local);
+    CHECK(!parse_backend("dropbox"));
+    CHECK_EQ(backend_name(BackendKind::Local), "local");
 }
