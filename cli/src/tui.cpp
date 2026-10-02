@@ -149,9 +149,10 @@ struct SidebarEntry {
     std::string title;
     std::string color;
     int count = -1;
-    // Headings: "My Lists" is just a label; "Smart Lists" and "Tags" can be
-    // selected, and Enter/Space folds or unfolds their group.
-    enum Kind { Item, Heading, SmartHeading, TagsHeading } kind = Item;
+    // Headings: a plain Heading is just a label; a FoldHeading (a collapsible
+    // group's) can be selected, and Enter/Space folds or unfolds the group.
+    enum Kind { Item, Heading, FoldHeading } kind = Item;
+    rem::SidebarGroup group = rem::SidebarGroup::MyLists;  // the group the row belongs to
 };
 
 struct Line {
@@ -170,7 +171,7 @@ public:
     Tui(rem::Store& store, fs::path folder, bool remember)
         : store_(store), folder_(std::move(folder)), remember_(remember) {}
     int run();
-    void set_show_key_numbers(bool on) { show_key_numbers_ = on; }
+    void set_show_key_numbers(bool on) { show_key_numbers_ = on, key_numbers_override_ = on; }
 
 private:
     rem::Store& store_;
@@ -183,8 +184,11 @@ private:
     bool hide_subtasks_ = false;   // Ctrl+E
     bool hide_sidebar_ = false;    // Ctrl+B
     bool show_key_numbers_ = rem::load_bool_setting("show-key-numbers");
+    std::optional<bool> key_numbers_override_;  // --show-key-numbers / --hide-key-numbers
+    std::vector<rem::SidebarGroup> order_ = rem::load_sidebar_order();
     rem::SmartListsLayout smart_ = rem::load_smart_lists_layout();
-    rem::TagsLayout tags_ = rem::load_tags_layout();
+    rem::GroupLayout lists_ = rem::load_my_lists_layout();
+    rem::GroupLayout tags_ = rem::load_tags_layout();
     // Extended key codes for the GUI's modified keys, 0 if the terminal lacks them.
     int alt_up_ = 0, alt_down_ = 0, ctrl_page_down_ = 0, ctrl_page_up_ = 0;
     int side_sel_ = 0;
@@ -196,6 +200,13 @@ private:
     std::vector<SidebarEntry> sidebar();        // every row, headings included
     std::vector<SidebarEntry> sidebar_items();  // the selectable lists, in order (numbered)
     std::vector<SidebarEntry> smart_entries();  // the smart lists the settings show
+    std::vector<rem::SidebarGroup> showing_groups();
+    rem::GroupLayout* layout_of(rem::SidebarGroup group);  // nullptr for the smart lists
+    bool folded(rem::SidebarGroup group);
+    void toggle_fold(rem::SidebarGroup group);
+    void move_group(int delta);
+    void edit_settings();
+    void load_layout();
     View home_view();
     std::vector<Line> lines();
     void draw();
@@ -245,43 +256,74 @@ std::vector<SidebarEntry> Tui::smart_entries() {
     return out;
 }
 
+// The groups with something to show, in order.
+std::vector<rem::SidebarGroup> Tui::showing_groups() {
+    std::vector<rem::SidebarGroup> out;
+    for (auto g : order_) {
+        if (g == rem::SidebarGroup::SmartLists && smart_entries().empty()) continue;
+        if (g == rem::SidebarGroup::Tags && (tags_.hidden() || store_.tags().empty())) continue;
+        out.push_back(g);
+    }
+    return out;
+}
+
+rem::GroupLayout* Tui::layout_of(rem::SidebarGroup group) {
+    if (group == rem::SidebarGroup::MyLists) return &lists_;
+    if (group == rem::SidebarGroup::Tags) return &tags_;
+    return nullptr;
+}
+
+bool Tui::folded(rem::SidebarGroup group) {
+    auto* l = layout_of(group);
+    return l ? l->folded() : smart_.folded();
+}
+
+void Tui::toggle_fold(rem::SidebarGroup group) {
+    auto* l = layout_of(group);
+    bool& collapsed = l ? l->collapsed : smart_.collapsed;
+    collapsed = !collapsed;
+    try {
+        rem::save_group_collapsed(group, collapsed);
+    } catch (const std::exception&) {
+        // Folding still works; it just won't be remembered.
+    }
+}
+
+// Every row in order. The group at the top has no heading unless it can be
+// folded; the groups below it have one.
 std::vector<SidebarEntry> Tui::sidebar() {
     std::vector<SidebarEntry> out;
-    auto smart_group = [&] {
-        auto smart = smart_entries();
-        if (smart.empty()) return;
-        if (smart_.foldable()) {
-            SidebarEntry heading{{}, smart_.folded() ? "Smart Lists (folded)" : "Smart Lists", "", -1};
-            heading.kind = SidebarEntry::SmartHeading;
+    for (auto g : showing_groups()) {
+        auto* l = layout_of(g);
+        bool foldable = l ? l->foldable() : smart_.foldable();
+        if (foldable || !out.empty()) {
+            std::string title = rem::group_title(g);
+            if (folded(g)) title += " (folded)";
+            SidebarEntry heading{{}, title, "", -1};
+            heading.kind = foldable ? SidebarEntry::FoldHeading : SidebarEntry::Heading;
+            heading.group = g;
             out.push_back(heading);
-            if (smart_.folded()) return;
-        } else if (!out.empty()) {  // the top group has no heading
-            SidebarEntry heading{{}, "Smart Lists", "", -1};
-            heading.kind = SidebarEntry::Heading;
-            out.push_back(heading);
+            if (folded(g)) continue;
         }
-        out.insert(out.end(), smart.begin(), smart.end());
-    };
-    if (!smart_.at_bottom) smart_group();
-    if (!out.empty()) {  // the top group has no heading
-        SidebarEntry lists_heading{{}, "My Lists", "", -1};
-        lists_heading.kind = SidebarEntry::Heading;
-        out.push_back(lists_heading);
+        std::vector<SidebarEntry> rows;
+        switch (g) {
+            case rem::SidebarGroup::SmartLists: rows = smart_entries(); break;
+            case rem::SidebarGroup::MyLists:
+                for (auto* list : store_.lists()) {
+                    int open = 0;
+                    list->doc.walk([&](rem::Reminder& r, rem::Reminder*) { open += !r.done; });
+                    rows.push_back({{View::List, list->name}, list->name, list->color(), open});
+                }
+                break;
+            case rem::SidebarGroup::Tags:
+                for (auto& t : store_.tags()) rows.push_back({{View::Tag, t}, "#" + t, "gray", -1});
+                break;
+        }
+        for (auto& r : rows) {
+            r.group = g;
+            out.push_back(r);
+        }
     }
-    for (auto* l : store_.lists()) {
-        int open = 0;
-        l->doc.walk([&](rem::Reminder& r, rem::Reminder*) { open += !r.done; });
-        out.push_back({{View::List, l->name}, l->name, l->color(), open});
-    }
-    auto tags = store_.tags();
-    if (!tags.empty() && !tags_.hidden()) {
-        SidebarEntry tags_heading{{}, tags_.folded() ? "Tags (folded)" : "Tags", "", -1};
-        tags_heading.kind = tags_.foldable() ? SidebarEntry::TagsHeading : SidebarEntry::Heading;
-        out.push_back(tags_heading);
-        if (!tags_.folded())
-            for (auto& t : tags) out.push_back({{View::Tag, t}, "#" + t, "gray", -1});
-    }
-    if (smart_.at_bottom) smart_group();
     return out;
 }
 
@@ -643,7 +685,9 @@ void Tui::show_help() {
         "Anywhere",
         "  ↑↓ / j k     move           tab         switch sidebar / reminders",
         "  1-9, 0       sidebar entry  g / Ctrl+K  go to a list by name",
-        "  enter        on the Smart Lists or Tags heading: fold / unfold it",
+        "  enter        on a collapsible group's heading: fold / unfold it",
+        "  J / K        in the sidebar: move the selected group down / up",
+        "  S            edit settings.ini in your $EDITOR",
         "  /            search         c           show/hide completed",
         "  N            new list       u / r       undo / redo",
         "  ?            this help      q           quit",
@@ -676,6 +720,67 @@ void Tui::show_help() {
     while (get_wch(&ch) == ERR) {
     }
     delwin(win);
+}
+
+// Moves the selected sidebar entry's group up (delta < 0) or down, and saves
+// the order. The selection stays on the same entry.
+void Tui::move_group(int delta) {
+    auto entries = sidebar();
+    if (side_sel_ < 0 || side_sel_ >= static_cast<int>(entries.size())) return;
+    auto selected = entries[static_cast<std::size_t>(side_sel_)];
+    if (!rem::move_sidebar_group(order_, selected.group, delta, showing_groups())) return;
+    try {
+        rem::save_sidebar_order(order_);
+    } catch (const std::exception& e) {
+        message_ = std::format("Couldn't save the order: {}", e.what());
+    }
+    entries = sidebar();
+    for (int i = 0; i < static_cast<int>(entries.size()); ++i) {
+        auto& e = entries[static_cast<std::size_t>(i)];
+        bool same = selected.kind == SidebarEntry::Item ? e.kind == SidebarEntry::Item && e.view == selected.view
+                                                        : e.kind != SidebarEntry::Item && e.group == selected.group;
+        if (same) side_sel_ = i;
+    }
+}
+
+void Tui::load_layout() {
+    show_key_numbers_ = key_numbers_override_.value_or(rem::load_bool_setting("show-key-numbers"));
+    order_ = rem::load_sidebar_order();
+    smart_ = rem::load_smart_lists_layout();
+    lists_ = rem::load_my_lists_layout();
+    tags_ = rem::load_tags_layout();
+}
+
+// Opens settings.ini in $EDITOR, then applies what changed.
+void Tui::edit_settings() {
+    auto file = rem::settings_file();
+    try {
+        std::error_code ec;
+        if (!fs::exists(file, ec)) {
+            fs::create_directories(file.parent_path());
+            std::ofstream(file) << "[general]\n";  // settings are read from this section
+        }
+    } catch (const std::exception& e) {
+        message_ = std::format("Error: {}", e.what());
+        return;
+    }
+    def_prog_mode();
+    endwin();
+    bool ok = editfile::run_editor_on(file);
+    reset_prog_mode();
+    refresh();
+    load_layout();
+    // The view may have just been hidden.
+    bool smart = view_.kind != View::List && view_.kind != View::Tag && view_.kind != View::Search;
+    if ((smart && std::ranges::none_of(smart_entries(), [&](auto& e) { return e.view == view_; })) ||
+        (view_.kind == View::Tag && tags_.hidden()))
+        select_view(home_view());
+    else {
+        auto keep = std::pair{item_sel_, item_scroll_};
+        select_view(view_);  // finds it in the sidebar again
+        std::tie(item_sel_, item_scroll_) = keep;
+    }
+    message_ = ok ? "Settings reloaded" : "The editor failed; settings reloaded";
 }
 
 // Edits the reminder in $EDITOR as YAML-style fields (see editfile.hpp).
@@ -745,8 +850,8 @@ void Tui::select_view(const View& v) {
 }
 void Tui::move_selection(int delta) {
     if (!focus_items_) {
-        // Steps over the "My Lists" / "Tags" labels; stops on the Smart Lists
-        // heading (Enter folds it) and on lists, which open as you go.
+        // Steps over plain headings; stops on a collapsible group's heading
+        // (Enter folds it) and on lists, which open as you go.
         auto entries = sidebar();
         int n = static_cast<int>(entries.size()), step = delta < 0 ? -1 : 1;
         for (int moved = 0, i = side_sel_; moved < std::abs(delta);) {
@@ -830,10 +935,10 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
         if (fn && key == KEY_UP) key = 'K', fn = false;         // Alt+↑ (sent as Esc, ↑)
         else if (fn && key == KEY_DOWN) key = 'J', fn = false;  // Alt+↓
         else return true;
-        focus_items_ = true;
+        // In the sidebar they move the selected group; J / K below.
     } else if (fn) {
-        if (alt_up_ && static_cast<int>(key) == alt_up_) key = 'K', fn = false, focus_items_ = true;
-        else if (alt_down_ && static_cast<int>(key) == alt_down_) key = 'J', fn = false, focus_items_ = true;
+        if (alt_up_ && static_cast<int>(key) == alt_up_) key = 'K', fn = false;
+        else if (alt_down_ && static_cast<int>(key) == alt_down_) key = 'J', fn = false;
         else if (ctrl_page_down_ && static_cast<int>(key) == ctrl_page_down_) return step_sidebar(1), true;
         else if (ctrl_page_up_ && static_cast<int>(key) == ctrl_page_up_) return step_sidebar(-1), true;
         else if (key == KEY_F(1)) key = '?', fn = false;
@@ -872,6 +977,7 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
             case 'j': move_selection(1); return true;
             case 'k': move_selection(-1); return true;
             case 'c': show_completed_ = !show_completed_; return true;
+            case 'S': edit_settings(); return true;
             case 'u': {
                 auto r = history_.undo(store_);
                 message_ = r.applied ? "Undone" : "Nothing to undo";
@@ -895,10 +1001,12 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
                     // Best match: a name starting with it, else containing it.
                     std::optional<View> best;
                     int best_score = 3;
-                    auto findable = sidebar_items();  // plus folded smart lists and tags
+                    auto findable = sidebar_items();  // plus folded groups' entries
                     if (smart_.folded())
                         for (auto& e : smart_entries()) findable.push_back(e);
-                    if (tags_.folded())
+                    if (lists_.folded())
+                        for (auto* l : store_.lists()) findable.push_back({{View::List, l->name}, l->name, l->color(), -1});
+                    if (tags_.folded() && !tags_.hidden())
                         for (auto& t : store_.tags()) findable.push_back({{View::Tag, t}, "#" + t, "gray", -1});
                     for (auto& e : findable) {
                         auto t = term::lower(e.title), s = term::lower(*q);
@@ -943,17 +1051,15 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
 
     if (!focus_items_) {
         auto entries = sidebar();
-        auto heading = side_sel_ >= 0 && side_sel_ < static_cast<int>(entries.size())
-                           ? entries[static_cast<std::size_t>(side_sel_)].kind
-                           : SidebarEntry::Item;
+        bool on_row = side_sel_ >= 0 && side_sel_ < static_cast<int>(entries.size());
+        auto heading = on_row ? entries[static_cast<std::size_t>(side_sel_)].kind : SidebarEntry::Item;
         bool activate = (!fn && (key == '\n' || key == '\r' || key == ' ')) || (fn && key == KEY_ENTER);
-        if (activate && (heading == SidebarEntry::SmartHeading || heading == SidebarEntry::TagsHeading)) {
-            try {
-                if (heading == SidebarEntry::SmartHeading) rem::save_smart_lists_collapsed(smart_.collapsed = !smart_.collapsed);
-                else rem::save_tags_collapsed(tags_.collapsed = !tags_.collapsed);
-            } catch (const std::exception&) {
-                // Folding still works; it just won't be remembered.
-            }
+        if (activate && heading == SidebarEntry::FoldHeading) {
+            toggle_fold(entries[static_cast<std::size_t>(side_sel_)].group);
+            return true;
+        }
+        if (!fn && (key == 'J' || key == 'K')) {  // move the selected entry's group
+            move_group(key == 'K' ? -1 : 1);
             return true;
         }
         if ((!fn && (key == '\n' || key == '\r' || key == 'l')) || (fn && key == KEY_ENTER)) focus_items_ = true;

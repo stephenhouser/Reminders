@@ -248,6 +248,8 @@ Groceries.md                      ← a list (synced)
 
 `~/.config/reminders/settings.ini` is shared by the GNOME app and the terminal
 client. Most of it is filled in for you; `show-key-numbers` is only set here.
+In the terminal client, `S` opens it in your editor and applies the changes
+when you quit the editor; the app reads it at start-up.
 
 ```ini
 [general]
@@ -257,16 +259,18 @@ folder=/home/you/Sync/Reminders
 view=list:Groceries
 # Show each sidebar entry's jump key (Ctrl+1 …)
 show-key-numbers=true
+# The order of the sidebar's groups
+sidebar-order=smart-lists, my-lists, tags
 # Which smart lists to show, in this order
 smart-lists=today, scheduled, all, flagged, completed
-# How the smart lists appear: visible, collapsible or hidden
+# How each group appears: visible, collapsible or hidden
+# (your lists can be visible or collapsible, not hidden)
 smart-lists-display=visible
-# Where they go: top (default) or bottom (after your lists and tags)
-smart-lists-position=top
-# How the tags appear: visible, collapsible or hidden
+my-lists-display=visible
 tags-display=visible
 # Set by the app when you fold a collapsible group
 smart-lists-collapsed=false
+my-lists-collapsed=false
 tags-collapsed=false
 ```
 
@@ -278,29 +282,42 @@ to them. In the app the shortcut is shown to the right of the name, e.g.
 e.g. `(1)Today`, for the keys `1`–`9` and `0`. It accepts `true`, `yes` or `1`, is off when missing, and is
 read at start-up.
 
-**Smart lists and tags.** `smart-lists-display` and `tags-display` each take
-one of three values:
+**Sidebar groups.** The sidebar has three groups: the smart lists, your lists
+(My Lists) and tags.
 
-| Value | Smart lists | Tags |
-|---|---|---|
-| `visible` (default) | Shown with no heading at the top; under a "Smart Lists" heading at the bottom | Shown under a "Tags" heading |
-| `collapsible` | Under a "Smart Lists" heading; click it to fold or unfold them | Same, with a "Tags" heading |
-| `hidden` | Not shown | Not shown |
+`sidebar-order` sets their order, e.g. `sidebar-order=my-lists, tags,
+smart-lists`. A group you leave out or misspell goes at the end, so a typo
+can't make your lists disappear. You can also rearrange them without editing
+the file:
 
-Whichever group is at the top of the sidebar has no heading unless it's
-collapsible; the groups below it do. So "My Lists" has a heading only when
-the smart lists are above it.
+- **In the app:** right-click (or long-press) any entry or heading in the
+  sidebar and choose Move Up or Move Down, or press Alt+↑ / Alt+↓ on a
+  sidebar entry.
+- **In the terminal client:** select a sidebar entry and press `K` / `J` (or
+  Alt+↑ / Alt+↓).
 
-The app remembers a folded group (`smart-lists-collapsed`, `tags-collapsed`);
-this only applies in `collapsible` mode.
+`smart-lists-display`, `my-lists-display` and `tags-display` each take one of
+these values:
+
+| Value | Shows the group |
+|---|---|
+| `visible` (default) | With a plain heading, except the group at the top, which has none |
+| `collapsible` | Under a heading you click (or press Enter on) to fold or unfold it |
+| `hidden` | Not at all (not allowed for My Lists) |
+
+So the group at the top has no heading unless it's collapsible, and the
+groups below it always have one.
+
+The app remembers a folded group (`smart-lists-collapsed`,
+`my-lists-collapsed`, `tags-collapsed`); this only applies in `collapsible`
+mode.
 
 - **`smart-lists`** chooses which smart lists appear and in what order, e.g.
   `smart-lists=today, flagged`.
-- **`smart-lists-position=bottom`** moves them below your lists and tags.
 - **Numbering:** the shortcuts (Ctrl+1 …), Ctrl+Page Up/Down and their labels
   follow what's showing, in order. So hiding or folding the smart lists makes
   your lists start at Ctrl+1.
-- **Go To (Ctrl+K)** still finds folded smart lists and tags, but not hidden
+- **Go To (Ctrl+K)** still finds entries in folded groups, but not in hidden
   ones.
 - **A hidden last list:** if the list you last had open is now hidden, the app
   opens on Today or the first entry showing.

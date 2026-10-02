@@ -55,6 +55,8 @@ void show_shortcuts(GtkApplication* app) {
                       {"Sidebar Entry 10", "<Control>0"},
                       {"Next in Sidebar", "<Control>Page_Down"},
                       {"Previous in Sidebar", "<Control>Page_Up"},
+                      {"Move Sidebar Group Up (in the Sidebar)", "<Alt>Up"},
+                      {"Move Sidebar Group Down (in the Sidebar)", "<Alt>Down"},
                       {"New List", "<Control><Shift>n"},
                       {"Show / Hide Completed", "<Control>h"},
                       {"Show / Hide All Subtasks", "<Control>e"}});

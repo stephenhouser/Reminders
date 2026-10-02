@@ -138,21 +138,87 @@ SmartListsLayout load_smart_lists_layout() {
             }
         }
     }
-    std::string position;
-    for (char c : load_setting("smart-lists-position")) position += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    layout.at_bottom = position == "bottom" || position == "end";
     layout.display = load_display("smart-lists-display");
     layout.collapsed = load_bool_setting("smart-lists-collapsed");
     return layout;
 }
 
-void save_smart_lists_collapsed(bool collapsed) { save_setting("smart-lists-collapsed", collapsed ? "true" : "false"); }
-
-TagsLayout load_tags_layout() {
-    return TagsLayout{load_display("tags-display"), load_bool_setting("tags-collapsed")};
+GroupLayout load_my_lists_layout() {
+    auto display = load_display("my-lists-display");
+    if (display == GroupDisplay::Hidden) display = GroupDisplay::Visible;
+    return GroupLayout{display, load_bool_setting("my-lists-collapsed")};
 }
 
-void save_tags_collapsed(bool collapsed) { save_setting("tags-collapsed", collapsed ? "true" : "false"); }
+GroupLayout load_tags_layout() {
+    return GroupLayout{load_display("tags-display"), load_bool_setting("tags-collapsed")};
+}
+
+namespace {
+
+constexpr SidebarGroup kGroups[] = {SidebarGroup::SmartLists, SidebarGroup::MyLists, SidebarGroup::Tags};
+
+const char* group_key(SidebarGroup group) {
+    switch (group) {
+        case SidebarGroup::SmartLists: return "smart-lists";
+        case SidebarGroup::MyLists: return "my-lists";
+        case SidebarGroup::Tags: return "tags";
+    }
+    return "";
+}
+
+}  // namespace
+
+const char* group_title(SidebarGroup group) {
+    switch (group) {
+        case SidebarGroup::SmartLists: return "Smart Lists";
+        case SidebarGroup::MyLists: return "My Lists";
+        case SidebarGroup::Tags: return "Tags";
+    }
+    return "";
+}
+
+void save_group_collapsed(SidebarGroup group, bool collapsed) {
+    save_setting(std::string(group_key(group)) + "-collapsed", collapsed ? "true" : "false");
+}
+
+std::vector<SidebarGroup> load_sidebar_order() {
+    std::vector<SidebarGroup> order;
+    std::string word;
+    for (char c : load_setting("sidebar-order") + ",") {
+        if (c != ',' && c != ' ' && c != '\t') {
+            if (c != '-' && c != '_') word += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            continue;
+        }
+        std::optional<SidebarGroup> g;
+        if (word == "smartlists" || word == "smart") g = SidebarGroup::SmartLists;
+        else if (word == "mylists" || word == "lists") g = SidebarGroup::MyLists;
+        else if (word == "tags") g = SidebarGroup::Tags;
+        if (g && std::ranges::find(order, *g) == order.end()) order.push_back(*g);
+        word.clear();
+    }
+    for (auto g : kGroups)
+        if (std::ranges::find(order, g) == order.end()) order.push_back(g);
+    return order;
+}
+
+void save_sidebar_order(const std::vector<SidebarGroup>& order) {
+    std::string value;
+    for (auto g : order) value += (value.empty() ? "" : ", ") + std::string(group_key(g));
+    save_setting("sidebar-order", value);
+}
+
+bool move_sidebar_group(std::vector<SidebarGroup>& order, SidebarGroup group, int delta,
+                        const std::vector<SidebarGroup>& showing) {
+    auto at = std::ranges::find(order, group);
+    if (at == order.end() || delta == 0) return false;
+    auto n = static_cast<long>(order.size());
+    for (long i = (at - order.begin()) + (delta < 0 ? -1 : 1); i >= 0 && i < n; i += delta < 0 ? -1 : 1) {
+        if (std::ranges::find(showing, order[static_cast<std::size_t>(i)]) == showing.end()) continue;
+        std::swap(*at, order[static_cast<std::size_t>(i)]);
+        return true;
+    }
+    return false;
+}
 
 std::optional<fs::path> saved_folder() {
     auto folder = load_setting("folder");

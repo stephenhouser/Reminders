@@ -2,6 +2,7 @@
 // Shared by `reminders edit NAME` and the TUI.
 #pragma once
 
+#include <filesystem>
 #include <functional>
 #include <optional>
 #include <string>
@@ -34,6 +35,9 @@ void apply(rem::Store& store, const std::string& id, const Edited& e, rem::Date 
 // Runs $VISUAL / $EDITOR (nano, else vi) on `text`; nullopt if the editor
 // failed. The caller must have released the terminal.
 std::optional<std::string> run_editor(const std::string& text);
+
+// Runs the editor on a file in place; false if the editor failed.
+bool run_editor_on(const std::filesystem::path& file);
 
 enum class Outcome { Saved, Unchanged, Reverted };
 

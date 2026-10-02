@@ -58,16 +58,39 @@ TEST(settings_round_trip_keeps_other_lines) {
     CHECK_EQ(with_key_number("Eleventh", 10, true), "Eleventh");
     CHECK_EQ(with_key_number("Today", 0, false), "Today");
 
-    // Smart lists: all five at the top by default, not foldable.
+    // Group order: smart lists, my lists, tags by default; missing ones go last.
+    using enum SidebarGroup;
+    CHECK((load_sidebar_order() == std::vector{SmartLists, MyLists, Tags}));
+    save_setting("sidebar-order", "tags, My Lists, bogus, tags");
+    CHECK((load_sidebar_order() == std::vector{Tags, MyLists, SmartLists}));
+    auto order = load_sidebar_order();
+    CHECK((move_sidebar_group(order, SmartLists, -1, {SmartLists, MyLists, Tags})));
+    CHECK((order == std::vector{Tags, SmartLists, MyLists}));
+    CHECK((!move_sidebar_group(order, SmartLists, -1, {SmartLists, MyLists})));  // only hidden Tags above
+    CHECK((move_sidebar_group(order, Tags, 1, {SmartLists, MyLists, Tags})));
+    CHECK((move_sidebar_group(order, MyLists, -1, {SmartLists, MyLists})));  // past Tags, which isn't showing
+    CHECK((order == std::vector{MyLists, Tags, SmartLists}));
+    CHECK((!move_sidebar_group(order, SmartLists, 1, {SmartLists, MyLists, Tags})));
+    save_sidebar_order(order);
+    CHECK_EQ(load_setting("sidebar-order"), "my-lists, tags, smart-lists");
+    CHECK(load_sidebar_order() == order);
+
+    // My Lists: visible or collapsible, never hidden.
+    CHECK(!load_my_lists_layout().foldable());
+    save_setting("my-lists-display", "hidden");
+    CHECK(!load_my_lists_layout().hidden());
+    save_setting("my-lists-display", "collapsible");
+    save_group_collapsed(MyLists, true);
+    CHECK(load_my_lists_layout().folded());
+
+    // Smart lists: all five by default, not foldable.
     auto layout = load_smart_lists_layout();
     CHECK_EQ(layout.shown.size(), 5u);
-    CHECK(!layout.at_bottom);
     CHECK(layout.display == GroupDisplay::Visible);
     CHECK(!layout.foldable());
     CHECK(!layout.folded());
     save_setting("smart-lists", "Flagged, today,bogus, today");
-    save_setting("smart-lists-position", "bottom");
-    save_smart_lists_collapsed(true);
+    save_group_collapsed(SmartLists, true);
     CHECK(!load_smart_lists_layout().folded());  // folding only applies when collapsible
     save_setting("smart-lists-display", "Collapsable");
     layout = load_smart_lists_layout();
@@ -76,7 +99,6 @@ TEST(settings_round_trip_keeps_other_lines) {
     CHECK_EQ(layout.shown.size(), 2u);
     CHECK_EQ(layout.shown[0], "flagged");
     CHECK_EQ(layout.shown[1], "today");
-    CHECK(layout.at_bottom);
     CHECK(layout.collapsed);
     save_setting("smart-lists", "none");
     CHECK(load_smart_lists_layout().hidden());
@@ -87,7 +109,7 @@ TEST(settings_round_trip_keeps_other_lines) {
     // Tags: visible (with a plain heading) by default.
     CHECK(load_tags_layout().display == GroupDisplay::Visible);
     CHECK(!load_tags_layout().foldable());
-    save_tags_collapsed(true);
+    save_group_collapsed(Tags, true);
     CHECK(!load_tags_layout().folded());
     save_setting("tags-display", "collapsible");
     CHECK(load_tags_layout().folded());

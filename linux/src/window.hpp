@@ -77,6 +77,13 @@ private:
     void indent(const std::string& id, bool in);  // false: outdent
     std::vector<View> smart_views();
     std::vector<View> sidebar_views(bool include_folded = false);  // in sidebar order
+    std::vector<rem::SidebarGroup> showing_groups();  // the groups with something to show
+    rem::GroupLayout* layout_of(rem::SidebarGroup group);  // nullptr for the smart lists
+    bool group_foldable(rem::SidebarGroup group);
+    bool group_folded(rem::SidebarGroup group);
+    void toggle_fold(rem::SidebarGroup group);
+    void move_group(rem::SidebarGroup group, int delta);
+    void sidebar_menu(GtkListBoxRow* row, double x, double y);
     View home_view();
     struct ViewInfo {
         View view;
@@ -124,6 +131,7 @@ private:
     GtkWidget* main_stack_ = nullptr;  // "welcome" / "main"
     GtkWidget* split_ = nullptr;
     GtkWidget* sidebar_list_ = nullptr;
+    GtkWidget* sidebar_scroller_ = nullptr;  // holds the sidebar menu (the list box is rebuilt)
     GtkWidget* search_bar_ = nullptr;
     GtkWidget* search_entry_ = nullptr;
     GtkWidget* content_page_ = nullptr;
@@ -151,8 +159,11 @@ private:
     bool updating_sidebar_ = false;
     bool show_completed_ = false;
     bool show_key_numbers_ = false;  // settings.ini: show-key-numbers
-    rem::SmartListsLayout smart_;    // settings.ini: smart-lists, -display, -position, -collapsed
-    rem::TagsLayout tags_;           // settings.ini: tags-display, tags-collapsed
+    std::vector<rem::SidebarGroup> order_;  // settings.ini: sidebar-order
+    rem::SmartListsLayout smart_;    // settings.ini: smart-lists, -display, -collapsed
+    rem::GroupLayout lists_;         // settings.ini: my-lists-display, -collapsed
+    rem::GroupLayout tags_;          // settings.ini: tags-display, tags-collapsed
+    rem::SidebarGroup menu_group_ = rem::SidebarGroup::MyLists;  // the sidebar menu's group
     std::set<std::string> collapsed_;  // reminders whose subtasks are hidden (this session)
     bool remember_view_ = true;  // false for a folder opened just for this session
     View view_;

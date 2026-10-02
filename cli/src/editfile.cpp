@@ -242,7 +242,7 @@ void apply(rem::Store& store, const std::string& id, const Edited& e, rem::Date 
     if (e.fields.done != was_done) store.set_done(id, e.fields.done, today);
 }
 
-std::optional<std::string> run_editor(const std::string& text) {
+bool run_editor_on(const fs::path& file) {
     std::string editor;
     for (auto* var : {"VISUAL", "EDITOR"})
         if (const char* v = std::getenv(var); v && *v) {
@@ -250,12 +250,17 @@ std::optional<std::string> run_editor(const std::string& text) {
             break;
         }
     if (editor.empty()) editor = std::system("command -v nano >/dev/null 2>&1") == 0 ? "nano" : "vi";
+    std::string quoted = "'";  // for the shell
+    for (char c : file.string()) quoted += c == '\'' ? std::string("'\\''") : std::string(1, c);
+    quoted += '\'';
+    return std::system(std::format("{} {}", editor, quoted).c_str()) == 0;
+}
 
+std::optional<std::string> run_editor(const std::string& text) {
     auto path = fs::temp_directory_path() / std::format("reminder-{}.yaml", rem::new_id());
     { std::ofstream(path) << text; }
-    int status = std::system(std::format("{} '{}'", editor, path.string()).c_str());
     std::optional<std::string> out;
-    if (status == 0) {
+    if (run_editor_on(path)) {
         std::ifstream in(path);
         out = std::string((std::istreambuf_iterator<char>(in)), {});
     }

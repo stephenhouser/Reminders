@@ -136,9 +136,10 @@ for scripts.
 ## The interactive interface
 
 Run `reminders` with no command. The sidebar (smart lists, your lists, tags)
-is on the left, and the selected view on the right. When the smart lists or tags
-are set to `collapsible`, move onto their heading and press Enter or Space to
-fold or unfold them. Which of them show, and where,
+is on the left, and the selected view on the right. When a group is set to
+`collapsible`, move onto its heading and press Enter or Space to fold or
+unfold it. `K` / `J` (or Alt+↑ / Alt+↓) on a sidebar entry move its group up or
+down. Which groups show, and in what order,
 follow the same settings as the app (see
 [the settings file](USING.md#the-settings-file)). It opens on the last list
 you had open, here or in the GNOME app. Changes made elsewhere (in
@@ -154,6 +155,8 @@ within a second.
 | g | Go to a list or tag by typing part of its name |
 | / | Search |
 | c | Show / hide completed |
+| J / K, Alt+↓ / Alt+↑ | In the sidebar: move the selected group down / up |
+| S | Edit the settings file in your editor (applied when you quit it) |
 | N | New list |
 | u / r | Undo / redo |
 | ? | Help |

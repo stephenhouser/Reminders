@@ -202,14 +202,18 @@ Ground rules
   first ten sidebar entries with their jump key: in the GUI a dim
   gtk_accelerator_get_label() "Ctrl+1" … "Ctrl+0" to the right of the name
   (before the count), in the TUI a "(1)Today" … "(0)…" prefix (the TUI's 0 key jumps to the 10th entry, like Ctrl+0).
-  Sidebar groups: smart-lists-display and tags-display are visible |
+  Sidebar groups: smart-lists-display, my-lists-display and tags-display are visible |
   collapsible | hidden (default visible; "collapsable" accepted). Rule: the
   top group has no heading unless collapsible; every group below it has one
-  (plain "Smart Lists" / "My Lists" / "Tags"). So "My Lists" is untitled
-  when the smart lists are hidden or at the bottom. Collapsible gives a
+  (plain "Smart Lists" / "My Lists" / "Tags"). Collapsible gives a
   heading that folds the group (GUI: click; TUI: select it, Enter/Space),
-  remembered as smart-lists-collapsed / tags-collapsed. smart-lists picks
-  which and in what order; smart-lists-position is top | bottom. One ordering
+  remembered as smart-lists-/my-lists-/tags-collapsed. smart-lists picks
+  which smart lists and in what order. sidebar-order (smart-lists, my-lists,
+  tags; missing/misspelled groups appended) orders the groups; my-lists-display
+  is visible | collapsible (never hidden). Rearranging: GUI right-click /
+  long-press on a sidebar row → Move "Group" Up/Down, or Alt+↑/↓ on a row;
+  TUI J/K or Alt+↑/↓ in the sidebar (core move_sidebar_group skips groups
+  not showing). TUI S opens settings.ini in $EDITOR and reloads it. One ordering
   function per front end drives drawing, the number labels, Ctrl+1…/1…,
   Ctrl+PgUp/PgDn (over what's showing) and Go To (which also finds folded
   groups); a hidden saved view falls back to Today or the first entry. The

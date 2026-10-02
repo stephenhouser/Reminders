@@ -28,20 +28,33 @@ bool load_bool_setting(const std::string& key, bool fallback = false);
 // `index` is 0-based.
 std::string with_key_number(const std::string& title, std::size_t index, bool show);
 
-// How a sidebar group appears: shown (smart lists without a heading, tags
-// with a plain one), under a heading that folds the group, or not at all.
+// How a sidebar group appears: shown (with a plain heading, except the group
+// at the top, which has none), under a heading that folds the group, or not
+// at all.
 enum class GroupDisplay { Visible, Collapsible, Hidden };
+
+// The sidebar's groups, in the order the settings give:
+//   sidebar-order=smart-lists, my-lists, tags
+// A group left out or misspelled goes after the others, in this default order.
+enum class SidebarGroup { SmartLists, MyLists, Tags };
+std::vector<SidebarGroup> load_sidebar_order();
+void save_sidebar_order(const std::vector<SidebarGroup>& order);
+// "Smart Lists", "My Lists", "Tags".
+const char* group_title(SidebarGroup group);
+// Moves `group` past the next group showing before it (delta < 0) or after
+// it (delta > 0), skipping groups not in `showing`. False if it's already
+// first or last.
+bool move_sidebar_group(std::vector<SidebarGroup>& order, SidebarGroup group, int delta,
+                        const std::vector<SidebarGroup>& showing);
 
 // The smart lists (Today, Scheduled, All, Flagged, Completed), from the
 // settings file:
 //   smart-lists=today, scheduled, all, flagged, completed   (which, in order)
 //   smart-lists-display=visible | collapsible | hidden
-//   smart-lists-position=top | bottom                       (bottom: after lists and tags)
 //   smart-lists-collapsed=true | false                      (set by the apps when folded)
 struct SmartListsLayout {
     std::vector<std::string> shown{"today", "scheduled", "all", "flagged", "completed"};
     GroupDisplay display = GroupDisplay::Visible;
-    bool at_bottom = false;
     bool collapsed = false;  // only meaningful when Collapsible
 
     bool hidden() const { return display == GroupDisplay::Hidden || shown.empty(); }
@@ -49,12 +62,12 @@ struct SmartListsLayout {
     bool folded() const { return foldable() && collapsed; }
 };
 SmartListsLayout load_smart_lists_layout();
-void save_smart_lists_collapsed(bool collapsed);
 
-// The Tags group:
+// The My Lists and Tags groups:
+//   my-lists-display=visible | collapsible      (your lists can't be hidden)
 //   tags-display=visible | collapsible | hidden
-//   tags-collapsed=true | false   (set by the apps when folded)
-struct TagsLayout {
+//   my-lists-collapsed, tags-collapsed=true | false   (set by the apps when folded)
+struct GroupLayout {
     GroupDisplay display = GroupDisplay::Visible;
     bool collapsed = false;
 
@@ -62,8 +75,11 @@ struct TagsLayout {
     bool foldable() const { return display == GroupDisplay::Collapsible; }
     bool folded() const { return foldable() && collapsed; }
 };
-TagsLayout load_tags_layout();
-void save_tags_collapsed(bool collapsed);
+GroupLayout load_my_lists_layout();
+GroupLayout load_tags_layout();
+
+// Remembers whether a group is folded (smart-lists-collapsed, …).
+void save_group_collapsed(SidebarGroup group, bool collapsed);
 
 // The folder chosen in the app ("folder" setting), if it is set and exists.
 std::optional<fs::path> saved_folder();
