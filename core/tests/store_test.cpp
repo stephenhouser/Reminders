@@ -310,3 +310,16 @@ TEST(state_goes_when_another_device_deletes_the_list) {
     s.reload("A");
     CHECK(!fs::exists(t.state() / "base" / "A.md"));
 }
+
+TEST(count_labels) {
+    CHECK_EQ(count_label(CountStyle::OpenOnly, 1), "1 Reminder");
+    CHECK_EQ(count_label(CountStyle::OpenOnly, 5), "5 Reminders");
+    CHECK_EQ(count_label(CountStyle::WithComplete, 6, 3), "6 Reminders / 3 Complete");
+    CHECK_EQ(count_label(CountStyle::WithComplete, 6, 0), "6 Reminders");
+    CHECK_EQ(count_label(CountStyle::Completed, 2), "2 Completed");
+    CHECK_EQ(count_label(CountStyle::Results, 1), "1 Result");
+    CHECK_EQ(count_label(CountStyle::Results, 0), "0 Results");
+    CHECK_EQ(count_short(CountStyle::WithComplete, 8, 2), "8/2");
+    CHECK_EQ(count_short(CountStyle::WithComplete, 8, 0), "8");
+    CHECK_EQ(count_short(CountStyle::OpenOnly, 5), "5");
+}

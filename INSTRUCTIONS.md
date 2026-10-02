@@ -138,6 +138,15 @@ Ground rules
   reminders are hidden (Ctrl+H / ⋮ → Show Completed shows them); the header
   subtitle reads "6 Reminders / 3 Complete" (all, subtasks included / done;
   the "/ N Complete" part only when some are done).
+  Every view's header has a count (core count_label: lists, tags and All
+  Reminders "N Reminders / M Complete"; Today/Scheduled/All/Flagged "N
+  Reminders"; Completed "N Completed"; search "N Results"). The TUI puts it
+  on the "# Title" line, dimmed and right-aligned; if it doesn't fit beside
+  the title it shortens to "6/3" (core count_short), then is left out (not
+  in parentheses, which mixed views use for each reminder's list).
+  show-sidebar (Ctrl+B) is saved by both apps and read at start-up; the GUI
+  saves it only while the split view isn't collapsed (narrow windows hide
+  the sidebar by themselves).
 - Reminder row: round check button (the list colour is the accent), an
   editable title (it must wrap: find the GtkLabel inside GtkEditableLabel and
   enable wrapping), priority marks !/!!/!!!, a second line (due date, red if
@@ -372,6 +381,11 @@ only compiled.
   Host it in a `GtkMenuButton`, which re-sizes its popover: the sidebar has
   an invisible one in a `GtkOverlay` corner, and right-click points its
   popover at the click.
+- **A signal handler's C signature must match the signal.** `on()` is only
+  for signals that pass just the emitter ("clicked", "closed", …).
+  "notify::…" also passes the GParamSpec, so with `on()` the closure
+  pointer is read from the wrong argument and the app segfaults (Ctrl+B did,
+  through notify::show-sidebar). Use `connect<void(GObject*, GParamSpec*)>`.
 - **settings.ini keys outside `[general]` are silently ignored.** A
   hand-written file without the section header has no effect; the TUI's `S`
   creates the file with the header.

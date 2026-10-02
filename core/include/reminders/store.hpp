@@ -14,6 +14,17 @@
 
 namespace rem {
 
+// The count under a view's title (the GUI's subtitle, the TUI's title line):
+//   OpenOnly       "5 Reminders"                 Today, Scheduled, All, Flagged
+//   WithComplete   "6 Reminders / 3 Complete"     a list, a tag, All Reminders
+//                  (the "/ N Complete" part only when some are done)
+//   Completed      "2 Completed"
+//   Results        "3 Results"                   a search
+enum class CountStyle { OpenOnly, WithComplete, Completed, Results };
+std::string count_label(CountStyle style, int total, int done = 0);
+// The same, short, for narrow spaces: "8/2" (total/done), or "5".
+std::string count_short(CountStyle style, int total, int done = 0);
+
 namespace fs = std::filesystem;
 
 struct ListFile {

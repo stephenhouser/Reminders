@@ -191,7 +191,7 @@ private:
     bool focus_items_ = false;
     bool show_completed_ = false;
     bool hide_subtasks_ = false;   // Ctrl+E
-    bool hide_sidebar_ = false;    // Ctrl+B
+    bool hide_sidebar_ = !rem::load_bool_setting("show-sidebar", true);  // Ctrl+B; shared with the app
     bool show_key_numbers_ = rem::load_bool_setting("show-key-numbers");
     std::optional<bool> key_numbers_override_;  // --show-key-numbers / --hide-key-numbers
     std::vector<rem::SidebarGroup> order_ = rem::load_sidebar_order();
@@ -223,6 +223,9 @@ private:
     void load_layout();
     View home_view();
     std::vector<Line> lines();
+    std::vector<rem::Ref> view_refs();
+    // As under the app's title, long and short: {"6 Reminders / 3 Complete", "6/3"}.
+    std::pair<std::string, std::string> view_count();
     void draw();
     void draw_sidebar(int width, int height);
     void draw_items(int x, int width, int height);
@@ -379,6 +382,46 @@ View Tui::home_view() {
     if (!items.empty()) return items.front().view;
     return smart.empty() ? View{View::Today, ""} : smart.front().view;
 }
+// The reminders a smart, tag or search view shows (empty for a list).
+std::vector<rem::Ref> Tui::view_refs() {
+    auto today = rem::local_today();
+    std::vector<rem::Ref> refs;
+    switch (view_.kind) {
+        case View::Today: refs = store_.today(today); break;
+        case View::Scheduled: refs = store_.scheduled(); break;
+        case View::All: refs = store_.all(); break;
+        case View::AllReminders: refs = store_.everything(); break;
+        case View::Flagged: refs = store_.flagged(); break;
+        case View::Completed: refs = store_.completed(); break;
+        case View::Tag: refs = store_.tagged(view_.name); break;
+        case View::Search: refs = store_.search(view_.name); break;
+        case View::List: break;
+    }
+    return refs;
+}
+
+std::pair<std::string, std::string> Tui::view_count() {
+    int total = 0, done = 0;
+    auto style = rem::CountStyle::OpenOnly;
+    if (view_.kind == View::List) {
+        if (auto* l = store_.list(view_.name))
+            l->doc.walk([&](rem::Reminder& r, rem::Reminder*) {
+                ++total;
+                done += r.done;
+            });
+        style = rem::CountStyle::WithComplete;
+    } else {
+        auto refs = view_refs();
+        total = static_cast<int>(refs.size());
+        done = static_cast<int>(std::ranges::count_if(refs, [](auto& r) { return r.reminder->done; }));
+        style = view_.kind == View::Search                                              ? rem::CountStyle::Results
+                : view_.kind == View::Completed                                         ? rem::CountStyle::Completed
+                : view_.kind == View::Tag || view_.kind == View::AllReminders ? rem::CountStyle::WithComplete
+                                                                                        : rem::CountStyle::OpenOnly;
+    }
+    return {rem::count_label(style, total, done), rem::count_short(style, total, done)};
+}
+
 std::vector<Line> Tui::lines() {
     std::vector<Line> out;
     auto today = rem::local_today();
@@ -419,18 +462,7 @@ std::vector<Line> Tui::lines() {
         return out;
     }
 
-    std::vector<rem::Ref> refs;
-    switch (view_.kind) {
-        case View::Today: refs = store_.today(today); break;
-        case View::Scheduled: refs = store_.scheduled(); break;
-        case View::All: refs = store_.all(); break;
-        case View::AllReminders: refs = store_.everything(); break;
-        case View::Flagged: refs = store_.flagged(); break;
-        case View::Completed: refs = store_.completed(); break;
-        case View::Tag: refs = store_.tagged(view_.name); break;
-        case View::Search: refs = store_.search(view_.name); break;
-        case View::List: break;
-    }
+    auto refs = view_refs();
     bool by_date = view_.kind == View::Today || view_.kind == View::Scheduled;
     if (by_date)
         std::ranges::stable_sort(refs, [](auto& a, auto& b) {
@@ -517,8 +549,20 @@ void Tui::draw_items(int x, int width, int height) {
     attron(A_BOLD);
     if (view_.kind == View::List)
         if (auto* l = store_.list(view_.name)) attron(list_color(l->color()));
-    put(0, x + 1, "# " + title, width - 2);
+    int room = width - 2;
+    int used = put(0, x + 1, "# " + title, room);
     attroff(A_BOLD | A_COLOR);
+    // The count, dimmed, against the right edge: "6 Reminders / 3 Complete",
+    // or "6/3" if that doesn't fit beside the title, or nothing.
+    auto [full, brief] = view_count();
+    for (auto& count : {full, brief}) {
+        int w = static_cast<int>(count.size());  // ASCII
+        if (used + 2 + w > room) continue;
+        attron(dim());
+        put(0, x + 1 + room - w, count, w);
+        attroff(dim());
+        break;
+    }
 
     // Keep a valid selection.
     std::vector<int> items;
@@ -1127,6 +1171,11 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
             case 2:                               // Ctrl+B: show/hide sidebar
                 hide_sidebar_ = !hide_sidebar_;
                 if (hide_sidebar_) focus_items_ = true;
+                try {
+                    rem::save_setting("show-sidebar", hide_sidebar_ ? "false" : "true");
+                } catch (const std::exception&) {
+                    // It just won't be remembered.
+                }
                 return true;
         }
     }
@@ -1420,6 +1469,7 @@ int Tui::run() {
     setup_colors();
     check_folder();
     restore_view();
+    if (hide_sidebar_) focus_items_ = true;  // started with the sidebar hidden (show-sidebar=false)
 
     try {
         draw();

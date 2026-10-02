@@ -116,7 +116,10 @@ reminders --json list today | jq -r '.[].title'
 ### What the output looks like
 
 Reminders are shown as they are written in their files, with the list as a
-`#` heading and sections as `##` headings:
+`#` heading and sections as `##` headings. (In the interactive interface the
+heading has the same count as in the app, dimmed against the right edge:
+`6 Reminders / 3 Complete`, shortened to `6/3` when that doesn't fit beside
+the title, and left out when even that doesn't.)
 
 ```
 # Groceries

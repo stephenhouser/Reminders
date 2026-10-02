@@ -63,6 +63,7 @@ private:
     void select(View v);
     GtkWidget* build_list_view(rem::ListFile& list);
     GtkWidget* build_smart_view();
+    std::vector<rem::Ref> view_refs();  // a smart, tag or search view's reminders
     GtkWidget* build_reminder_row(const rem::Ref& ref, bool show_list);
     GtkWidget* build_new_row(const std::string& list, const std::optional<std::string>& section);
     GtkWidget* group(const std::string& title, const char* color, GtkWidget* listbox);

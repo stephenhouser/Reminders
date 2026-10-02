@@ -752,6 +752,24 @@ void Window::build() {
     g_value_unset(&hidden);
     adw_application_window_add_breakpoint(ADW_APPLICATION_WINDOW(window_), bp);
 
+    // Whether the sidebar is shown is saved (show-sidebar), shared with the
+    // TUI. Only while the window is wide enough to show it beside the
+    // content: on narrow windows it hides by itself and slides over.
+    adw_overlay_split_view_set_show_sidebar(ADW_OVERLAY_SPLIT_VIEW(split_), rem::load_bool_setting("show-sidebar", true));
+    // ("notify" passes the property as well, so not on(), which is for signals
+    // that pass only the emitter.)
+    connect<void(GObject*, GParamSpec*)>(split_, "notify::show-sidebar", [this](GObject*, GParamSpec*) {
+        auto* split = ADW_OVERLAY_SPLIT_VIEW(split_);
+        if (adw_overlay_split_view_get_collapsed(split)) return;
+        bool shown = adw_overlay_split_view_get_show_sidebar(split);
+        if (rem::load_bool_setting("show-sidebar", true) == shown) return;
+        try {
+            rem::save_setting("show-sidebar", shown ? "true" : "false");
+        } catch (const std::exception&) {
+            // Not worth interrupting for; it just won't be remembered.
+        }
+    });
+
     main_stack_ = gtk_stack_new();
     gtk_stack_add_named(GTK_STACK(main_stack_), welcome, "welcome");
     gtk_stack_add_named(GTK_STACK(main_stack_), split_, "main");
@@ -1114,15 +1132,21 @@ void Window::rebuild_content() {
             ++total;
             done += r.done;
         });
-        auto subtitle = std::format("{} {}", total, total == 1 ? "Reminder" : "Reminders");
-        if (done > 0) subtitle += std::format(" / {} Complete", done);
-        adw_window_title_set_subtitle(title, subtitle.c_str());
+        adw_window_title_set_subtitle(title, rem::count_label(rem::CountStyle::WithComplete, total, done).c_str());
         body = build_list_view(*l);
     } else {
         if (auto* s = smart_info(view_.kind)) page_title = s->title;
         else if (view_.kind == View::Tag) page_title = "#" + view_.name;
         else page_title = "Search";
-        adw_window_title_set_subtitle(title, view_.kind == View::Search ? std::format("“{}”", view_.name).c_str() : "");
+        // The same kind of count as a list's: what the view contains.
+        auto refs = view_refs();
+        int done = static_cast<int>(std::ranges::count_if(refs, [](auto& r) { return r.reminder->done; }));
+        int total = static_cast<int>(refs.size());
+        auto style = view_.kind == View::Search                                              ? rem::CountStyle::Results
+                     : view_.kind == View::Completed                                         ? rem::CountStyle::Completed
+                     : view_.kind == View::Tag || view_.kind == View::AllReminders ? rem::CountStyle::WithComplete
+                                                                                             : rem::CountStyle::OpenOnly;
+        adw_window_title_set_subtitle(title, rem::count_label(style, total, done).c_str());
         body = build_smart_view();
     }
     adw_window_title_set_title(title, page_title.c_str());
@@ -1302,7 +1326,7 @@ GtkWidget* Window::build_list_view(rem::ListFile& l) {
     return clamp(page);
 }
 
-GtkWidget* Window::build_smart_view() {
+std::vector<rem::Ref> Window::view_refs() {
     auto day = today();
     std::vector<rem::Ref> refs;
     switch (view_.kind) {
@@ -1316,6 +1340,12 @@ GtkWidget* Window::build_smart_view() {
         case View::Search: refs = store_->search(view_.name); break;
         case View::List: break;
     }
+    return refs;
+}
+
+GtkWidget* Window::build_smart_view() {
+    auto day = today();
+    auto refs = view_refs();
 
     if (refs.empty()) {
         switch (view_.kind) {

@@ -69,6 +69,15 @@ Show them again with **⋮ → Show Completed** (Ctrl+H). The header under the
 list's name counts them: "6 Reminders / 3 Complete" (every reminder, subtasks
 included, and how many of those are done).
 
+Every view has a count under its name, of what it contains:
+
+| View | Count |
+|---|---|
+| A list, a tag, All Reminders | "6 Reminders / 3 Complete" (the second part only when some are done) |
+| Today, Scheduled, All, Flagged | "5 Reminders" (these only hold open reminders) |
+| Completed | "2 Completed" |
+| A search | "3 Results" |
+
 - **Completing a reminder** also completes its subtasks.
 - **Completing a repeating reminder** marks this occurrence done and adds the
   next one above it, with the next due date.
@@ -284,6 +293,8 @@ outside it is ignored.
 folder=/home/you/Sync/Reminders
 # The list that last had focus
 view=list:Groceries
+# Whether the sidebar is shown (Ctrl+B in either app)
+show-sidebar=true
 # Show each sidebar entry's jump key (Ctrl+1 …)
 show-key-numbers=true
 # The order of the sidebar's groups

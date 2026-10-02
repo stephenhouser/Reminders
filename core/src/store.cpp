@@ -493,6 +493,26 @@ std::vector<Ref> Store::all() {
     return collect([](Reminder& r) { return !r.done; });
 }
 
+std::string count_label(CountStyle style, int total, int done) {
+    auto plural = [&](const char* one, const char* many) { return std::format("{} {}", total, total == 1 ? one : many); };
+    switch (style) {
+        case CountStyle::OpenOnly: return plural("Reminder", "Reminders");
+        case CountStyle::Completed: return std::format("{} Completed", total);
+        case CountStyle::Results: return plural("Result", "Results");
+        case CountStyle::WithComplete: {
+            auto s = plural("Reminder", "Reminders");
+            if (done > 0) s += std::format(" / {} Complete", done);
+            return s;
+        }
+    }
+    return {};
+}
+
+std::string count_short(CountStyle style, int total, int done) {
+    if (style == CountStyle::WithComplete && done > 0) return std::format("{}/{}", total, done);
+    return std::to_string(total);
+}
+
 std::vector<Ref> Store::everything() {
     return collect([](Reminder&) { return true; });
 }

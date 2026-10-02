@@ -133,6 +133,9 @@ struct TagStyle {
 TagStyle load_tag_style(const std::string& tag);
 void save_tag_style(const std::string& tag, const TagStyle& style);
 
+// show-sidebar=true | false: whether the sidebar is shown (Ctrl+B), saved by
+// both apps and read at start-up (load_bool_setting("show-sidebar", true)).
+
 // The folder chosen in the app ("folder" setting), if it is set and exists.
 std::optional<fs::path> saved_folder();
 
