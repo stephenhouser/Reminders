@@ -1,4 +1,7 @@
-# Using Reminders (Linux)
+# Using Reminders (GNOME)
+
+This guide covers the GNOME app (`Reminders`). For the terminal client
+(`reminders`), see [TERMINAL.md](TERMINAL.md).
 
 ## Getting started
 
@@ -18,7 +21,7 @@ To open a different folder for one session without changing the saved one,
 name it on the command line:
 
 ```sh
-reminders ~/Sync/Work
+Reminders ~/Sync/Work
 ```
 
 If Reminders is already running, it switches that window to the folder.

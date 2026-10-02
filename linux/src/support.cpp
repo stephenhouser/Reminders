@@ -5,6 +5,7 @@
 #include <format>
 
 #include "gtk_util.hpp"
+#include "reminders/settings.hpp"
 
 namespace ui {
 
@@ -33,15 +34,6 @@ bool uses_12h_clock() {
     auto settings = Obj<GSettings>::adopt(g_settings_new("org.gnome.desktop.interface"));
     return take_string(g_settings_get_string(settings.get(), "clock-format")) == "12h";
 }
-
-constexpr const char* kDirName = "reminders";
-
-std::filesystem::path config_file() {
-    return std::filesystem::path(g_get_user_config_dir()) / kDirName / "settings.ini";
-}
-
-std::string load_setting(const char* key);
-void save_setting(const char* key, const std::string& value);
 
 }  // namespace
 
@@ -125,55 +117,14 @@ bool is_overdue(const rem::Reminder& r, rem::Date today) {
     return r.due_time->hour * 60 + r.due_time->minute < minutes;
 }
 
-std::optional<std::filesystem::path> load_folder() {
-    auto folder = load_setting("folder");
-    if (folder.empty()) return std::nullopt;
-    return folder;
-}
+std::optional<std::filesystem::path> load_folder() { return rem::saved_folder(); }
 
-namespace {
+void save_folder(const std::filesystem::path& folder) { rem::save_setting("folder", folder.string()); }
 
-std::string load_setting(const char* key) {
-    GKeyFile* kf = g_key_file_new();
-    std::string out;
-    if (g_key_file_load_from_file(kf, config_file().c_str(), G_KEY_FILE_NONE, nullptr))
-        out = take_string(g_key_file_get_string(kf, "general", key, nullptr));
-    g_key_file_free(kf);
-    return out;
-}
+std::string load_last_view() { return rem::load_setting("view"); }
 
-void save_setting(const char* key, const std::string& value) {
-    auto file = config_file();
-    std::filesystem::create_directories(file.parent_path());
-    GKeyFile* kf = g_key_file_new();
-    g_key_file_load_from_file(kf, file.c_str(), G_KEY_FILE_KEEP_COMMENTS, nullptr);
-    g_key_file_set_string(kf, "general", key, value.c_str());
-    g_key_file_save_to_file(kf, file.c_str(), nullptr);
-    g_key_file_free(kf);
-}
+void save_last_view(const std::string& view) { rem::save_setting("view", view); }
 
-}  // namespace
-
-void save_folder(const std::filesystem::path& folder) { save_setting("folder", folder.string()); }
-
-std::string load_last_view() { return load_setting("view"); }
-
-void save_last_view(const std::string& view) { save_setting("view", view); }
-
-std::string device_name() {
-    // Hostname for people to recognise, plus a short code from the machine id
-    // so two machines both called "fedora" still get separate folders.
-    std::string host;
-    for (char c : std::string_view(g_get_host_name())) {
-        auto u = static_cast<unsigned char>(c);
-        if (std::isalnum(u) || c == '-') host += static_cast<char>(std::tolower(u));
-        if (host.size() == 32) break;
-    }
-    if (host.empty()) host = "device";
-    char* id = nullptr;
-    std::string seed = g_file_get_contents("/etc/machine-id", &id, nullptr, nullptr) ? take_string(id) : host;
-    auto hash = take_string(g_compute_checksum_for_string(G_CHECKSUM_SHA256, seed.c_str(), -1));
-    return host + "-" + hash.substr(0, 4);
-}
+std::string device_name() { return rem::device_name(); }
 
 }  // namespace ui

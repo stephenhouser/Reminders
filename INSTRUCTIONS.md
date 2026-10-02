@@ -47,7 +47,8 @@ from them rather than reopen them.
 | Sync | The app only reads and writes files; Syncthing does the syncing. Conflict copies are merged three-way | No server, no account |
 | Per-device state | `<folder>/.reminders/<device>/`, excluded via `(?d).reminders` in the Syncthing root's `.stignore` | Everything about a list stays in its folder |
 | iOS sync (later) | Syncthing embedded via gomobile, not the Möbius Sync app | Self-contained app |
-| Names | App "Reminders", command `reminders`, app ID `com.stephenhouser.Reminders`, config `~/.config/reminders/` | |
+| Names | GNOME app `Reminders`, terminal client `reminders` (CLI + TUI in one binary; not `rem`, too close to DOS `rem`), app ID `com.stephenhouser.Reminders`, config `~/.config/reminders/` | Case-sensitive file names on Linux let both live in one `bin` |
+| Terminal client | Separate binary from the GUI, no GTK dependency; ncurses for the TUI | Works over SSH and on headless Syncthing machines |
 | Look | GNOME HIG: navigation sidebar, boxed lists, list colour as accent, round checkboxes | Native on GNOME |
 | Migrations | None. This is the first version | |
 
@@ -189,8 +190,24 @@ Ground rules
   banknote, pill, flag, tag) in a GResource, plus an app icon and a .desktop
   file. App ID com.stephenhouser.Reminders.
 
-4. Docs: README.md (overview, build, layout), docs/USING.md (user guide),
-docs/FORMAT.md (the format), and keep this file current.
+4. The terminal client: `reminders` (separate binary, no GTK; ncursesw)
+- Settings and the device name live in the core library (shared with the
+  GUI): ~/.config/reminders/settings.ini, keeping other lines intact.
+- CLI: lists, list [VIEW] [-a], show, add, edit, done, undone, move, delete
+  [--yes], search, new-list, folder [PATH]; global --folder, --json,
+  --no-color; REF = id or part of a title (prefer open matches; list
+  candidates when ambiguous); field options --title --list --section
+  --parent --due (today/tomorrow/weekday/+3d/YYYY-MM-DD) --time --no-due
+  --flag/--unflag --priority --tag/--untag --repeat/--no-repeat --notes
+  --url; exit codes 0/1/2; colours only on a terminal (NO_COLOR respected).
+- TUI (no command): sidebar + reminders panes, with the keys listed in
+  docs/TERMINAL.md; undo via the same History class; poll the folder every
+  second and reload changed lists; Unicode box drawing (WACS_*), wide-char
+  input (get_wch).
+
+5. Docs: README.md (overview, build, layout), docs/USING.md (GNOME guide),
+docs/TERMINAL.md (terminal guide), docs/FORMAT.md (the format), and keep this
+file current.
 ````
 
 ### Directions
@@ -198,7 +215,8 @@ docs/FORMAT.md (the format), and keep this file current.
 Build in this order, and check each stage before going on.
 
 1. **Check the machine and ask before installing.** Needed: a C++23 compiler,
-   CMake, Ninja, `gtk4-devel`, `libadwaita-devel` and `glib2-devel`.
+   CMake, Ninja, `gtk4-devel`, `libadwaita-devel`, `glib2-devel` and
+   `ncurses-devel`.
 2. **Write `docs/FORMAT.md` first.** Every later client depends on it.
 3. **Core library and tests:** model → format (parse/serialize) → recurrence
    → merge → store → history → syncthing. Aim for byte-for-byte round trips.
@@ -217,7 +235,10 @@ Build in this order, and check each stage before going on.
 9. **Sync:** watching, reloading, conflicts, the per-device state,
    `.stignore`. Test with a scratch folder containing `.stfolder`, and fake
    Syncthing by renaming files and writing conflict copies by hand.
-10. **Docs.**
+10. **Terminal client:** the CLI first (quick to test from a shell), then the
+    TUI, tested in a private tmux server (`tmux -L test …`, `send-keys`,
+    `capture-pane`).
+11. **Docs.**
 
 **Verifying UI work:** run the app on a private session bus, open dialogs and
 switch views through D-Bus actions, and check the rendered PNG. Keystrokes and

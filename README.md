@@ -28,7 +28,8 @@ format, so the same folder also works as an Obsidian vault.
 
 | Client | State |
 |---|---|
-| **Linux (GNOME)**: C++23, GTK 4 + libadwaita | Working; the reference client |
+| **Linux (GNOME)**: `Reminders`, C++23, GTK 4 + libadwaita | Working; the reference client |
+| **Terminal (CLI + TUI)**: `reminders`, C++23, ncurses | Working; runs anywhere with a terminal, including over SSH |
 | iOS: SwiftUI, Syncthing embedded via gomobile | Planned |
 | Android, macOS, Windows: native per platform | Planned |
 
@@ -51,6 +52,7 @@ can reuse.
   - Markdown files with checklists can be turned into lists.
   - Ordinary notes in the same folder are left alone.
 - **Notifications** when reminders come due, while the app is running.
+- **A terminal client** (`reminders`): commands for scripts (with `--json`) and a full-screen interface. See [docs/TERMINAL.md](docs/TERMINAL.md).
 
 ## How syncing works
 
@@ -72,22 +74,25 @@ Details: [docs/FORMAT.md](docs/FORMAT.md).
 - A C++23 compiler (tested with GCC 16 and Clang 22), CMake ≥ 3.25, Ninja (or Make)
 - GTK ≥ 4.20 and libadwaita ≥ 1.8, with development headers
 - `glib-compile-resources` (part of GLib's development tools)
+- ncurses with wide-character support (`ncursesw`), for the terminal client
 
 | Distribution | Packages |
 |---|---|
-| Fedora 44 (tested) | `sudo dnf install gcc-c++ cmake ninja-build gtk4-devel libadwaita-devel glib2-devel` |
-| Debian / Ubuntu (untested; needs a release with GTK 4.20 and libadwaita 1.8) | `sudo apt install g++ cmake ninja-build libgtk-4-dev libadwaita-1-dev libglib2.0-dev-bin` |
+| Fedora 44 (tested) | `sudo dnf install gcc-c++ cmake ninja-build gtk4-devel libadwaita-devel glib2-devel ncurses-devel` |
+| Debian / Ubuntu (untested; needs a release with GTK 4.20 and libadwaita 1.8) | `sudo apt install g++ cmake ninja-build libgtk-4-dev libadwaita-1-dev libglib2.0-dev-bin libncurses-dev` |
 
-The core library on its own needs only a C++23 compiler and CMake. Build it
-with `-DBUILD_GNOME_APP=OFF`.
+Each client can be left out: `-DBUILD_GNOME_APP=OFF` builds without GTK, and
+`-DBUILD_TERMINAL_APP=OFF` without ncurses. The core library alone needs only a
+C++23 compiler and CMake.
 
 ### Build, test, run
 
 ```sh
 cmake -S . -B build -G Ninja
 cmake --build build
-./build/core/core_tests          # 66 tests for the core library
-./build/linux/reminders          # or: ./build/linux/reminders ~/Sync/Reminders
+./build/core/core_tests          # 69 tests for the core library
+./build/linux/Reminders          # the GNOME app (or: ./build/linux/Reminders ~/Sync/Reminders)
+./build/cli/reminders --help     # the terminal client
 ```
 
 ### Install
@@ -98,14 +103,18 @@ cmake --build build
 cmake --install build
 ```
 
-This installs the `reminders` command, the desktop entry
-(`com.stephenhouser.Reminders.desktop`) and the app icon.
+This installs `Reminders` (the GNOME app), `reminders` (the terminal client),
+the desktop entry (`com.stephenhouser.Reminders.desktop`) and the app icon.
 
 ## Using it
 
 1. Set up a Syncthing folder (or use any folder; syncing is optional).
 2. Start Reminders and choose that folder.
 3. Make lists with **New List** (Ctrl+Shift+N), and add reminders by typing into **New Reminder**.
+
+In a terminal: `reminders folder ~/Sync/Reminders`, then `reminders` for the
+full-screen interface or `reminders --help` for commands
+([terminal guide](docs/TERMINAL.md)).
 
 The **[user guide](docs/USING.md)** covers everything else: lists,
 sections, subtasks, repeats, smart lists, keyboard shortcuts, editing files by
@@ -116,7 +125,8 @@ hand, and what to do about sync problems.
 ```
 docs/
   FORMAT.md            The on-disk format: the contract every client implements
-  USING.md             User guide for the Linux client
+  USING.md             User guide for the GNOME app
+  TERMINAL.md          Guide to the terminal client (CLI and TUI)
 core/                  Platform-neutral C++23 library (standard library only)
   include/reminders/   model, format, merge, recurrence, store, history, syncthing
   src/
@@ -124,6 +134,7 @@ core/                  Platform-neutral C++23 library (standard library only)
 linux/                 The GNOME client
   src/                 main, window, dialogs, support, gtk_util (RAII + signal helpers)
   data/                style.css, icons, .desktop file, GResource manifest
+cli/                   The terminal client: cli.cpp (commands), tui.cpp (ncurses)
 INSTRUCTIONS.md        The original brief, and how to recreate this project
 ```
 
@@ -138,6 +149,8 @@ INSTRUCTIONS.md        The original brief, and how to recreate this project
 | `store.hpp` | The folder: loading, saving, conflict handling, list detection, smart-list queries |
 | `history.hpp` | Undo/redo as before/after snapshots of list files, merging around changes from other devices |
 | `syncthing.hpp` | Per-device state location and the `.stignore` entry |
+| `settings.hpp` | `~/.config/reminders/settings.ini`, shared by all clients, and the device name |
+| `dates.hpp` | Local date, typed dates (`tomorrow`, `fri`, `+3d`), relative labels (`Tomorrow`, `Oct 3`) |
 
 ### The GNOME client
 
@@ -150,15 +163,18 @@ store after every change, which keeps the code simple. Lists are small.
 
 - **Screenshots without screen capture:** GNOME locks down screen capture on
   Wayland, so the app can render its own window:
-  `REMINDERS_SCREENSHOT=out.png ./build/linux/reminders` saves a PNG after
+  `REMINDERS_SCREENSHOT=out.png ./build/linux/Reminders` saves a PNG after
   1.5 s and quits.
 - **Testing without touching your real session:** the app is single-instance,
   so a test launch can be handed to your running copy. Isolate test runs:
   ```sh
-  dbus-run-session -- env XDG_CONFIG_HOME=/tmp/r/config ./build/linux/reminders /tmp/r/lists
+  dbus-run-session -- env XDG_CONFIG_HOME=/tmp/r/config ./build/linux/Reminders /tmp/r/lists
   ```
 - **Driving the app from scripts:** actions are exported over D-Bus, e.g.
   `gdbus call --session --dest com.stephenhouser.Reminders --object-path /com/stephenhouser/Reminders/window/1 --method org.gtk.Actions.Activate go-to '[]' '{}'`.
+- **Testing the TUI:** run it on a private tmux server, send keys, and
+  capture the screen:
+  `tmux -L test new -d -s t -x 100 -y 30 ./build/cli/reminders; tmux -L test send-keys -t t 6 Tab j; tmux -L test capture-pane -p -t t`.
 - **Memory checks:** the core tests run clean under `valgrind`, and with
   `-D_GLIBCXX_DEBUG`.
 

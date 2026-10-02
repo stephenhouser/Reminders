@@ -114,14 +114,14 @@ int handle_command_line(AdwApplication* app, GApplicationCommandLine* cmd) {
     char** argv = g_application_command_line_get_arguments(cmd, &argc);
     int status = 0;
     if (argc > 2) {
-        g_application_command_line_printerr(cmd, "Usage: reminders [FOLDER]\n");
+        g_application_command_line_printerr(cmd, "Usage: Reminders [FOLDER]\n");
         status = 1;
     } else if (argc == 2) {
         // Relative paths are resolved against the caller's directory.
         auto file = ui::Obj<GFile>::adopt(g_application_command_line_create_file_for_arg(cmd, argv[1]));
         auto path = ui::take_string(g_file_get_path(file.get()));
         if (path.empty() || !std::filesystem::is_directory(path)) {
-            g_application_command_line_printerr(cmd, "reminders: “%s” is not a folder\n", argv[1]);
+            g_application_command_line_printerr(cmd, "Reminders: “%s” is not a folder\n", argv[1]);
             status = 1;
         } else {
             present(app, std::filesystem::path(path));
@@ -142,7 +142,7 @@ int main(int argc, char** argv) {
                                   "Show the version and exit", nullptr);
     ui::connect<int(GApplication*, GVariantDict*)>(app, "handle-local-options", [](GApplication*, GVariantDict* opts) {
         if (g_variant_dict_contains(opts, "version")) {
-            g_print("reminders %s\n", kVersion);
+            g_print("Reminders %s\n", kVersion);
             return 0;
         }
         return -1;  // carry on

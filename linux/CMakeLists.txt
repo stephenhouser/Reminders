@@ -19,18 +19,19 @@ add_custom_command(
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/data
   DEPENDS ${RES_XML} ${RES_DEPS})
 
-add_executable(reminders
+add_executable(reminders-gnome
   src/main.cpp
   src/window.cpp
   src/dialogs.cpp
   src/support.cpp
   ${RES_C})
-target_link_libraries(reminders PRIVATE reminders_core PkgConfig::ADW)
+target_link_libraries(reminders-gnome PRIVATE reminders_core PkgConfig::ADW)
 # The generated resource C file isn't warning-clean under -Wpedantic.
 set_source_files_properties(${RES_C} PROPERTIES COMPILE_OPTIONS "-w")
 
 include(GNUInstallDirs)
-install(TARGETS reminders)
+set_target_properties(reminders-gnome PROPERTIES OUTPUT_NAME Reminders)
+install(TARGETS reminders-gnome)
 install(FILES data/com.stephenhouser.Reminders.desktop
         DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
 install(FILES data/icons/hicolor/scalable/apps/com.stephenhouser.Reminders.svg

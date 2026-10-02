@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=Reminders
 Comment=Reminders and to-do lists that sync with Syncthing
-Exec=reminders
+Exec=Reminders
 Icon=com.stephenhouser.Reminders
 Terminal=false
 Type=Application
