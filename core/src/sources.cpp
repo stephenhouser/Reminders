@@ -85,11 +85,11 @@ SourceConfig source_for_folder(const fs::path& folder) {
     std::error_code ec;
     for (auto& s : load_sources())
         if (s.folder == folder || fs::equivalent(s.folder, folder, ec)) return s;
-    return SourceConfig{"", detect_backend(folder), folder};
+    return SourceConfig{"", detect_backend(folder), folder, {}};
 }
 
 SourceConfig set_default_folder(const fs::path& folder) {
-    auto source = default_source().value_or(SourceConfig{name_for(folder), BackendKind::Syncthing, folder});
+    auto source = default_source().value_or(SourceConfig{name_for(folder), BackendKind::Syncthing, folder, {}});
     source.folder = folder;
     source.backend = detect_backend(folder);
     save_source(source);

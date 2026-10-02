@@ -299,7 +299,7 @@ show-sidebar=true
 # Show each sidebar entry's jump key (Ctrl+1 …)
 show-key-numbers=true
 # The order of the sidebar's groups
-sidebar-order=smart-lists, my-lists, tags
+sidebar-order=smart-lists, local-lists, tags
 # Which smart lists to show, in this order
 smart-lists=today, scheduled, all, all-reminders, flagged, completed
 # Lists and tags hidden from the sidebar, and whether to show them anyway
@@ -314,11 +314,11 @@ tag-icon.errands=cart
 # How each group appears: visible, collapsible or hidden
 # (your lists can be visible or collapsible, not hidden)
 smart-lists-display=visible
-my-lists-display=visible
+local-lists-display=visible
 tags-display=visible
 # Set by the app when you fold a collapsible group
 smart-lists-collapsed=false
-my-lists-collapsed=false
+lists-collapsed.personal=false
 tags-collapsed=false
 ```
 
@@ -333,9 +333,9 @@ e.g. `(1)Today`, for the keys `1`–`9` and `0`. It accepts `true`, `yes` or `1`
 Your lists are one group per [source](#sources): with one source it's
 "My Lists"; with several, each source's group is headed by its title.
 
-`sidebar-order` sets their order, e.g. `sidebar-order=my-lists, tags,
+`sidebar-order` sets their order, e.g. `sidebar-order=local-lists, tags,
 smart-lists`. With several sources, `lists:NAME` places one source's group
-(`sidebar-order=lists:work, smart-lists, lists:home, tags`), and `my-lists`
+(`sidebar-order=lists:work, smart-lists, lists:home, tags`), and `local-lists`
 stands for the sources not named. A group you leave out or misspell goes at
 the end, so a typo can't make your lists disappear. You can also rearrange them without editing
 the file:
@@ -353,7 +353,7 @@ Completed, Add Section…, List Info…, Move Up / Move Down, Hide and Delete
 List…. (Show Completed is one setting for the whole window, as in the ⋮
 menu.)
 
-`smart-lists-display`, `my-lists-display` and `tags-display` each take one of
+`smart-lists-display`, `local-lists-display` and `tags-display` each take one of
 these values:
 
 | Value | Shows the group |
@@ -367,7 +367,7 @@ groups below it always have one.
 
 The app remembers a folded group (`smart-lists-collapsed`,
 `lists-collapsed.NAME` for each source, `tags-collapsed`); this only applies
-in `collapsible` mode. `my-lists-display` applies to every source's group.
+in `collapsible` mode. `local-lists-display` applies to every source's group.
 
 - **`smart-lists`** chooses which smart lists appear and in what order, e.g.
   `smart-lists=today, flagged`.

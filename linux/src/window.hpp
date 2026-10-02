@@ -201,7 +201,7 @@ private:
     bool show_key_numbers_ = false;  // settings.ini: show-key-numbers
     std::vector<rem::SidebarGroup> order_;  // settings.ini: sidebar-order
     rem::SmartListsLayout smart_;    // settings.ini: smart-lists, -display, -collapsed
-    std::map<std::string, rem::GroupLayout> lists_layouts_;  // per source: my-lists-display, lists-collapsed.NAME
+    std::map<std::string, rem::GroupLayout> lists_layouts_;  // per source: local-lists-display, lists-collapsed.NAME
     rem::GroupLayout tags_;          // settings.ini: tags-display, tags-collapsed
     rem::HiddenEntries hidden_;      // settings.ini: lists-hidden, tags-hidden, show-hidden
     GSimpleAction* show_hidden_action_ = nullptr;

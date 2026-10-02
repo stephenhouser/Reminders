@@ -75,13 +75,13 @@ TEST(settings_round_trip_keeps_other_lines) {
     CHECK((order == std::vector{Mine, Tags, Smart}));
     CHECK((!move_sidebar_group(order, Smart, 1, {Smart, Mine, Tags})));
     save_sidebar_order(order);
-    CHECK_EQ(load_setting("sidebar-order"), "my-lists, tags, smart-lists");  // one source: my-lists
+    CHECK_EQ(load_setting("sidebar-order"), "local-lists, tags, smart-lists");  // one source: local-lists
     CHECK(load_sidebar_order(one) == order);
 
-    // Several sources: my-lists stands for the ones not named on their own.
+    // Several sources: local-lists stands for the ones not named on their own.
     auto Home = SidebarGroup::lists("home"), Work = SidebarGroup::lists("work-2"), Old = SidebarGroup::lists("old");
     std::vector<std::string> three{"home", "work-2", "old"};
-    save_setting("sidebar-order", "lists:work-2, smart-lists, my-lists, lists:gone");
+    save_setting("sidebar-order", "lists:work-2, smart-lists, local-lists, lists:gone");
     CHECK((load_sidebar_order(three) == std::vector{Work, Smart, Home, Old, Tags}));
     save_sidebar_order({Work, Smart, Home, Old, Tags});
     CHECK_EQ(load_setting("sidebar-order"), "lists:work-2, smart-lists, lists:home, lists:old, tags");
@@ -90,10 +90,10 @@ TEST(settings_round_trip_keeps_other_lines) {
 
     // Lists groups: visible or collapsible (never hidden), folded per source.
     CHECK(!load_lists_layout("home").foldable());
-    save_setting("my-lists-display", "hidden");
+    save_setting("local-lists-display", "hidden");
     CHECK(!load_lists_layout("home").hidden());
     save_group_display(Home, GroupDisplay::Collapsible);
-    CHECK_EQ(load_setting("my-lists-display"), "collapsible");
+    CHECK_EQ(load_setting("local-lists-display"), "collapsible");
     save_group_collapsed(Home, true);
     CHECK(load_lists_layout("home").folded());
     CHECK(!load_lists_layout("old").folded());

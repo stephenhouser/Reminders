@@ -213,14 +213,14 @@ Ground rules
   first ten sidebar entries with their jump key: in the GUI a dim
   gtk_accelerator_get_label() "Ctrl+1" … "Ctrl+0" to the right of the name
   (before the count), in the TUI a "(1)Today" … "(0)…" prefix (the TUI's 0 key jumps to the 10th entry, like Ctrl+0).
-  Sidebar groups: smart-lists-display, my-lists-display and tags-display are visible |
+  Sidebar groups: smart-lists-display, local-lists-display and tags-display are visible |
   collapsible | hidden (default visible; "collapsable" accepted). Rule: the
   top group has no heading unless collapsible; every group below it has one
   (plain "Smart Lists" / "My Lists" / "Tags"). Collapsible gives a
   heading that folds the group (GUI: click; TUI: select it, Enter/Space),
-  remembered as smart-lists-/my-lists-/tags-collapsed. smart-lists picks
-  which smart lists and in what order. sidebar-order (smart-lists, my-lists,
-  tags; missing/misspelled groups appended) orders the groups; my-lists-display
+  remembered as smart-lists-/local-lists-/tags-collapsed. smart-lists picks
+  which smart lists and in what order. sidebar-order (smart-lists, local-lists,
+  tags; missing/misspelled groups appended) orders the groups; local-lists-display
   is visible | collapsible (never hidden). Rearranging: GUI right-click /
   long-press on a group heading → Move "Group" Up/Down and a Collapsible check
   item (visible <-> collapsible), or Alt+↑/↓ on a row. Right-click on a
@@ -433,10 +433,10 @@ settings in a `[source.NAME]` section; later the apps show several at once.
    the CLI hold a `rem::Library`; `open_library(folder, device)` opens every
    configured source, or just a --folder one for the session. Sidebar
    groups are `rem::SidebarGroup{kind, source}`: smart lists, one lists group
-   per source, tags; `sidebar-order` has `lists:NAME` entries, `my-lists`
-   meaning the sources not named (one source: written as `my-lists`, titled
+   per source, tags; `sidebar-order` has `lists:NAME` entries, `local-lists`
+   meaning the sources not named (one source: written as `local-lists`, titled
    "My Lists"; several: titled by `source_title`). Folded state is
-   `lists-collapsed.NAME`; `my-lists-display` covers every source. Views and
+   `lists-collapsed.NAME`; `local-lists-display` covers every source. Views and
    settings name lists "source/name" (`view`, `lists-order`, `lists-hidden`);
    `list_entry_matches` lets a bare name from older settings match.
    `Library::label` shows "source/name" only where names clash. GUI: a

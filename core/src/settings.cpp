@@ -190,7 +190,7 @@ SmartListsLayout load_smart_lists_layout() {
 }
 
 GroupLayout load_lists_layout(const std::string& source) {
-    auto display = load_display("my-lists-display");
+    auto display = load_display("local-lists-display");
     if (display == GroupDisplay::Hidden) display = GroupDisplay::Visible;
     return GroupLayout{display, load_bool_setting("lists-collapsed." + source)};
 }
@@ -221,7 +221,7 @@ void save_group_display(const SidebarGroup& group, GroupDisplay display) {
                                                              : "visible";
     const char* key = group.kind == SidebarGroup::SmartLists ? "smart-lists-display"
                       : group.kind == SidebarGroup::Tags     ? "tags-display"
-                                                             : "my-lists-display";
+                                                             : "local-lists-display";
     save_setting(key, value);
 }
 
@@ -256,7 +256,7 @@ std::vector<SidebarGroup> load_sidebar_order(const std::vector<std::string>& sou
         auto k = keyword(w);
         if (k == "smartlists" || k == "smart") put(SidebarGroup::smart_lists());
         else if (k == "tags") put(SidebarGroup::tags());
-        else if (k == "mylists" || k == "lists") {
+        else if (k == "locallists" || k == "lists") {
             for (auto& s : sources)
                 if (std::ranges::find(named, s) == named.end()) put(SidebarGroup::lists(s));
         } else if (k.starts_with("lists:")) {
@@ -276,7 +276,7 @@ void save_sidebar_order(const std::vector<SidebarGroup>& order) {
     for (auto& g : order) {
         std::string w = g.kind == SidebarGroup::SmartLists ? "smart-lists"
                         : g.kind == SidebarGroup::Tags     ? "tags"
-                        : lists_groups == 1                ? "my-lists"
+                        : lists_groups == 1                ? "local-lists"
                                                            : "lists:" + g.source;
         value += (value.empty() ? "" : ", ") + w;
     }

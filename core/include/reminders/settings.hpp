@@ -57,7 +57,7 @@ struct SidebarGroup {
 
 // The sidebar's groups, in the order the settings give:
 //   sidebar-order=smart-lists, lists:home, lists:work, tags
-// "my-lists" stands for every source not named on its own (with one source,
+// "local-lists" stands for every source not named on its own (with one source,
 // it's the only lists group). A group left out or unknown goes after the
 // others, in the default order: smart lists, each source, tags. `sources`
 // are the sources' names, in order.
@@ -89,7 +89,7 @@ struct SmartListsLayout {
 SmartListsLayout load_smart_lists_layout();
 
 // The lists groups and the Tags group:
-//   my-lists-display=visible | collapsible      (every source's lists; can't be hidden)
+//   local-lists-display=visible | collapsible      (every source's lists; can't be hidden)
 //   tags-display=visible | collapsible | hidden
 //   lists-collapsed.NAME, tags-collapsed=true | false   (set by the apps when folded)
 struct GroupLayout {
@@ -106,7 +106,7 @@ GroupLayout load_tags_layout();
 // Remembers whether a group is folded (smart-lists-collapsed,
 // lists-collapsed.NAME, tags-collapsed).
 void save_group_collapsed(const SidebarGroup& group, bool collapsed);
-// Sets how a group appears (smart-lists-display, my-lists-display for every
+// Sets how a group appears (smart-lists-display, local-lists-display for every
 // source's lists, tags-display).
 void save_group_display(const SidebarGroup& group, GroupDisplay display);
 
