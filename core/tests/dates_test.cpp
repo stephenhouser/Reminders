@@ -84,9 +84,9 @@ TEST(settings_round_trip_keeps_other_lines) {
     save_group_collapsed(MyLists, true);
     CHECK(load_my_lists_layout().folded());
 
-    // Smart lists: all five by default, not foldable.
+    // Smart lists: all six by default, not foldable.
     auto layout = load_smart_lists_layout();
-    CHECK_EQ(layout.shown.size(), 5u);
+    CHECK_EQ(layout.shown.size(), 6u);
     CHECK(layout.display == GroupDisplay::Visible);
     CHECK(!layout.foldable());
     CHECK(!layout.folded());
@@ -116,6 +116,56 @@ TEST(settings_round_trip_keeps_other_lines) {
     CHECK(load_tags_layout().folded());
     save_setting("tags-display", "hidden");
     CHECK(load_tags_layout().hidden());
+
+    // Hidden lists and tags; a name with a comma is quoted.
+    CHECK(load_hidden().lists.empty());
+    set_list_hidden("Work", true);
+    set_list_hidden("Smith, Jo", true);
+    set_list_hidden("Work", true);  // already hidden
+    CHECK_EQ(load_setting("lists-hidden"), "Work, \"Smith, Jo\"");
+    auto hidden = load_hidden();
+    CHECK_EQ(hidden.lists.size(), 2u);
+    CHECK(hidden.list_hidden("Smith, Jo"));
+    set_list_hidden("Work", false);
+    CHECK(!load_hidden().list_hidden("Work"));
+    set_tag_hidden("errands", true);
+    CHECK(load_hidden().tag_hidden("errands"));
+    CHECK(!load_hidden().show);
+    save_show_hidden(true);
+    CHECK(load_hidden().show);
+
+    // Hiding smart lists edits smart-lists; hiding the last one stores "none".
+    save_setting("smart-lists", "today, flagged");
+    set_smart_list_hidden("today", true);
+    CHECK_EQ(load_setting("smart-lists"), "flagged");
+    set_smart_list_hidden("flagged", true);
+    CHECK_EQ(load_setting("smart-lists"), "none");
+    set_smart_list_hidden("all", false);
+    CHECK_EQ(load_setting("smart-lists"), "all");
+
+    // Tag order: tags-order first, the rest alphabetically; moving skips hidden.
+    CHECK((order_tags({"work", "errands", "bakery"}) == std::vector<std::string>{"bakery", "errands", "work"}));
+    save_names_setting("tags-order", {"work", "gone"});
+    auto tag_order = order_tags({"work", "errands", "bakery"});
+    CHECK((tag_order == std::vector<std::string>{"work", "bakery", "errands"}));
+    CHECK((move_in_order(tag_order, "errands", -1, {"work", "errands"})));  // past hidden bakery
+    CHECK((tag_order == std::vector<std::string>{"errands", "bakery", "work"}));
+    CHECK((!move_in_order(tag_order, "errands", -1, {"work", "errands"})));
+    // List order: lists-order first, then the store's order.
+    CHECK((order_lists({"B", "A", "C"}) == std::vector<std::string>{"B", "A", "C"}));
+    save_names_setting("lists-order", {"C", "Smith, Jo", "gone"});
+    CHECK((order_lists({"B", "Smith, Jo", "C"}) == std::vector<std::string>{"C", "Smith, Jo", "B"}));
+    save_smart_lists({});
+    CHECK_EQ(load_setting("smart-lists"), "none");
+
+    // Tag styles: gray tag icon by default; unknown values ignored.
+    CHECK_EQ(load_tag_style("errands").color, "gray");
+    CHECK_EQ(load_tag_style("errands").icon, "tag");
+    save_tag_style("errands", {"orange", "cart"});
+    CHECK_EQ(load_tag_style("errands").color, "orange");
+    CHECK_EQ(load_tag_style("errands").icon, "cart");
+    save_setting("tag-color.errands", "chartreuse");
+    CHECK_EQ(load_tag_style("errands").color, "gray");
     unsetenv("XDG_CONFIG_HOME");
     fs::remove_all(dir);
 }

@@ -92,7 +92,7 @@ inline MarkdownLine markdown_line(const rem::Reminder& r) {
 }
 
 // The "view" setting shared by every front end (the list that last had
-// focus): "today", "scheduled", "all", "flagged", "completed", "list:NAME" or
+// focus): "today", "scheduled", "all", "all-reminders", "flagged", "completed", "list:NAME" or
 // "tag:NAME".
 struct SavedView {
     std::string kind;

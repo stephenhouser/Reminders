@@ -407,11 +407,15 @@ struct ListDialog {
 
 }  // namespace
 
-void show_list_dialog(GtkWidget* parent, std::optional<ListEdit> existing,
-                      std::function<std::string(const ListEdit&)> validate, std::function<void(ListEdit)> on_done) {
+namespace {
+
+// The list dialog, or with `tag` set the tag dialog (no name row).
+void present_style_dialog(GtkWidget* parent, std::optional<ListEdit> existing, const std::string* tag,
+                          std::function<std::string(const ListEdit&)> validate,
+                          std::function<void(ListEdit)> on_done) {
     bool is_new = !existing;
     auto* dialog = adw_dialog_new();
-    adw_dialog_set_title(ADW_DIALOG(dialog), is_new ? "New List" : "List Info");
+    adw_dialog_set_title(ADW_DIALOG(dialog), tag ? "Tag Info" : is_new ? "New List" : "List Info");
     adw_dialog_set_content_width(ADW_DIALOG(dialog), 440);
     auto* d = attach(dialog, "state", std::make_unique<ListDialog>());
     d->edit = existing.value_or(ListEdit{});
@@ -434,6 +438,10 @@ void show_list_dialog(GtkWidget* parent, std::optional<ListEdit> existing,
     adw_entry_row_set_activates_default(ADW_ENTRY_ROW(d->name), TRUE);
     auto* name_group = adw_preferences_group_new();
     adw_preferences_group_add(ADW_PREFERENCES_GROUP(name_group), d->name);
+    if (tag) {  // the tag's name, not editable
+        gtk_widget_set_visible(name_group, FALSE);
+        adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(top), ("#" + *tag).c_str());
+    }
     d->error = label("", {"error", "caption"});
     gtk_widget_set_margin_top(d->error, 6);
     gtk_widget_set_margin_start(d->error, 12);
@@ -509,9 +517,21 @@ void show_list_dialog(GtkWidget* parent, std::optional<ListEdit> existing,
     adw_dialog_set_child(ADW_DIALOG(dialog), view);
     adw_dialog_set_default_widget(ADW_DIALOG(dialog), d->done);
     add_shortcut(GTK_WIDGET(dialog), "<Control>s", [d] { gtk_widget_activate(d->done); });
-    adw_dialog_set_focus(ADW_DIALOG(dialog), d->name);
+    if (!tag) adw_dialog_set_focus(ADW_DIALOG(dialog), d->name);
     d->update();
     adw_dialog_present(ADW_DIALOG(dialog), parent);
+}
+
+}  // namespace
+
+void show_list_dialog(GtkWidget* parent, std::optional<ListEdit> existing,
+                      std::function<std::string(const ListEdit&)> validate, std::function<void(ListEdit)> on_done) {
+    present_style_dialog(parent, std::move(existing), nullptr, std::move(validate), std::move(on_done));
+}
+
+void show_tag_dialog(GtkWidget* parent, const std::string& tag, ListEdit style, std::function<void(ListEdit)> on_done) {
+    present_style_dialog(parent, std::move(style), &tag, [](const ListEdit&) { return std::string(); },
+                         std::move(on_done));
 }
 
 }  // namespace ui

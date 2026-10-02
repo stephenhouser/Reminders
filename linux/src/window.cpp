@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <format>
+#include <fstream>
 #include <map>
 
 #include "dialogs.hpp"
@@ -29,6 +30,7 @@ constexpr SmartInfo kSmart[] = {
     {View::Today, "Today", "x-office-calendar-symbolic", "blue"},
     {View::Scheduled, "Scheduled", "alarm-symbolic", "red"},
     {View::All, "All", "view-list-bullet-symbolic", "gray"},
+    {View::AllReminders, "All Reminders", "edit-select-all-symbolic", "gray"},  // completed too
     {View::Flagged, "Flagged", "sr-flag-symbolic", "orange"},
     {View::Completed, "Completed", "object-select-symbolic", "gray"},
 };
@@ -287,7 +289,8 @@ void make_drop_target(GtkWidget* row, DropStyle style, std::string self,
 
 constexpr std::pair<View::Kind, std::string_view> kViewNames[] = {
     {View::Today, "today"}, {View::Scheduled, "scheduled"}, {View::All, "all"},
-    {View::Flagged, "flagged"}, {View::Completed, "completed"}, {View::List, "list"},
+    {View::Flagged, "flagged"}, {View::Completed, "completed"}, {View::AllReminders, "all-reminders"},
+    {View::List, "list"},
     {View::Tag, "tag"}};
 
 std::string view_to_string(const View& v) {
@@ -346,7 +349,104 @@ Window* Window::from(GtkWindow* window) {
 
 void Window::set_show_key_numbers(bool on) {
     show_key_numbers_ = on;
+    key_numbers_override_ = on;
     if (store_) rebuild_sidebar();
+}
+
+// Opens settings.ini in the default app for text files, creating it (with
+// the [general] line its settings go under) if needed. Saving it there is
+// picked up by watch_settings().
+void Window::open_settings() {
+    auto path = rem::settings_file();
+    try {
+        std::error_code ec;
+        if (!std::filesystem::exists(path, ec)) {
+            std::filesystem::create_directories(path.parent_path());
+            std::ofstream(path) << "[general]\n";
+        }
+    } catch (const std::exception& e) {
+        toast(std::format("Couldn't create the settings file: {}", e.what()));
+        return;
+    }
+    if (!settings_monitor_) watch_settings();
+    auto file = Obj<GFile>::adopt(g_file_new_for_path(path.c_str()));
+    auto* launcher = gtk_file_launcher_new(file.get());
+    auto keep = Obj<GtkWindow>::ref(GTK_WINDOW(window_));
+    gtk_file_launcher_launch(
+        launcher, GTK_WINDOW(window_), nullptr,
+        [](GObject* source, GAsyncResult* result, gpointer data) {
+            auto* holder = static_cast<Obj<GtkWindow>*>(data);
+            GError* error = nullptr;
+            if (!gtk_file_launcher_launch_finish(GTK_FILE_LAUNCHER(source), result, &error)) {
+                bool dismissed = g_error_matches(error, GTK_DIALOG_ERROR, GTK_DIALOG_ERROR_DISMISSED);
+                if (auto* self = Window::from(holder->get()); self && !dismissed)
+                    self->toast(std::format("Couldn't open the settings file: {}", error->message));
+                g_error_free(error);
+            }
+            delete holder;
+        },
+        new Obj<GtkWindow>(std::move(keep)));
+    g_object_unref(launcher);
+}
+
+// Re-reads settings.ini when it changes (an editor, the TUI's S, or this app),
+// a moment after the last change.
+void Window::watch_settings() {
+    auto file = Obj<GFile>::adopt(g_file_new_for_path(rem::settings_file().c_str()));
+    settings_monitor_ = Obj<GFileMonitor>::adopt(g_file_monitor_file(file.get(), G_FILE_MONITOR_WATCH_MOVES, nullptr, nullptr));
+    if (!settings_monitor_) return;
+    settings_handler_ = connect<void(GFileMonitor*, GFile*, GFile*, GFileMonitorEvent)>(
+        settings_monitor_.get(), "changed", [this](GFileMonitor*, GFile*, GFile*, GFileMonitorEvent) {
+            if (settings_timer_) g_source_remove(settings_timer_);
+            settings_timer_ = timeout(300, [this] {
+                settings_timer_ = 0;
+                reload_settings();
+                return false;
+            });
+        });
+}
+
+void Window::reload_settings() {
+    std::string text;
+    {
+        std::ifstream in(rem::settings_file());
+        text.assign(std::istreambuf_iterator<char>(in), {});
+    }
+    if (text == settings_text_) return;
+    settings_text_ = std::move(text);
+    show_key_numbers_ = key_numbers_override_.value_or(rem::load_bool_setting("show-key-numbers"));
+    order_ = rem::load_sidebar_order();
+    smart_ = rem::load_smart_lists_layout();
+    lists_ = rem::load_my_lists_layout();
+    tags_ = rem::load_tags_layout();
+    hidden_ = rem::load_hidden();
+    if (show_hidden_action_) g_simple_action_set_state(show_hidden_action_, g_variant_new_boolean(hidden_.show));
+    if (!store_) return;
+    // The view may have just been hidden.
+    auto smart = smart_views();
+    bool gone = (smart_info(view_.kind) && std::ranges::find(smart, view_) == smart.end()) ||
+                (view_.kind == View::Tag && tags_.hidden()) || (!hidden_.show && entry_hidden(view_));
+    if (gone) return select(home_view());
+    // Rebuilding replaces the sidebar's rows: keep keyboard focus on the same one.
+    std::optional<View> focused;
+    std::optional<rem::SidebarGroup> focused_heading;
+    for (auto* w = gtk_root_get_focus(GTK_ROOT(window_)); w; w = gtk_widget_get_parent(w))
+        if (GTK_IS_LIST_BOX_ROW(w) && gtk_widget_get_parent(w) == sidebar_list_) {
+            if (auto* v = row_view(GTK_LIST_BOX_ROW(w))) focused = *v;
+            else focused_heading = row_group(GTK_LIST_BOX_ROW(w));
+            break;
+        }
+    rebuild_sidebar();
+    if (!focused && !focused_heading) return;
+    for (int i = 0;; ++i) {
+        auto* row = gtk_list_box_get_row_at_index(GTK_LIST_BOX(sidebar_list_), i);
+        if (!row) break;
+        auto* v = row_view(row);
+        if (focused ? v && *v == *focused : !v && row_group(row) == focused_heading) {
+            gtk_widget_grab_focus(GTK_WIDGET(row));
+            break;
+        }
+    }
 }
 
 void Window::show_reminder(const std::string& id) {
@@ -361,9 +461,14 @@ void Window::show_reminder(const std::string& id) {
 Window::Window(AdwApplication* app, std::optional<std::filesystem::path> folder)
     : app_(app), show_key_numbers_(rem::load_bool_setting("show-key-numbers")),
       order_(rem::load_sidebar_order()), smart_(rem::load_smart_lists_layout()),
-      lists_(rem::load_my_lists_layout()), tags_(rem::load_tags_layout()) {
+      lists_(rem::load_my_lists_layout()), tags_(rem::load_tags_layout()), hidden_(rem::load_hidden()) {
     build();
     add_actions();
+    {
+        std::ifstream in(rem::settings_file());  // as read at start-up
+        settings_text_.assign(std::istreambuf_iterator<char>(in), {});
+    }
+    watch_settings();
     if (folder) {
         open_folder(*folder, false);
     } else if (auto saved = load_folder(); saved && std::filesystem::is_directory(*saved)) {
@@ -377,8 +482,12 @@ Window::Window(AdwApplication* app, std::optional<std::filesystem::path> folder)
 }
 
 Window::~Window() {
-    for (auto id : {reload_timer_, refresh_timer_, notify_timer_, autoscroll_timer_})
+    for (auto id : {reload_timer_, refresh_timer_, notify_timer_, autoscroll_timer_, settings_timer_})
         if (id) g_source_remove(id);
+    if (settings_monitor_) {
+        g_signal_handler_disconnect(settings_monitor_.get(), settings_handler_);
+        g_file_monitor_cancel(settings_monitor_.get());
+    }
     if (monitor_) {
         g_signal_handler_disconnect(monitor_.get(), monitor_handler_);
         g_file_monitor_cancel(monitor_.get());
@@ -415,7 +524,9 @@ void Window::build() {
     auto* s1 = menu_section(primary_menu);
     g_menu_append(s1, "_New List…", "win.new-list");
     g_menu_append(s1, "_Change Folder…", "win.change-folder");
+    g_menu_append(menu_section(primary_menu), "Show _Hidden Lists", "win.show-hidden");
     auto* s2 = menu_section(primary_menu);
+    g_menu_append(s2, "_Settings…", "win.settings");
     g_menu_append(s2, "_Keyboard Shortcuts", "app.shortcuts");
     g_menu_append(s2, "_About Reminders", "app.about");
     auto* menu_button = gtk_menu_button_new();
@@ -489,17 +600,26 @@ void Window::build() {
             sidebar_menu(gtk_list_box_get_row_at_y(GTK_LIST_BOX(sidebar_list_), static_cast<int>(y)), x, y);
         });
     gtk_widget_add_controller(sidebar_list_, GTK_EVENT_CONTROLLER(sidebar_press));
-    // Alt+↑ / Alt+↓ on a sidebar row moves its group, as they move reminders.
+    // Alt+↑ / Alt+↓ (and with Shift) on a sidebar row move it or its group.
     auto* sidebar_keys = gtk_event_controller_key_new();
     connect<gboolean(GtkEventControllerKey*, guint, guint, GdkModifierType)>(
         sidebar_keys, "key-pressed", [this](GtkEventControllerKey*, guint key, guint, GdkModifierType mods) -> gboolean {
-            if ((mods & gtk_accelerator_get_default_mod_mask()) != GDK_ALT_MASK) return FALSE;
+            // Alt+↑/↓ moves the entry within its group (on a heading, the
+            // group); Alt+Shift+↑/↓ moves the group. The same keys as the TUI.
+            auto mask = mods & gtk_accelerator_get_default_mod_mask();
+            bool group_keys = mask == (GDK_ALT_MASK | GDK_SHIFT_MASK);
+            if (mask != GDK_ALT_MASK && !group_keys) return FALSE;
             if (key != GDK_KEY_Up && key != GDK_KEY_Down) return FALSE;
             auto* focus = gtk_root_get_focus(GTK_ROOT(window_));
             while (focus && !GTK_IS_LIST_BOX_ROW(focus)) focus = gtk_widget_get_parent(focus);
-            if (auto g = row_group(GTK_LIST_BOX_ROW(focus))) {
+            int delta = key == GDK_KEY_Up ? -1 : 1;
+            auto* v = focus ? row_view(GTK_LIST_BOX_ROW(focus)) : nullptr;
+            if (v && !group_keys) {
+                auto view = *v;
+                idle([this, view, delta] { move_entry(view, delta); });
+            } else if (auto g = row_group(GTK_LIST_BOX_ROW(focus))) {
                 auto group = *g;
-                idle([this, group, up = key == GDK_KEY_Up] { move_group(group, up ? -1 : 1); });
+                idle([this, group, delta] { move_group(group, delta); });
             }
             return TRUE;
         });
@@ -644,6 +764,7 @@ void Window::build() {
 
 void Window::add_actions() {
     add_action(window_, "change-folder", [this] { choose_folder(); });
+    add_action(window_, "settings", [this] { open_settings(); });
     // "go-1" … "go-10": the sidebar's entries in order (Ctrl+1 … Ctrl+9, Ctrl+0).
     for (int n = 1; n <= 10; ++n)
         add_action(window_, std::format("go-{}", n).c_str(), [this, n] {
@@ -672,6 +793,18 @@ void Window::add_actions() {
                     if (!r->subtasks.empty()) collapsed_.insert(r->id);
         }
         rebuild_content();
+    });
+    // Main menu: show the lists, smart lists and tags hidden from the sidebar
+    // (dimmed), so they can be opened or unhidden.
+    show_hidden_action_ = add_toggle(window_, "show-hidden", hidden_.show, [this](bool on) {
+        hidden_.show = on;
+        try {
+            rem::save_show_hidden(on);
+        } catch (const std::exception& e) {
+            toast(std::format("Couldn't save the setting: {}", e.what()));
+        }
+        if (!on && entry_hidden(view_)) select(home_view());
+        rebuild_sidebar();
     });
     add_action(window_, "move-group-up", [this] { move_group(menu_group_, -1); });
     add_action(window_, "move-group-down", [this] { move_group(menu_group_, 1); });
@@ -799,6 +932,7 @@ void Window::open_folder(const std::filesystem::path& folder, bool remember) {
         if (std::ranges::find(smart, view_) == smart.end()) view_ = home_view();
     }
     if (view_.kind == View::Tag && tags_.hidden()) view_ = home_view();
+    if (!hidden_.show && entry_hidden(view_)) view_ = home_view();  // hidden in the sidebar
     refresh();
 }
 
@@ -908,19 +1042,22 @@ void Window::rebuild_sidebar() {
                         case View::Today: count = store_->today(day).size(); break;
                         case View::Scheduled: count = store_->scheduled().size(); break;
                         case View::All: count = store_->all().size(); break;
+                        case View::AllReminders: count = store_->everything().size(); break;
                         case View::Flagged: count = store_->flagged().size(); break;
                         case View::Completed: count = store_->completed().size(); break;
                         default: break;
                     }
                     auto* row = sidebar_row(s->icon, s->color, s->title, static_cast<int>(count), shortcut(index++));
                     set_row_view(row, v);
+                    if (entry_hidden(v)) gtk_widget_add_css_class(row, "hidden-entry");
                     add(row);
                 }
                 break;
             case rem::SidebarGroup::MyLists:
-                for (auto* l : store_->lists()) {
+                for (auto* l : sidebar_lists()) {
                     auto* row = sidebar_row(list_icon_name(l->icon()), l->color(), l->name, open_count(*l), shortcut(index++));
                     set_row_view(row, View{View::List, l->name});
+                    if (hidden_.list_hidden(l->name)) gtk_widget_add_css_class(row, "hidden-entry");
                     make_drop_target(row, DropStyle::Into, "", [this, name = l->name](std::string dropped, rem::Document::Place) {
                         move_to_list(dropped, name);
                     });
@@ -928,9 +1065,11 @@ void Window::rebuild_sidebar() {
                 }
                 break;
             case rem::SidebarGroup::Tags:
-                for (auto& t : store_->tags()) {
-                    auto* row = sidebar_row("sr-tag-symbolic", "gray", "#" + t, std::nullopt, shortcut(index++));
+                for (auto& t : sidebar_tags()) {
+                    auto style = rem::load_tag_style(t);
+                    auto* row = sidebar_row(list_icon_name(style.icon), style.color, "#" + t, std::nullopt, shortcut(index++));
                     set_row_view(row, View{View::Tag, t});
+                    if (hidden_.tag_hidden(t)) gtk_widget_add_css_class(row, "hidden-entry");
                     add(row);
                 }
                 break;
@@ -968,8 +1107,16 @@ void Window::rebuild_content() {
             return refresh();
         }
         page_title = l->name;
-        int open = open_count(*l);
-        adw_window_title_set_subtitle(title, open == 1 ? "1 reminder" : std::format("{} reminders", open).c_str());
+        // "6 Reminders / 3 Complete": every reminder (subtasks included), and
+        // how many of them are done (shown with Ctrl+H or ⋮ → Show Completed).
+        int total = 0, done = 0;
+        l->doc.walk([&](rem::Reminder& r, rem::Reminder*) {
+            ++total;
+            done += r.done;
+        });
+        auto subtitle = std::format("{} {}", total, total == 1 ? "Reminder" : "Reminders");
+        if (done > 0) subtitle += std::format(" / {} Complete", done);
+        adw_window_title_set_subtitle(title, subtitle.c_str());
         body = build_list_view(*l);
     } else {
         if (auto* s = smart_info(view_.kind)) page_title = s->title;
@@ -1130,21 +1277,14 @@ GtkWidget* Window::clamp(GtkWidget* child) {
 GtkWidget* Window::build_list_view(rem::ListFile& l) {
     auto* page = vbox(24);
     std::vector<GtkWidget*> listboxes;
-    int hidden_done = 0;
     for (auto& section : l.doc.sections()) {
         auto* listbox = boxed_list();
         for (auto* r : section.reminders) {
-            if (r->done && !show_completed_) {
-                ++hidden_done;
-                continue;
-            }
+            if (r->done && !show_completed_) continue;
             gtk_list_box_append(GTK_LIST_BOX(listbox), build_reminder_row(rem::Ref{&l, r, nullptr}, false));
             if (collapsed_.contains(r->id)) continue;
             for (auto& s : r->subtasks) {
-                if (s.done && !show_completed_) {
-                    ++hidden_done;
-                    continue;
-                }
+                if (s.done && !show_completed_) continue;
                 gtk_list_box_append(GTK_LIST_BOX(listbox), build_reminder_row(rem::Ref{&l, &s, r}, false));
             }
         }
@@ -1159,18 +1299,6 @@ GtkWidget* Window::build_list_view(rem::ListFile& l) {
         listboxes.push_back(listbox);
     }
     chain_listboxes(listboxes);
-
-    if (hidden_done > 0) {
-        auto* footer = hbox(6);
-        gtk_widget_set_halign(footer, GTK_ALIGN_CENTER);
-        auto* show = gtk_button_new_with_label("Show");
-        gtk_widget_add_css_class(show, "flat");
-        gtk_actionable_set_action_name(GTK_ACTIONABLE(show), "win.show-completed");
-        append(footer, {label(hidden_done == 1 ? "1 completed" : std::format("{} completed", hidden_done),
-                              {"dim-label"}),
-                        show});
-        append(page, {footer});
-    }
     return clamp(page);
 }
 
@@ -1181,6 +1309,7 @@ GtkWidget* Window::build_smart_view() {
         case View::Today: refs = store_->today(day); break;
         case View::Scheduled: refs = store_->scheduled(); break;
         case View::All: refs = store_->all(); break;
+        case View::AllReminders: refs = store_->everything(); break;
         case View::Flagged: refs = store_->flagged(); break;
         case View::Completed: refs = store_->completed(); break;
         case View::Tag: refs = store_->tagged(view_.name); break;
@@ -1955,6 +2084,18 @@ void Window::edit_list(const std::string& name) {
                         ok = false;
                         return;
                     }
+                    if (e.name != name) {  // keeps its place in lists-order under its new name
+                        auto order = rem::load_names_setting("lists-order");
+                        if (auto at = std::ranges::find(order, name); at != order.end()) {
+                            *at = e.name;
+                            rem::save_names_setting("lists-order", order);
+                        }
+                    }
+                    if (e.name != name && hidden_.list_hidden(name)) {  // stays hidden under its new name
+                        rem::set_list_hidden(name, false);
+                        rem::set_list_hidden(e.name, true);
+                        hidden_ = rem::load_hidden();
+                    }
                     l->doc.set_meta("color", e.color);
                     l->doc.set_meta("icon", e.icon);
                     store_->save(*l);
@@ -2044,7 +2185,10 @@ Window::ViewInfo Window::view_info(const View& v) {
         auto* l = store_->list(v.name);
         return {v, v.name, l ? list_icon_name(l->icon()) : "view-list-bullet-symbolic", l ? l->color() : "gray"};
     }
-    if (v.kind == View::Tag) return {v, "#" + v.name, "sr-tag-symbolic", "gray"};
+    if (v.kind == View::Tag) {
+        auto style = rem::load_tag_style(v.name);
+        return {v, "#" + v.name, list_icon_name(style.icon), style.color};
+    }
     return {v, std::format("Search for “{}”", v.name), "edit-find-symbolic", "gray"};
 }
 
@@ -2160,12 +2304,72 @@ void Window::quick_switcher() {
 // The smart lists the settings show, in their order.
 std::vector<View> Window::smart_views() {
     std::vector<View> out;
-    if (smart_.hidden()) return out;
+    if (smart_.display == rem::GroupDisplay::Hidden) return out;
     for (auto& name : smart_.shown) {
         auto v = view_from_string(name);
         if (smart_info(v.kind)) out.push_back(v);
     }
+    if (hidden_.show)  // the hidden ones after them
+        for (auto& s : kSmart)
+            if (std::ranges::find(out, View{s.kind, ""}) == out.end()) out.push_back(View{s.kind, ""});
     return out;
+}
+
+std::vector<rem::ListFile*> Window::sidebar_lists() {
+    std::vector<rem::ListFile*> out;
+    for (auto& name : rem::order_lists(list_names()))
+        if (hidden_.show || !hidden_.list_hidden(name))
+            if (auto* l = store_->list(name)) out.push_back(l);
+    return out;
+}
+
+std::vector<std::string> Window::list_names() {
+    std::vector<std::string> names;
+    for (auto* l : store_->lists()) names.push_back(l->name);
+    return names;
+}
+
+std::vector<std::string> Window::sidebar_tags() {
+    std::vector<std::string> out;
+    for (auto& t : rem::order_tags(store_->tags()))
+        if (hidden_.show || !hidden_.tag_hidden(t)) out.push_back(t);
+    return out;
+}
+
+bool Window::entry_hidden(const View& v) {
+    if (smart_info(v.kind)) return std::ranges::find(smart_.shown, view_to_string(v)) == smart_.shown.end();
+    if (v.kind == View::List) return hidden_.list_hidden(v.name);
+    if (v.kind == View::Tag) return hidden_.tag_hidden(v.name);
+    return false;
+}
+
+// Hides or unhides a sidebar entry (saved in settings.ini). Leaving the view
+// that was just hidden goes to Today or the first entry showing.
+void Window::set_entry_hidden(const View& v, bool hidden) {
+    try {
+        if (smart_info(v.kind)) rem::set_smart_list_hidden(view_to_string(v), hidden);
+        else if (v.kind == View::List) rem::set_list_hidden(v.name, hidden);
+        else if (v.kind == View::Tag) rem::set_tag_hidden(v.name, hidden);
+    } catch (const std::exception& e) {
+        toast(std::format("Couldn't save the setting: {}", e.what()));
+    }
+    smart_ = rem::load_smart_lists_layout();
+    hidden_ = rem::load_hidden();
+    if (hidden && !hidden_.show && view_ == v) select(home_view());
+    rebuild_sidebar();
+}
+
+// Tag Info…: the tag's colour and icon, kept in settings.ini.
+void Window::edit_tag(const std::string& tag) {
+    auto style = rem::load_tag_style(tag);
+    show_tag_dialog(window_, tag, ListEdit{"#" + tag, style.color, style.icon}, [this, tag](ListEdit e) {
+        try {
+            rem::save_tag_style(tag, {e.color, e.icon});
+        } catch (const std::exception& err) {
+            toast(std::format("Couldn't save the setting: {}", err.what()));
+        }
+        rebuild_sidebar();
+    });
 }
 
 // Sidebar entries in display order. `include_folded` adds the entries of
@@ -2179,10 +2383,10 @@ std::vector<View> Window::sidebar_views(bool include_folded) {
                 for (auto& v : smart_views()) out.push_back(v);
                 break;
             case rem::SidebarGroup::MyLists:
-                for (auto* l : store_->lists()) out.push_back(View{View::List, l->name});
+                for (auto* l : sidebar_lists()) out.push_back(View{View::List, l->name});
                 break;
             case rem::SidebarGroup::Tags:
-                for (auto& t : store_->tags()) out.push_back(View{View::Tag, t});
+                for (auto& t : sidebar_tags()) out.push_back(View{View::Tag, t});
                 break;
         }
     }
@@ -2193,7 +2397,7 @@ std::vector<rem::SidebarGroup> Window::showing_groups() {
     std::vector<rem::SidebarGroup> out;
     for (auto g : order_) {
         if (g == rem::SidebarGroup::SmartLists && smart_views().empty()) continue;
-        if (g == rem::SidebarGroup::Tags && (tags_.hidden() || store_->tags().empty())) continue;
+        if (g == rem::SidebarGroup::Tags && (tags_.hidden() || sidebar_tags().empty())) continue;
         out.push_back(g);
     }
     return out;
@@ -2254,37 +2458,135 @@ void Window::move_group(rem::SidebarGroup group, int delta) {
     }
 }
 
+bool Window::can_move_entry(const View& v, int delta) {
+    if (v.kind == View::List) {
+        auto order = rem::order_lists(list_names());
+        std::vector<std::string> showing;
+        for (auto* l : sidebar_lists()) showing.push_back(l->name);
+        return rem::move_in_order(order, v.name, delta, showing);
+    }
+    if (smart_info(v.kind)) {
+        auto order = smart_.shown;  // a hidden smart list has no place to move
+        return rem::move_in_order(order, view_to_string(v), delta, order);
+    }
+    if (v.kind == View::Tag) {
+        auto order = rem::order_tags(store_->tags());
+        return rem::move_in_order(order, v.name, delta, sidebar_tags());
+    }
+    return false;
+}
+
+void Window::move_entry(const View& v, int delta) {
+    if (!store_) return;
+    try {
+        if (smart_info(v.kind)) {
+            auto order = smart_.shown;
+            if (!rem::move_in_order(order, view_to_string(v), delta, order)) return;
+            rem::save_smart_lists(order);
+            smart_ = rem::load_smart_lists_layout();
+        } else if (v.kind == View::Tag) {
+            auto order = rem::order_tags(store_->tags());
+            if (!rem::move_in_order(order, v.name, delta, sidebar_tags())) return;
+            rem::save_names_setting("tags-order", order);
+        } else if (v.kind == View::List) {
+            auto order = rem::order_lists(list_names());
+            std::vector<std::string> showing;
+            for (auto* l : sidebar_lists()) showing.push_back(l->name);
+            if (!rem::move_in_order(order, v.name, delta, showing)) return;
+            rem::save_names_setting("lists-order", order);
+        } else {
+            return;
+        }
+    } catch (const std::exception& e) {
+        toast(std::format("Couldn't save the order: {}", e.what()));
+        return;
+    }
+    rebuild_sidebar();
+    for (int i = 0;; ++i) {  // keep focus on the entry that moved
+        auto* row = gtk_list_box_get_row_at_index(GTK_LIST_BOX(sidebar_list_), i);
+        if (!row) break;
+        if (auto* rv = row_view(row); rv && *rv == v) {
+            gtk_widget_grab_focus(GTK_WIDGET(row));
+            break;
+        }
+    }
+}
+
 // The sidebar's context menu, for the group of the row under the pointer.
 void Window::sidebar_menu(GtkListBoxRow* row, double x, double y) {
-    auto group = row_group(row);
-    if (!group || !store_) return;
-    menu_group_ = *group;
-    auto showing = showing_groups();
-    auto can = [&](int delta) {
-        auto order = order_;
-        return rem::move_sidebar_group(order, *group, delta, showing);
-    };
-    // Every item goes in a section: loose items next to a section make the
-    // popover size itself wrongly (clipped, with scrollbars).
-    auto* menu = g_menu_new();
-    auto* moves = menu_section(menu);
-    auto title = std::string(rem::group_title(*group));
-    g_menu_append(moves, std::format("Move “{}” _Up", title).c_str(), "win.move-group-up");
-    g_menu_append(moves, std::format("Move “{}” _Down", title).c_str(), "win.move-group-down");
-    auto enable = [this](const char* name, bool on) {
-        g_simple_action_set_enabled(G_SIMPLE_ACTION(g_action_map_lookup_action(G_ACTION_MAP(window_), name)), on);
-    };
-    enable("move-group-up", can(-1));
-    enable("move-group-down", can(1));
-    g_menu_append(menu_section(menu), "_Collapsible", "win.group-collapsible");
-    g_simple_action_set_state(collapsible_action_, g_variant_new_boolean(group_foldable(*group)));
+    if (!store_ || !row) return;
+    Obj<GMenuModel> menu;
+    if (auto* v = row_view(row)) {
+        // An entry, which stays as it is (not opened). A list gets the same
+        // items as the header's ⋮ menu, but for this list (Show Completed is
+        // the window's setting, as in the ⋮ menu); a tag gets Tag Info…; all
+        // get Hidden.
+        auto view = *v;
+        auto name = v->name;
+        auto* actions = g_simple_action_group_new();
+        add_action(actions, "add-section", [this, name] { idle([this, name] { add_section(name); }); });
+        add_action(actions, "list-info", [this, name] { idle([this, name] { edit_list(name); }); });
+        add_action(actions, "delete-list", [this, name] { idle([this, name] { delete_list(name); }); });
+        add_action(actions, "tag-info", [this, name] { idle([this, name] { edit_tag(name); }); });
+        auto* up = add_action(actions, "move-up", [this, view] { idle([this, view] { move_entry(view, -1); }); });
+        auto* down = add_action(actions, "move-down", [this, view] { idle([this, view] { move_entry(view, 1); }); });
+        g_simple_action_set_enabled(up, can_move_entry(view, -1));
+        g_simple_action_set_enabled(down, can_move_entry(view, 1));
+        bool hidden = entry_hidden(view);
+        add_action(actions, "hide", [this, view, hidden] {  // Hide, or Show for a hidden one
+            idle([this, view, hidden] { set_entry_hidden(view, !hidden); });
+        });
+        gtk_widget_insert_action_group(sidebar_menu_button_, "sidebar-entry", G_ACTION_GROUP(actions));
+        g_object_unref(actions);
+        auto* m = g_menu_new();
+        if (view.kind == View::List) {
+            g_menu_append(menu_section(m), "_Show Completed", "win.show-completed");
+            auto* edit = menu_section(m);
+            g_menu_append(edit, "Add _Section…", "sidebar-entry.add-section");
+            g_menu_append(edit, "List _Info…", "sidebar-entry.list-info");
+        } else if (view.kind == View::Tag) {
+            g_menu_append(menu_section(m), "Tag _Info…", "sidebar-entry.tag-info");
+        }
+        {  // the entry's place in its group
+            auto* moves = menu_section(m);
+            g_menu_append(moves, "Move _Up", "sidebar-entry.move-up");
+            g_menu_append(moves, "Move _Down", "sidebar-entry.move-down");
+        }
+        g_menu_append(menu_section(m), hidden ? "_Show" : "_Hide", "sidebar-entry.hide");
+        if (view.kind == View::List) g_menu_append(menu_section(m), "_Delete List…", "sidebar-entry.delete-list");
+        menu = Obj<GMenuModel>::adopt(G_MENU_MODEL(m));
+    } else {
+        // A group heading: move the group, make it collapsible.
+        auto group = row_group(row);
+        if (!group) return;
+        menu_group_ = *group;
+        auto showing = showing_groups();
+        auto can = [&](int delta) {
+            auto order = order_;
+            return rem::move_sidebar_group(order, *group, delta, showing);
+        };
+        // Every item goes in a section: loose items next to a section make the
+        // popover size itself wrongly (clipped, with scrollbars).
+        auto* m = g_menu_new();
+        auto* moves = menu_section(m);
+        auto title = std::string(rem::group_title(*group));
+        g_menu_append(moves, std::format("Move “{}” _Up", title).c_str(), "win.move-group-up");
+        g_menu_append(moves, std::format("Move “{}” _Down", title).c_str(), "win.move-group-down");
+        auto enable = [this](const char* name, bool on) {
+            g_simple_action_set_enabled(G_SIMPLE_ACTION(g_action_map_lookup_action(G_ACTION_MAP(window_), name)), on);
+        };
+        enable("move-group-up", can(-1));
+        enable("move-group-down", can(1));
+        g_menu_append(menu_section(m), "_Collapsible", "win.group-collapsible");
+        g_simple_action_set_state(collapsible_action_, g_variant_new_boolean(group_foldable(*group)));
+        menu = Obj<GMenuModel>::adopt(G_MENU_MODEL(m));
+    }
     // The menu belongs to an invisible menu button over the sidebar, not to
     // the list box (rebuilding that removes all its children, popovers too),
     // and not to a plain widget, which never re-sizes a popover whose items
     // arrive after it opens (it came out clipped, with scrollbars).
     auto* button = GTK_MENU_BUTTON(sidebar_menu_button_);
-    gtk_menu_button_set_menu_model(button, G_MENU_MODEL(menu));
-    g_object_unref(menu);
+    gtk_menu_button_set_menu_model(button, menu.get());
     auto* popover = GTK_POPOVER(gtk_menu_button_get_popover(button));
     graphene_point_t in_list{static_cast<float>(x), static_cast<float>(y)}, point{};
     if (!gtk_widget_compute_point(sidebar_list_, sidebar_menu_button_, &in_list, &point)) point = in_list;

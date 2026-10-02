@@ -26,7 +26,7 @@ inline constexpr std::string_view kColors[] = {
     "indigo", "purple", "pink", "brown", "gray"};
 
 inline constexpr std::string_view kIcons[] = {
-    "list", "bookmark", "cart", "gift", "home", "work", "school",
+    "list", "tag", "bookmark", "cart", "gift", "home", "work", "school",
     "calendar", "flag", "star", "heart", "music", "game", "book", "food",
     "travel", "nature", "person", "people", "money", "pill", "computer",
     "camera"};

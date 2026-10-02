@@ -493,6 +493,10 @@ std::vector<Ref> Store::all() {
     return collect([](Reminder& r) { return !r.done; });
 }
 
+std::vector<Ref> Store::everything() {
+    return collect([](Reminder&) { return true; });
+}
+
 std::vector<Ref> Store::flagged() {
     return collect([](Reminder& r) { return !r.done && r.flagged; });
 }

@@ -65,8 +65,9 @@ the shortcuts below set the same fields without any emoji.
 ### Completing
 
 Click the circle, or press Space. Completed reminders fade out after a moment.
-Show them again with **⋮ → Show Completed** (Ctrl+H) or the **Show** link at
-the bottom of the list.
+Show them again with **⋮ → Show Completed** (Ctrl+H). The header under the
+list's name counts them: "6 Reminders / 3 Complete" (every reminder, subtasks
+included, and how many of those are done).
 
 - **Completing a reminder** also completes its subtasks.
 - **Completing a repeating reminder** marks this occurrence done and adds the
@@ -149,7 +150,7 @@ A list can be divided into sections (they are `## Headings` in the file).
 - **Go To** (Ctrl+K) jumps to any list, smart list or tag by typing part of
   its name. The last entry searches for what you typed.
 - **Ctrl+1 … Ctrl+9 and Ctrl+0** jump to the first ten sidebar entries, in
-  order: Today, Scheduled, All, Flagged, Completed, then your lists.
+  order: Today, Scheduled, All, All Reminders, Flagged, Completed, then your lists.
 
 ## Undo
 
@@ -196,6 +197,7 @@ Press Ctrl+? in the app for this list.
 | Ctrl+Page Down / Ctrl+Page Up | Next / previous sidebar entry |
 | Ctrl+Shift+N | New list |
 | Ctrl+H | Show / hide completed |
+| Ctrl+Shift+H | Show / hide hidden lists, smart lists and tags |
 | Ctrl+E | Show / hide all subtasks |
 
 **General**
@@ -268,8 +270,10 @@ Groceries.md                      ← a list (synced)
 
 `~/.config/reminders/settings.ini` is shared by the GNOME app and the terminal
 client. Most of it is filled in for you; `show-key-numbers` is only set here.
-In the terminal client, `S` opens it in your editor and applies the changes
-when you quit the editor; the app reads it at start-up.
+In the app, **main menu → Settings…** opens it in your default text editor
+(creating it if needed), and changes apply as soon as you save. In the
+terminal client, `S` opens it in your editor and applies the changes when you
+quit the editor.
 [settings.example.ini](settings.example.ini) lists every setting with its
 default, ready to copy. Settings must be under the `[general]` line; anything
 outside it is ignored.
@@ -285,7 +289,16 @@ show-key-numbers=true
 # The order of the sidebar's groups
 sidebar-order=smart-lists, my-lists, tags
 # Which smart lists to show, in this order
-smart-lists=today, scheduled, all, flagged, completed
+smart-lists=today, scheduled, all, all-reminders, flagged, completed
+# Lists and tags hidden from the sidebar, and whether to show them anyway
+lists-hidden=Work
+tags-hidden=frontend
+show-hidden=false
+# The tags' order: these first, then the rest alphabetically
+tags-order=work, errands
+# A tag's colour and icon (Tag Info…)
+tag-color.errands=orange
+tag-icon.errands=cart
 # How each group appears: visible, collapsible or hidden
 # (your lists can be visible or collapsible, not hidden)
 smart-lists-display=visible
@@ -302,8 +315,7 @@ Comments go on their own lines, starting with `#`.
 `show-key-numbers` labels the first ten sidebar entries with the key that jumps
 to them. In the app the shortcut is shown to the right of the name, e.g.
 `Today  Ctrl+1  4`, through `Ctrl+0`. In the terminal client it's a prefix,
-e.g. `(1)Today`, for the keys `1`–`9` and `0`. It accepts `true`, `yes` or `1`, is off when missing, and is
-read at start-up.
+e.g. `(1)Today`, for the keys `1`–`9` and `0`. It accepts `true`, `yes` or `1`, and is off when missing.
 
 **Sidebar groups.** The sidebar has three groups: the smart lists, your lists
 (My Lists) and tags.
@@ -313,12 +325,18 @@ smart-lists`. A group you leave out or misspell goes at the end, so a typo
 can't make your lists disappear. You can also rearrange them without editing
 the file:
 
-- **In the app:** right-click (or long-press) any entry or heading in the
-  sidebar and choose Move Up or Move Down, or press Alt+↑ / Alt+↓ on a
-  sidebar entry. The same menu's **Collapsible** item switches the group
-  between `visible` and `collapsible`.
-- **In the terminal client:** select a sidebar entry and press `K` / `J` (or
-  Alt+↑ / Alt+↓).
+- **In the app:** right-click (or long-press) a group's heading in the
+  sidebar and choose Move Up or Move Down, or press Alt+Shift+↑ /
+  Alt+Shift+↓ on any of its entries. The same menu's **Collapsible** item
+  switches the group between `visible` and `collapsible`.
+- **In the terminal client:** select a sidebar entry and press Alt+Shift+↑ /
+  Alt+Shift+↓ (or `K` / `J` on the group's heading).
+
+Right-clicking (or long-pressing) one of your lists in the sidebar shows the
+same menu as **⋮** in the header, for that list, without opening it: Show
+Completed, Add Section…, List Info…, Move Up / Move Down, Hide and Delete
+List…. (Show Completed is one setting for the whole window, as in the ⋮
+menu.)
 
 `smart-lists-display`, `my-lists-display` and `tags-display` each take one of
 these values:
@@ -343,6 +361,38 @@ mode.
   your lists start at Ctrl+1.
 - **Go To (Ctrl+K)** still finds entries in folded groups, but not in hidden
   ones.
+
+**Hiding entries.** Right-click (or long-press) any smart list, list or tag
+in the sidebar and choose **Hide** to take it out of the sidebar. Its
+reminders still appear in Today, All, search and so on; only the sidebar
+entry goes.
+
+- **Where it's saved:** `smart-lists` (a hidden smart list is left out of it),
+  `lists-hidden` and `tags-hidden`. They're settings for this computer, not
+  synced.
+- **Seeing them again:** the main menu's **Show Hidden Lists** (Ctrl+Shift+H) shows hidden
+  entries dimmed; choose **Show** on one to bring it back. It's saved as
+  `show-hidden`.
+- **The terminal client** follows the same settings.
+
+**Reordering entries.** The same keys work in the app and the terminal
+client:
+
+| Keys | Moves |
+|---|---|
+| Alt+↑ / Alt+↓ | The selected smart list, list or tag, within its group (in the terminal, also `K` / `J`) |
+| Alt+Shift+↑ / Alt+Shift+↓ | Its whole group |
+
+In the app, the right-click menu's **Move Up** / **Move Down** do the same
+for an entry, and on a heading for its group. The order is kept in
+settings.ini, for this computer only: smart lists in `smart-lists`, your
+lists in `lists-order` and tags in `tags-order`. Lists and tags not named
+there follow the others (lists in their usual order, tags alphabetically).
+Moves skip hidden entries.
+
+**Tag colours and icons.** Right-click a tag and choose **Tag Info…** to give
+it a colour and icon, as for a list. They're saved in settings.ini
+(`tag-color.NAME`, `tag-icon.NAME`), so they're per computer.
 - **A hidden last list:** if the list you last had open is now hidden, the app
   opens on Today or the first entry showing.
 

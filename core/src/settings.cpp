@@ -1,5 +1,7 @@
 #include "reminders/settings.hpp"
 
+#include "reminders/model.hpp"
+
 #include <unistd.h>
 
 #include <algorithm>
@@ -120,7 +122,8 @@ GroupDisplay load_display(const std::string& key) {
 }
 
 SmartListsLayout load_smart_lists_layout() {
-    static const std::vector<std::string> known = {"today", "scheduled", "all", "flagged", "completed"};
+    static const std::vector<std::string> known = {"today", "scheduled", "all", "all-reminders", "flagged",
+                                                   "completed"};
     SmartListsLayout layout;
     auto value = load_setting("smart-lists");
     if (!value.empty()) {
@@ -225,6 +228,134 @@ bool move_sidebar_group(std::vector<SidebarGroup>& order, SidebarGroup group, in
         return true;
     }
     return false;
+}
+
+std::vector<std::string> load_names_setting(const std::string& key) {
+    std::vector<std::string> out;
+    std::string value = load_setting(key), name;
+    bool quoted = false, any = false;
+    auto finish = [&] {
+        auto t = trimmed(name);
+        if (!t.empty() && std::ranges::find(out, t) == out.end()) out.push_back(t);
+        name.clear();
+        any = false;
+    };
+    for (char c : value) {
+        if (c == '"') {
+            quoted = !quoted;
+            any = true;
+        } else if (c == ',' && !quoted) {
+            finish();
+        } else {
+            name += c;
+        }
+    }
+    if (any || !name.empty()) finish();
+    return out;
+}
+
+void save_names_setting(const std::string& key, const std::vector<std::string>& names) {
+    std::string value;
+    for (auto& n : names) {
+        if (!value.empty()) value += ", ";
+        bool quote = n.find_first_of(",\"") != std::string::npos || n != trimmed(n);
+        if (quote) {
+            std::string escaped;
+            for (char c : n)
+                if (c != '"') escaped += c;  // quotes can't be stored; list names rarely have them
+            value += '"' + escaped + '"';
+        } else {
+            value += n;
+        }
+    }
+    save_setting(key, value);
+}
+
+bool HiddenEntries::list_hidden(std::string_view name) const { return std::ranges::find(lists, name) != lists.end(); }
+bool HiddenEntries::tag_hidden(std::string_view tag) const { return std::ranges::find(tags, tag) != tags.end(); }
+
+HiddenEntries load_hidden() {
+    return HiddenEntries{load_names_setting("lists-hidden"), load_names_setting("tags-hidden"),
+                         load_bool_setting("show-hidden")};
+}
+
+namespace {
+
+void set_in_names(const std::string& key, const std::string& name, bool present) {
+    auto names = load_names_setting(key);
+    auto at = std::ranges::find(names, name);
+    if (present == (at != names.end())) return;
+    if (present) names.push_back(name);
+    else names.erase(at);
+    save_names_setting(key, names);
+}
+
+}  // namespace
+
+void set_list_hidden(const std::string& name, bool hidden) { set_in_names("lists-hidden", name, hidden); }
+void set_tag_hidden(const std::string& tag, bool hidden) { set_in_names("tags-hidden", tag, hidden); }
+
+void set_smart_list_hidden(const std::string& name, bool hidden) {
+    auto shown = load_smart_lists_layout().shown;
+    auto at = std::ranges::find(shown, name);
+    if (hidden == (at == shown.end())) return;
+    if (hidden) shown.erase(at);
+    else shown.push_back(name);
+    save_smart_lists(shown);
+}
+
+void save_smart_lists(const std::vector<std::string>& shown) {
+    std::string value;
+    for (auto& s : shown) value += (value.empty() ? "" : ", ") + s;
+    save_setting("smart-lists", value.empty() ? "none" : value);
+}
+
+std::vector<std::string> order_tags(std::vector<std::string> tags) {
+    std::ranges::sort(tags);
+    std::vector<std::string> out;
+    for (auto& t : load_names_setting("tags-order"))
+        if (std::ranges::find(tags, t) != tags.end()) out.push_back(t);
+    for (auto& t : tags)
+        if (std::ranges::find(out, t) == out.end()) out.push_back(t);
+    return out;
+}
+
+std::vector<std::string> order_lists(const std::vector<std::string>& names) {
+    std::vector<std::string> out;
+    for (auto& n : load_names_setting("lists-order"))
+        if (std::ranges::find(names, n) != names.end()) out.push_back(n);
+    for (auto& n : names)
+        if (std::ranges::find(out, n) == out.end()) out.push_back(n);
+    return out;
+}
+
+bool move_in_order(std::vector<std::string>& order, const std::string& name, int delta,
+                   const std::vector<std::string>& showing) {
+    auto at = std::ranges::find(order, name);
+    if (at == order.end() || delta == 0) return false;
+    auto n = static_cast<long>(order.size());
+    int step = delta < 0 ? -1 : 1;
+    for (long i = (at - order.begin()) + step; i >= 0 && i < n; i += step) {
+        if (std::ranges::find(showing, order[static_cast<std::size_t>(i)]) == showing.end()) continue;
+        std::swap(*at, order[static_cast<std::size_t>(i)]);
+        return true;
+    }
+    return false;
+}
+
+void save_show_hidden(bool show) { save_setting("show-hidden", show ? "true" : "false"); }
+
+TagStyle load_tag_style(const std::string& tag) {
+    TagStyle style;
+    auto color = load_setting("tag-color." + tag), icon = load_setting("tag-icon." + tag);
+    if (std::ranges::find(kColors, color) != std::end(kColors)) style.color = color;
+    if (std::ranges::find(kIcons, icon) != std::end(kIcons)) style.icon = icon;
+    return style;
+}
+
+void save_tag_style(const std::string& tag, const TagStyle& style) {
+    save_setting("tag-color." + tag, style.color);
+    save_setting("tag-icon." + tag, style.icon);
 }
 
 std::optional<fs::path> saved_folder() {

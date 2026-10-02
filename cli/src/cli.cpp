@@ -34,7 +34,8 @@ With no command, opens the interactive (terminal) interface.
 Commands:
   lists                         Lists, with how many reminders are open in each
   list [VIEW] [-a]              Reminders in VIEW: a list name, today,
-                                scheduled, all, flagged, completed or #tag.
+                                scheduled, all, all-reminders, flagged,
+                                completed or #tag.
                                 Default: the list that last had focus in the
                                 app or TUI. -a also shows completed reminders
   show NAME                     Everything about one reminder
@@ -473,6 +474,10 @@ int App::cmd_list(const Args& a) {
         } else {
             refs = store_.all();
         }
+    } else if (v == "all-reminders") {  // completed too, like "all -a"
+        title = "All Reminders";
+        for (auto* l : store_.lists())
+            l->doc.walk([&](rem::Reminder& r, rem::Reminder* p) { refs.push_back({l, &r, p}); });
     } else if (v == "flagged") {
         refs = store_.flagged(), title = "Flagged", flat = true;
     } else if (v == "completed") {

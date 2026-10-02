@@ -40,6 +40,7 @@ bool uses_12h_clock() {
 const char* list_icon_name(std::string_view icon) {
     static constexpr std::pair<std::string_view, const char*> map[] = {
         {"list", "view-list-bullet-symbolic"},
+        {"tag", "sr-tag-symbolic"},
         {"bookmark", "user-bookmarks-symbolic"},
         {"cart", "sr-cart-symbolic"},
         {"gift", "sr-gift-symbolic"},

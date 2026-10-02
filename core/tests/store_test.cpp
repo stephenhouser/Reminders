@@ -164,6 +164,7 @@ TEST(smart_lists) {
     CHECK_EQ(sched[0].reminder->title, "overdue");
     CHECK_EQ(sched[1].reminder->title, "b today");  // all-day before 10:00
     CHECK_EQ(s.all().size(), 6u);
+    CHECK_EQ(s.everything().size(), 8u);  // the 6 open and the 2 completed
     CHECK_EQ(s.flagged().size(), 2u);
     auto done = s.completed();
     CHECK_EQ(done.size(), 2u);

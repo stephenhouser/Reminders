@@ -127,7 +127,7 @@ Ground rules
 
 3. The GNOME app
 - Layout: AdwOverlaySplitView (the sidebar can be hidden at any width;
-  collapses below 560sp). The sidebar has smart lists (Today, Scheduled, All,
+  collapses below 560sp). The sidebar has smart lists (Today, Scheduled, All, All Reminders (completed too),
   Flagged, Completed, with counts), My Lists (coloured icon badges, counts)
   and Tags, plus a search bar and a "New List" button. The content area
   shows the selected view in AdwClamp'd boxed lists at 90% of the content
@@ -135,7 +135,9 @@ Ground rules
 - List view: one boxed list per section, with a heading and a ⋮ menu
   (Rename, Delete with "keep reminders" or "delete them"). A "New Reminder"
   entry row ends each section: typed inline fields are parsed. Completed
-  reminders are hidden behind a "N completed · Show" footer.
+  reminders are hidden (Ctrl+H / ⋮ → Show Completed shows them); the header
+  subtitle reads "6 Reminders / 3 Complete" (all, subtasks included / done;
+  the "/ N Complete" part only when some are done).
 - Reminder row: round check button (the list colour is the accent), an
   editable title (it must wrap: find the GtkLabel inside GtkEditableLabel and
   enable wrapping), priority marks !/!!/!!!, a second line (due date, red if
@@ -198,7 +200,7 @@ Ground rules
   it changes (not for searches); `reminders list` with no VIEW shows it and
   `add` without --list adds to it (else the first list); the CLI never writes
   it; a --folder other than the saved folder ignores it.
-  "show-key-numbers=true" (settings file only, read at start-up) labels the
+  "show-key-numbers=true" (settings file only) labels the
   first ten sidebar entries with their jump key: in the GUI a dim
   gtk_accelerator_get_label() "Ctrl+1" … "Ctrl+0" to the right of the name
   (before the count), in the TUI a "(1)Today" … "(0)…" prefix (the TUI's 0 key jumps to the 10th entry, like Ctrl+0).
@@ -211,15 +213,46 @@ Ground rules
   which smart lists and in what order. sidebar-order (smart-lists, my-lists,
   tags; missing/misspelled groups appended) orders the groups; my-lists-display
   is visible | collapsible (never hidden). Rearranging: GUI right-click /
-  long-press on a sidebar row → Move "Group" Up/Down and a Collapsible check
-  item (visible <-> collapsible), or Alt+↑/↓ on a row;
+  long-press on a group heading → Move "Group" Up/Down and a Collapsible check
+  item (visible <-> collapsible), or Alt+↑/↓ on a row. Right-click on a
+  list entry pops up the ⋮ menu's items for that list without opening it (a
+  "sidebar-list" action group, bound to the list's name, is inserted on the
+  hidden menu button; Show Completed stays win.show-completed); smart lists
+  and tags get no menu;
   TUI J/K or Alt+↑/↓ in the sidebar (core move_sidebar_group skips groups
   not showing). TUI S opens settings.ini in $EDITOR and reloads it.
+  GUI main menu Settings… opens it with GtkFileLauncher (the default text
+  editor), creating it with [general]; a GFileMonitor on the file reloads it
+  300 ms after a change (skipped if the text is unchanged; sidebar focus kept
+  across the rebuild), so the app's own writes and outside edits both apply.
   One ordering
   function per front end drives drawing, the number labels, Ctrl+1…/1…,
   Ctrl+PgUp/PgDn (over what's showing) and Go To (which also finds folded
   groups); a hidden saved view falls back to Today or the first entry. The
   TUI sidebar starts with a bold "Reminders" title and a blank line.
+  Hidden entries: each sidebar entry's right-click menu has Hide (or Show,
+  on an entry already hidden) (lists: Show Completed, Add Section, List Info,
+  Hide, Delete List; tags: Tag Info, Move Up/Down, Hide; smart lists: Move
+  Up/Down, Hide), acting on that entry without
+  opening it ("sidebar-entry" action group on the hidden menu button).
+  Hidden smart lists are left out of smart-lists; lists/tags go in
+  lists-hidden / tags-hidden (comma-separated, quoted if a name has a comma;
+  core load/save_names_setting). Main menu "Show Hidden Lists" (show-hidden)
+  shows them dimmed (.hidden-entry). Hiding is per device (settings.ini) by
+  choice: a list's file is synced, and you may hide Work on one machine only.
+  A renamed hidden list stays hidden. Tag Info (show_tag_dialog: the list
+  dialog without the name row) saves tag-color.NAME / tag-icon.NAME; "tag" was
+  added to kIcons as the tags' default icon. The TUI follows all of these.
+  Entry order (same keys in GUI and TUI): Alt+↑/↓ moves the selected smart
+  list, list or tag within its group (TUI also J/K; on a heading, the group);
+  Alt+Shift+↑/↓ moves the group (TUI: kUP4/kDN4, or Esc + KEY_SR/KEY_SF).
+  Menus have Move Up/Down too. Saved per device: smart-lists, lists-order,
+  tags-order (core order_lists / order_tags: named ones first; move_in_order
+  skips entries not showing); a renamed list keeps its place. The TUI marks
+  a hidden entry shown by show-hidden with "-" in column 0. TUI h hides the
+  selected sidebar entry (the open view from the reminders pane), or shows
+  a hidden one; H toggles show-hidden. (h no longer means "go to the
+  sidebar"; ← and Tab do that.)
   Copy/paste (GUI): Ctrl+C on a reminder row copies it as list-file Markdown
   without ids (core clipboard.hpp: to_clipboard_text / from_clipboard_text).
   Ctrl+V is a window key controller in the bubble phase, so focused text
@@ -370,8 +403,6 @@ only compiled.
 - **Not yet confirmed by the user:** the GUI right-click menu for moving
   sidebar groups, after the popover fix above (tested headless only).
 - **Known gaps:**
-  - The GNOME app reads settings.ini only at start-up (the TUI reloads it
-    after `S`).
   - No iOS, Android, Windows or macOS client yet. iOS can't be built on the
     Linux dev machine (no Swift or Xcode); nothing gets installed without
     asking.

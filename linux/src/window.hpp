@@ -18,7 +18,7 @@
 namespace ui {
 
 struct View {
-    enum Kind { Today, Scheduled, All, Flagged, Completed, List, Tag, Search } kind = Today;
+    enum Kind { Today, Scheduled, All, Flagged, Completed, AllReminders, List, Tag, Search } kind = Today;
     std::string name;  // list name, tag, or search text
     bool operator==(const View&) const = default;
 };
@@ -36,6 +36,9 @@ public:
     void show_reminder(const std::string& id);
     // Overrides the show-key-numbers setting (from the command line).
     void set_show_key_numbers(bool on);
+    void open_settings();    // Settings…: settings.ini in the default text editor
+    void reload_settings();  // applies settings.ini as it is now
+    void watch_settings();
 
 private:
     Window(AdwApplication* app, std::optional<std::filesystem::path> folder);
@@ -76,6 +79,16 @@ private:
     void set_priority(const std::string& id, rem::Priority priority);
     void indent(const std::string& id, bool in);  // false: outdent
     std::vector<View> smart_views();
+    // Your lists and tags the sidebar shows: hidden ones only with Show Hidden.
+    std::vector<rem::ListFile*> sidebar_lists();  // in lists-order
+    std::vector<std::string> list_names();       // every list, in the store's order
+    std::vector<std::string> sidebar_tags();
+    bool entry_hidden(const View& v);  // hidden by the settings (shown or not)
+    void set_entry_hidden(const View& v, bool hidden);
+    // A smart list's or tag's place among the others (smart-lists, tags-order).
+    bool can_move_entry(const View& v, int delta);
+    void move_entry(const View& v, int delta);
+    void edit_tag(const std::string& tag);
     std::vector<View> sidebar_views(bool include_folded = false);  // in sidebar order
     std::vector<rem::SidebarGroup> showing_groups();  // the groups with something to show
     rem::GroupLayout* layout_of(rem::SidebarGroup group);  // nullptr for the smart lists
@@ -151,6 +164,11 @@ private:
 
     std::unique_ptr<rem::Store> store_;
     Obj<GFileMonitor> monitor_;
+    Obj<GFileMonitor> settings_monitor_;  // settings.ini, to apply edits made elsewhere
+    gulong settings_handler_ = 0;
+    guint settings_timer_ = 0;
+    std::string settings_text_;  // settings.ini as last applied
+    std::optional<bool> key_numbers_override_;  // --show-key-numbers / --hide-key-numbers
     gulong monitor_handler_ = 0;
     GtkWidget* first_new_entry_ = nullptr;  // "New Reminder" entry of the current list
     std::set<std::string> pending_reload_;
@@ -167,6 +185,8 @@ private:
     rem::SmartListsLayout smart_;    // settings.ini: smart-lists, -display, -collapsed
     rem::GroupLayout lists_;         // settings.ini: my-lists-display, -collapsed
     rem::GroupLayout tags_;          // settings.ini: tags-display, tags-collapsed
+    rem::HiddenEntries hidden_;      // settings.ini: lists-hidden, tags-hidden, show-hidden
+    GSimpleAction* show_hidden_action_ = nullptr;
     rem::SidebarGroup menu_group_ = rem::SidebarGroup::MyLists;  // the sidebar menu's group
     GSimpleAction* collapsible_action_ = nullptr;  // the sidebar menu's "Collapsible" check item
     std::set<std::string> collapsed_;  // reminders whose subtasks are hidden (this session)

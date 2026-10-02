@@ -36,7 +36,8 @@ reminders folder [PATH]
 ```
 
 **VIEW** is a list name (case doesn't matter), `today`, `scheduled`, `all`,
-`flagged`, `completed` or `#tag`. `-a` includes completed reminders.
+`all-reminders` (open and completed), `flagged`, `completed` or `#tag`. `-a`
+includes completed reminders.
 
 **The last list you had open** is shared by the GNOME app, the TUI and the CLI
 (the `view` line in `~/.config/reminders/settings.ini`):
@@ -138,8 +139,8 @@ for scripts.
 Run `reminders` with no command. The sidebar (smart lists, your lists, tags)
 is on the left, and the selected view on the right. When a group is set to
 `collapsible`, move onto its heading and press Enter or Space to fold or
-unfold it. `K` / `J` (or Alt+↑ / Alt+↓) on a sidebar entry move its group up or
-down. Which groups show, and in what order,
+unfold it. Alt+↑ / Alt+↓ (or `K` / `J`) move the selected entry within its group, and
+Alt+Shift+↑ / Alt+Shift+↓ move the group, as in the app. Which groups show, and in what order,
 follow the same settings as the app (see
 [the settings file](USING.md#the-settings-file)). It opens on the last list
 you had open, here or in the GNOME app. Changes made elsewhere (in
@@ -149,14 +150,17 @@ within a second.
 | Key | Action |
 |---|---|
 | ↑ ↓ / j k, Page Up/Down | Move |
-| Tab, ← → (h l) | Switch between the sidebar and the reminders |
+| Tab, ← → | Switch between the sidebar and the reminders (`l` also moves to the reminders) |
 | Enter | Open the selected sidebar entry |
-| 1–9, 0 | Jump to sidebar entry 1–10 (Today, Scheduled, All, Flagged, Completed, your lists); `0` is the 10th |
+| 1–9, 0 | Jump to sidebar entry 1–10 (Today, Scheduled, All, All Reminders, Flagged, Completed, your lists); `0` is the 10th |
 | g | Go to a list or tag by typing part of its name |
 | / | Search |
 | c | Show / hide completed |
-| J / K, Alt+↓ / Alt+↑ | In the sidebar: move the selected group down / up |
+| J / K, Alt+↓ / Alt+↑ | In the sidebar: move the selected smart list, list or tag down / up in its group (on a heading: the group) |
+| Alt+Shift+↓ / Alt+Shift+↑ | In the sidebar: move the selected entry's group down / up |
 | S | Edit the settings file in your editor (applied when you quit it) |
+| h | Hide the selected list, smart list or tag from the sidebar; on a hidden one, show it again |
+| H | Show / stop showing hidden lists, smart lists and tags (dimmed), like the app's Show Hidden Lists |
 | N | New list |
 | u / r | Undo / redo |
 | ? | Help |
@@ -218,8 +222,8 @@ When you edit a title in place, fields you type into it (`#tag`,
 Some GUI shortcuts can't reach a terminal app, so their letter keys above stand
 in for them:
 
-- **Ctrl+Shift+letter** arrives as plain Ctrl+letter. So Ctrl+Shift+N, F, T
-  and Z are `N`, `f`, `T` and `r` (Ctrl+E toggles, as in the app).
+- **Ctrl+Shift+letter** arrives as plain Ctrl+letter. So Ctrl+Shift+N, F, T,
+  H and Z are `N`, `f`, `T`, `H` and `r` (Ctrl+E toggles, as in the app).
 - **Ctrl+I** is the same as Tab, which switches panes, so editing every field
   is `e` or `i`.
 - **Ctrl+]** and **Ctrl+[** (indent / outdent) are `]` and `[`: Ctrl+[ is the

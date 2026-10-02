@@ -57,10 +57,11 @@ void show_shortcuts(GtkApplication* app) {
                       {"Sidebar Entry 10", "<Control>0"},
                       {"Next in Sidebar", "<Control>Page_Down"},
                       {"Previous in Sidebar", "<Control>Page_Up"},
-                      {"Move Sidebar Group Up (in the Sidebar)", "<Alt>Up"},
-                      {"Move Sidebar Group Down (in the Sidebar)", "<Alt>Down"},
+                      {"Move Up / Down in the Sidebar", "<Alt>Up <Alt>Down"},
+                      {"Move Sidebar Group Up / Down", "<Alt><Shift>Up <Alt><Shift>Down"},
                       {"New List", "<Control><Shift>n"},
                       {"Show / Hide Completed", "<Control>h"},
+                      {"Show / Hide Hidden Lists", "<Control><Shift>h"},
                       {"Show / Hide All Subtasks", "<Control>e"}});
     section("General", {{"Undo", "<Control>z"},
                         {"Redo", "<Control><Shift>z"},
@@ -207,6 +208,7 @@ int main(int argc, char** argv) {
         accel("win.new-list", "<Control><Shift>n");
         accel("win.search", "<Control>f");
         accel("win.show-completed", "<Control>h");
+        accel("win.show-hidden", "<Control><Shift>h");
         accel("win.toggle-sidebar", "<Control>b");
         accel("win.toggle-subtasks", "<Control>e");
         for (int n = 1; n <= 10; ++n) {

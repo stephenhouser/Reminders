@@ -38,4 +38,9 @@ void show_list_dialog(GtkWidget* parent, std::optional<ListEdit> existing,
                       std::function<std::string(const ListEdit&)> validate,
                       std::function<void(ListEdit)> on_done);
 
+// "Tag Info": the same colour and icon choices, without a name to edit
+// (`style.name` is shown as the subtitle, e.g. "#errands").
+void show_tag_dialog(GtkWidget* parent, const std::string& tag, ListEdit style,
+                     std::function<void(ListEdit)> on_done);
+
 }  // namespace ui

@@ -99,6 +99,7 @@ public:
     std::vector<Ref> today(Date today);  // open, due today or overdue
     std::vector<Ref> scheduled();        // open with a due date, by date
     std::vector<Ref> all();              // open
+    std::vector<Ref> everything();       // open and completed ("All Reminders")
     std::vector<Ref> flagged();          // open and flagged
     std::vector<Ref> completed();        // done, most recent first
     std::vector<Ref> tagged(std::string_view tag);

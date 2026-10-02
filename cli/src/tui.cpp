@@ -139,10 +139,18 @@ attr_t dim() { return has_colors() ? COLOR_PAIR(kDim) : A_DIM; }
 // --- the interface -------------------------------------------------------------
 
 struct View {
-    enum Kind { Today, Scheduled, All, Flagged, Completed, List, Tag, Search } kind = Today;
+    enum Kind { Today, Scheduled, All, Flagged, Completed, AllReminders, List, Tag, Search } kind = Today;
     std::string name;
     bool operator==(const View&) const = default;
 };
+
+// The smart lists' names in settings.ini, by View::Kind.
+constexpr std::pair<int, const char*> kViewSettings[] = {
+    {0, "today"}, {1, "scheduled"}, {2, "all"}, {3, "flagged"}, {4, "completed"}, {5, "all-reminders"}};
+
+// Alt+Shift+↑ / ↓ (move the sidebar group), as internal keys outside the
+// range of characters.
+constexpr wint_t kGroupUp = 0x110010, kGroupDown = 0x110011;
 
 struct SidebarEntry {
     View view;
@@ -153,6 +161,7 @@ struct SidebarEntry {
     // group's) can be selected, and Enter/Space folds or unfolds the group.
     enum Kind { Item, Heading, FoldHeading } kind = Item;
     rem::SidebarGroup group = rem::SidebarGroup::MyLists;  // the group the row belongs to
+    bool hidden = false;  // hidden in settings.ini, showing because of show-hidden (dimmed)
 };
 
 struct Line {
@@ -189,8 +198,10 @@ private:
     rem::SmartListsLayout smart_ = rem::load_smart_lists_layout();
     rem::GroupLayout lists_ = rem::load_my_lists_layout();
     rem::GroupLayout tags_ = rem::load_tags_layout();
+    rem::HiddenEntries hidden_ = rem::load_hidden();  // lists-hidden, tags-hidden, show-hidden
     // Extended key codes for the GUI's modified keys, 0 if the terminal lacks them.
-    int alt_up_ = 0, alt_down_ = 0, ctrl_page_down_ = 0, ctrl_page_up_ = 0;
+    int alt_up_ = 0, alt_down_ = 0, alt_shift_up_ = 0, alt_shift_down_ = 0, ctrl_page_down_ = 0,
+        ctrl_page_up_ = 0;
     int side_sel_ = 0;
     std::string item_sel_;  // selected reminder id
     int item_scroll_ = 0;
@@ -205,7 +216,10 @@ private:
     bool folded(rem::SidebarGroup group);
     void toggle_fold(rem::SidebarGroup group);
     void move_group(int delta);
+    void move_entry(int delta);
     void edit_settings();
+    void toggle_hidden();
+    void toggle_show_hidden();
     void load_layout();
     View home_view();
     std::vector<Line> lines();
@@ -245,13 +259,20 @@ private:
 std::vector<SidebarEntry> Tui::smart_entries() {
     auto today = rem::local_today();
     std::vector<SidebarEntry> out;
-    if (smart_.hidden()) return out;
-    for (auto& name : smart_.shown) {
+    if (smart_.display == rem::GroupDisplay::Hidden) return out;
+    auto names = smart_.shown;
+    if (hidden_.show)  // the hidden ones after them
+        for (auto name : {"today", "scheduled", "all", "all-reminders", "flagged", "completed"})
+            if (std::ranges::find(names, name) == names.end()) names.push_back(name);
+    for (auto& name : names) {
         if (name == "today") out.push_back({{View::Today, ""}, "Today", "blue", static_cast<int>(store_.today(today).size())});
         if (name == "scheduled") out.push_back({{View::Scheduled, ""}, "Scheduled", "red", static_cast<int>(store_.scheduled().size())});
         if (name == "all") out.push_back({{View::All, ""}, "All", "gray", static_cast<int>(store_.all().size())});
+        if (name == "all-reminders")  // completed too
+            out.push_back({{View::AllReminders, ""}, "All Reminders", "gray", static_cast<int>(store_.everything().size())});
         if (name == "flagged") out.push_back({{View::Flagged, ""}, "Flagged", "orange", static_cast<int>(store_.flagged().size())});
         if (name == "completed") out.push_back({{View::Completed, ""}, "Completed", "gray", static_cast<int>(store_.completed().size())});
+        out.back().hidden = std::ranges::find(smart_.shown, name) == smart_.shown.end();
     }
     return out;
 }
@@ -261,7 +282,10 @@ std::vector<rem::SidebarGroup> Tui::showing_groups() {
     std::vector<rem::SidebarGroup> out;
     for (auto g : order_) {
         if (g == rem::SidebarGroup::SmartLists && smart_entries().empty()) continue;
-        if (g == rem::SidebarGroup::Tags && (tags_.hidden() || store_.tags().empty())) continue;
+        if (g == rem::SidebarGroup::Tags && (tags_.hidden() || std::ranges::none_of(store_.tags(), [&](auto& t) {
+                                                 return hidden_.show || !hidden_.tag_hidden(t);
+                                             })))
+            continue;
         out.push_back(g);
     }
     return out;
@@ -308,15 +332,28 @@ std::vector<SidebarEntry> Tui::sidebar() {
         std::vector<SidebarEntry> rows;
         switch (g) {
             case rem::SidebarGroup::SmartLists: rows = smart_entries(); break;
-            case rem::SidebarGroup::MyLists:
-                for (auto* list : store_.lists()) {
+            case rem::SidebarGroup::MyLists: {
+                std::vector<std::string> names;
+                for (auto* l : store_.lists()) names.push_back(l->name);
+                for (auto& n : rem::order_lists(names)) {
+                    auto* list = store_.list(n);
+                    if (!list) continue;
+                    bool hidden = hidden_.list_hidden(list->name);
+                    if (hidden && !hidden_.show) continue;
                     int open = 0;
                     list->doc.walk([&](rem::Reminder& r, rem::Reminder*) { open += !r.done; });
                     rows.push_back({{View::List, list->name}, list->name, list->color(), open});
+                    rows.back().hidden = hidden;
                 }
                 break;
+            }
             case rem::SidebarGroup::Tags:
-                for (auto& t : store_.tags()) rows.push_back({{View::Tag, t}, "#" + t, "gray", -1});
+                for (auto& t : rem::order_tags(store_.tags())) {
+                    bool hidden = hidden_.tag_hidden(t);
+                    if (hidden && !hidden_.show) continue;
+                    rows.push_back({{View::Tag, t}, "#" + t, rem::load_tag_style(t).color, -1});
+                    rows.back().hidden = hidden;
+                }
                 break;
         }
         for (auto& r : rows) {
@@ -387,6 +424,7 @@ std::vector<Line> Tui::lines() {
         case View::Today: refs = store_.today(today); break;
         case View::Scheduled: refs = store_.scheduled(); break;
         case View::All: refs = store_.all(); break;
+        case View::AllReminders: refs = store_.everything(); break;
         case View::Flagged: refs = store_.flagged(); break;
         case View::Completed: refs = store_.completed(); break;
         case View::Tag: refs = store_.tagged(view_.name); break;
@@ -445,10 +483,14 @@ void Tui::draw_sidebar(int width, int height) {
         if (selected) attron(COLOR_PAIR(kSelected) | A_BOLD);
         else if (current) attron(A_BOLD);
         mvhline(y, 0, ' ', width - 1);
-        bool colored = e.view.kind == View::List;
+        // Lists in their colour, tags too once given one (Tag Info… in the app).
+        bool colored = e.view.kind == View::List || (e.view.kind == View::Tag && e.color != "gray");
+        if (e.hidden && !selected) attron(dim());
         if (colored) attron(list_color(e.color));
         put(y, 1, rem::with_key_number(e.title, number++, show_key_numbers_), width - 8);
         if (colored) attroff(list_color(e.color));
+        if (e.hidden && !selected) attroff(dim());
+        if (e.hidden) mvaddstr(y, 0, "-");  // hidden, showing because of show-hidden (H)
         if (e.count >= 0) {
             auto count = std::to_string(e.count);
             attron(dim());
@@ -468,7 +510,8 @@ void Tui::draw_items(int x, int width, int height) {
     else if (view_.kind == View::Tag) title = "#" + view_.name;
     else if (view_.kind == View::Search) title = std::format("Search: {}", view_.name);
     else {
-        static constexpr const char* smart_titles[] = {"Today", "Scheduled", "All", "Flagged", "Completed"};
+        static constexpr const char* smart_titles[] = {"Today", "Scheduled", "All", "Flagged", "Completed",
+                                                       "All Reminders"};
         title = smart_titles[static_cast<int>(view_.kind)];
     }
     attron(A_BOLD);
@@ -686,8 +729,10 @@ void Tui::show_help() {
         "  ↑↓ / j k     move           tab         switch sidebar / reminders",
         "  1-9, 0       sidebar entry  g / Ctrl+K  go to a list by name",
         "  enter        on a collapsible group's heading: fold / unfold it",
-        "  J / K        in the sidebar: move the selected group down / up",
+        "  J / K        in the sidebar: move the entry down / up (Alt+Shift+↑↓: its group)",
         "  S            edit settings.ini in your $EDITOR",
+        "  h            hide the selected list, smart list or tag (shows a hidden one)",
+        "  H            show / stop showing hidden lists, smart lists and tags",
         "  /            search         c           show/hide completed",
         "  N            new list       u / r       undo / redo",
         "  ?            this help      q           quit",
@@ -743,12 +788,64 @@ void Tui::move_group(int delta) {
     }
 }
 
+// Moves the selected smart list, list or tag up (delta < 0) or down within
+// its group, skipping entries not showing, and saves the order (smart-lists,
+// lists-order, tags-order). The selection stays on it.
+void Tui::move_entry(int delta) {
+    auto entries = sidebar();
+    if (side_sel_ < 0 || side_sel_ >= static_cast<int>(entries.size())) return;
+    auto selected = entries[static_cast<std::size_t>(side_sel_)];
+    if (selected.kind != SidebarEntry::Item) return;
+    std::vector<std::string> showing;  // the names of the group's rows, as drawn
+    auto name_of = [](const SidebarEntry& e) {
+        return e.view.kind <= View::AllReminders ? std::string(kViewSettings[static_cast<int>(e.view.kind)].second)
+                                                 : e.view.name;
+    };
+    for (auto& e : entries)
+        if (e.kind == SidebarEntry::Item && e.group == selected.group) showing.push_back(name_of(e));
+    auto name = name_of(selected);
+    try {
+        switch (selected.group) {
+            case rem::SidebarGroup::SmartLists: {
+                auto order = smart_.shown;  // a hidden smart list has no place to move
+                if (!rem::move_in_order(order, name, delta, order)) return;
+                rem::save_smart_lists(order);
+                break;
+            }
+            case rem::SidebarGroup::MyLists: {
+                std::vector<std::string> names;
+                for (auto* l : store_.lists()) names.push_back(l->name);
+                auto order = rem::order_lists(names);
+                if (!rem::move_in_order(order, name, delta, showing)) return;
+                rem::save_names_setting("lists-order", order);
+                break;
+            }
+            case rem::SidebarGroup::Tags: {
+                auto order = rem::order_tags(store_.tags());
+                if (!rem::move_in_order(order, name, delta, showing)) return;
+                rem::save_names_setting("tags-order", order);
+                break;
+            }
+        }
+    } catch (const std::exception& e) {
+        message_ = std::format("Couldn't save the order: {}", e.what());
+        return;
+    }
+    load_layout();
+    entries = sidebar();
+    for (int i = 0; i < static_cast<int>(entries.size()); ++i)
+        if (entries[static_cast<std::size_t>(i)].kind == SidebarEntry::Item &&
+            entries[static_cast<std::size_t>(i)].view == selected.view)
+            side_sel_ = i;
+}
+
 void Tui::load_layout() {
     show_key_numbers_ = key_numbers_override_.value_or(rem::load_bool_setting("show-key-numbers"));
     order_ = rem::load_sidebar_order();
     smart_ = rem::load_smart_lists_layout();
     lists_ = rem::load_my_lists_layout();
     tags_ = rem::load_tags_layout();
+    hidden_ = rem::load_hidden();
 }
 
 // Opens settings.ini in $EDITOR, then applies what changed.
@@ -773,7 +870,8 @@ void Tui::edit_settings() {
     // The view may have just been hidden.
     bool smart = view_.kind != View::List && view_.kind != View::Tag && view_.kind != View::Search;
     if ((smart && std::ranges::none_of(smart_entries(), [&](auto& e) { return e.view == view_; })) ||
-        (view_.kind == View::Tag && tags_.hidden()))
+        (view_.kind == View::Tag && (tags_.hidden() || (!hidden_.show && hidden_.tag_hidden(view_.name)))) ||
+        (view_.kind == View::List && !hidden_.show && hidden_.list_hidden(view_.name)))
         select_view(home_view());
     else {
         auto keep = std::pair{item_sel_, item_scroll_};
@@ -805,8 +903,72 @@ void Tui::edit_in_editor(const std::string& id) {
                                                             : "No changes";
 }
 
-constexpr std::pair<int, const char*> kViewSettings[] = {
-    {0, "today"}, {1, "scheduled"}, {2, "all"}, {3, "flagged"}, {4, "completed"}};
+
+// h: hides the selected sidebar entry (the open view, from the reminders
+// pane), or shows it again if it's hidden (visible with show-hidden). Saved
+// in settings.ini, as the app's Hide / Show does.
+void Tui::toggle_hidden() {
+    auto target = view_;
+    std::string title;  // as the sidebar shows it
+    for (auto& e : sidebar())
+        if (e.kind == SidebarEntry::Item && e.view == target) title = e.title;
+    if (!focus_items_) {
+        auto entries = sidebar();
+        if (side_sel_ < 0 || side_sel_ >= static_cast<int>(entries.size())) return;
+        auto& e = entries[static_cast<std::size_t>(side_sel_)];
+        if (e.kind != SidebarEntry::Item) return;
+        target = e.view;
+        title = e.title;
+    }
+    bool smart = target.kind <= View::AllReminders;
+    std::string name = smart ? kViewSettings[static_cast<int>(target.kind)].second : target.name;
+    bool hidden = smart                         ? std::ranges::find(smart_.shown, name) == smart_.shown.end()
+                  : target.kind == View::List ? hidden_.list_hidden(name)
+                  : target.kind == View::Tag  ? hidden_.tag_hidden(name)
+                                              : false;
+    if (target.kind == View::Search) return;
+    try {
+        if (smart) rem::set_smart_list_hidden(name, !hidden);
+        else if (target.kind == View::List) rem::set_list_hidden(name, !hidden);
+        else rem::set_tag_hidden(name, !hidden);
+    } catch (const std::exception& e) {
+        message_ = std::format("Couldn't save the setting: {}", e.what());
+        return;
+    }
+    load_layout();
+    if (title.empty()) title = target.kind == View::Tag ? "#" + name : name;
+    if (!hidden && !hidden_.show) {
+        message_ = std::format("Hid “{}” (H shows hidden entries; h on it shows it again)", title);
+        if (view_ == target) select_view(home_view());
+        else select_view(view_);  // the selection follows the rows that remain
+    } else {
+        message_ = std::format("{} “{}”", hidden ? "Showing" : "Hid", title);
+    }
+}
+
+// H: shows the hidden smart lists, lists and tags (dimmed), or stops showing
+// them, as the app's Show Hidden Lists does (show-hidden in settings.ini).
+void Tui::toggle_show_hidden() {
+    try {
+        rem::save_show_hidden(!hidden_.show);
+    } catch (const std::exception& e) {
+        message_ = std::format("Couldn't save the setting: {}", e.what());
+        return;
+    }
+    load_layout();
+    message_ = hidden_.show ? "Showing hidden lists" : "Not showing hidden lists";
+    bool smart = view_.kind <= View::AllReminders;
+    bool gone = (smart && std::ranges::none_of(smart_entries(), [&](auto& e) { return e.view == view_; })) ||
+                (view_.kind == View::List && hidden_.list_hidden(view_.name)) ||
+                (view_.kind == View::Tag && hidden_.tag_hidden(view_.name));
+    if (gone && !hidden_.show) {
+        select_view(home_view());
+    } else {
+        auto keep = std::pair{item_sel_, item_scroll_};
+        select_view(view_);  // finds it in the sidebar again
+        std::tie(item_sel_, item_scroll_) = keep;
+    }
+}
 
 // Opens on the list that last had focus here, in the GNOME app or via the CLI.
 void Tui::restore_view() {
@@ -823,6 +985,9 @@ void Tui::restore_view() {
         view_ = {View::Tag, saved.name};
     bool smart = view_.kind != View::List && view_.kind != View::Tag && view_.kind != View::Search;
     if (smart && std::ranges::none_of(smart_entries(), [&](auto& e) { return e.view == view_; })) view_ = home_view();
+    if (!hidden_.show && ((view_.kind == View::List && hidden_.list_hidden(view_.name)) ||
+                          (view_.kind == View::Tag && hidden_.tag_hidden(view_.name))))
+        view_ = home_view();  // hidden in the sidebar
     select_view(view_);
 }
 
@@ -934,11 +1099,15 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
         }
         if (fn && key == KEY_UP) key = 'K', fn = false;         // Alt+↑ (sent as Esc, ↑)
         else if (fn && key == KEY_DOWN) key = 'J', fn = false;  // Alt+↓
+        else if (fn && key == KEY_SR) key = kGroupUp, fn = false;    // Alt+Shift+↑ (Esc, Shift+↑)
+        else if (fn && key == KEY_SF) key = kGroupDown, fn = false;  // Alt+Shift+↓
         else return true;
         // In the sidebar they move the selected group; J / K below.
     } else if (fn) {
         if (alt_up_ && static_cast<int>(key) == alt_up_) key = 'K', fn = false;
         else if (alt_down_ && static_cast<int>(key) == alt_down_) key = 'J', fn = false;
+        else if (alt_shift_up_ && static_cast<int>(key) == alt_shift_up_) key = kGroupUp, fn = false;
+        else if (alt_shift_down_ && static_cast<int>(key) == alt_shift_down_) key = kGroupDown, fn = false;
         else if (ctrl_page_down_ && static_cast<int>(key) == ctrl_page_down_) return step_sidebar(1), true;
         else if (ctrl_page_up_ && static_cast<int>(key) == ctrl_page_up_) return step_sidebar(-1), true;
         else if (key == KEY_F(1)) key = '?', fn = false;
@@ -973,11 +1142,12 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
     if (!fn) switch (key) {
             case 'q': return false;
             case '?': show_help(); return true;
-            case 'h': focus_items_ = false; return true;
+            case 'h': toggle_hidden(); return true;
             case 'j': move_selection(1); return true;
             case 'k': move_selection(-1); return true;
             case 'c': show_completed_ = !show_completed_; return true;
             case 'S': edit_settings(); return true;
+            case 'H': toggle_show_hidden(); return true;
             case 'u': {
                 auto r = history_.undo(store_);
                 message_ = r.applied ? "Undone" : "Nothing to undo";
@@ -1058,8 +1228,15 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
             toggle_fold(entries[static_cast<std::size_t>(side_sel_)].group);
             return true;
         }
-        if (!fn && (key == 'J' || key == 'K')) {  // move the selected entry's group
-            move_group(key == 'K' ? -1 : 1);
+        // Alt+↑/↓ (J / K) move the selected entry within its group (on a
+        // heading, the group); Alt+Shift+↑/↓ move its group. As in the app.
+        if (!fn && (key == 'J' || key == 'K')) {
+            if (heading == SidebarEntry::Item) move_entry(key == 'K' ? -1 : 1);
+            else move_group(key == 'K' ? -1 : 1);
+            return true;
+        }
+        if (!fn && (key == kGroupUp || key == kGroupDown)) {
+            move_group(key == kGroupUp ? -1 : 1);
             return true;
         }
         if ((!fn && (key == '\n' || key == '\r' || key == 'l')) || (fn && key == KEY_ENTER)) focus_items_ = true;
@@ -1109,7 +1286,8 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
     switch (key) {
         case 'x':
         case ' ': {
-            bool hides = !r.done && !show_completed_ && view_.kind != View::Completed;
+            bool hides = !r.done && !show_completed_ && view_.kind != View::Completed &&
+                         view_.kind != View::AllReminders;
             if (hides) {  // it's about to disappear: keep the place by selecting its neighbour
                 move_selection(1);
                 if (item_sel_ == id) move_selection(-1);
@@ -1235,6 +1413,8 @@ int Tui::run() {
     };
     alt_up_ = code("kUP3");
     alt_down_ = code("kDN3");
+    alt_shift_up_ = code("kUP4");
+    alt_shift_down_ = code("kDN4");
     ctrl_page_down_ = code("kNXT5");
     ctrl_page_up_ = code("kPRV5");
     setup_colors();

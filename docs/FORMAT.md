@@ -66,7 +66,7 @@ Clients must keep keys they don't know.
 
 **Colours:** `red orange yellow green cyan blue indigo purple pink brown gray`
 
-**Icons:** `list bookmark cart gift home work school calendar flag star heart
+**Icons:** `list tag bookmark cart gift home work school calendar flag star heart
 music game book food travel nature person people money pill computer camera`
 (Each client maps these names to its own icon set, e.g. SF Symbols or Adwaita.)
 An unknown icon name is shown as `list`.
