@@ -1,9 +1,14 @@
 # Reminders
 
 A to-do app modelled on Apple Reminders, whose data is a folder of plain
-Markdown files kept in sync by [Syncthing](https://syncthing.net). No account,
-no server, no database: every list is a `.md` file you can read and edit in any
-text editor, and every device that syncs the folder sees the same lists.
+Markdown files. No account, no server, no database: every list is a `.md` file you can read and edit in any text editor. You can of course use one of
+several synchronization back-ends including Syncthing and CalDAV to connect
+your reminders with all your devices.
+
+The app can show several folders (*sources*) at once, for example a
+Syncthing folder shared with your phone beside a local folder that stays on
+this computer. Each source has a *back end* that says how its folder is kept
+in sync.
 
 ```markdown
 ---
@@ -33,13 +38,14 @@ format, so the same folder also works as an Obsidian vault.
 | iOS: SwiftUI, Syncthing embedded via gomobile | Planned |
 | Android, macOS, Windows: native per platform | Planned |
 
-Every client looks native to its own platform. They share
+Every client looks native to its own platform because it is. They share
 **[the file format](docs/FORMAT.md)**, which is the real contract between them,
 and the C++ **core library** (`core/`), which any client that can call C++
 can reuse.
 
 ## Features (Linux client)
 
+- **Sources**: several folders open at once, each its own sidebar group, each with its own back end (Syncthing or a plain local folder). Smart lists, tags and search cover them all, and reminders can be moved between them. Managed from ☰ → Sources….
 - **Lists**: colours, icons, sections, manual order (drag or Alt+↑/↓), and subtasks one level deep (indent with Ctrl+]).
 - **Reminders**: title, notes, URL, due date and time, repeat ("every 2 weeks", weekdays, …), flag, priority, tags.
 - **Smart lists**: Today, Scheduled, All, All Reminders (completed ones too), Flagged, Completed, plus one per tag. Search across everything, and a Ctrl+K "Go to" switcher.
@@ -54,7 +60,32 @@ can reuse.
 - **Notifications** when reminders come due, while the app is running.
 - **A terminal client** (`reminders`): commands for scripts (with `--json`) and a full-screen interface. See [docs/TERMINAL.md](docs/TERMINAL.md).
 
-## How syncing works
+## Sources and back ends
+
+Sources are set up in the app (☰ → Sources… → Add Source…), with
+`reminders folder PATH` in a terminal, or by hand in `settings.ini`:
+
+```ini
+[source.personal]
+backend=syncthing
+folder=/home/me/Sync/Reminders
+
+[source.work]
+backend=local
+folder=/home/me/Documents/Work lists
+title=Work
+```
+
+| Back end | What it does |
+|---|---|
+| `syncthing` | The folder is synced by Syncthing; conflict copies are merged (below). Picked automatically for a folder inside a Syncthing folder (one with `.stfolder`). |
+| `local` | Just the folder: files are read and written as they are. Outside edits still show up live. |
+
+Lists are named `source/name` where a name alone would be ambiguous (in
+settings, the CLI and the quick switcher). More back ends (git, CalDAV, …) are
+planned.
+
+## How syncing works (Syncthing back end)
 
 The app never talks to Syncthing. It reads and writes files, and Syncthing
 moves them between devices. To make that safe, the app:
@@ -90,7 +121,7 @@ C++23 compiler and CMake.
 ```sh
 cmake -S . -B build -G Ninja
 cmake --build build
-./build/core/core_tests          # 69 tests for the core library
+./build/core/core_tests          # 81 tests for the core library
 ./build/linux/Reminders          # the GNOME app (or: ./build/linux/Reminders ~/Sync/Reminders)
 ./build/cli/reminders --help     # the terminal client
 ```
@@ -109,7 +140,7 @@ the desktop entry (`com.stephenhouser.Reminders.desktop`) and the app icon.
 ## Using it
 
 1. Set up a Syncthing folder (or use any folder; syncing is optional).
-2. Start Reminders and choose that folder.
+2. Start Reminders and choose that folder. Add more folders later from ☰ → **Sources…**.
 3. Make lists with **New List** (Ctrl+Shift+N), and add reminders by typing into **New Reminder**.
 
 In a terminal: `reminders folder ~/Sync/Reminders`, then `reminders` for the
@@ -128,7 +159,7 @@ docs/
   USING.md             User guide for the GNOME app
   TERMINAL.md          Guide to the terminal client (CLI and TUI)
 core/                  Platform-neutral C++23 library (standard library only)
-  include/reminders/   model, format, merge, recurrence, store, history, syncthing
+  include/reminders/   model, format, merge, recurrence, store, library, backend, sources, …
   src/
   tests/               Unit tests with a tiny built-in harness (no dependencies)
 linux/                 The GNOME client
@@ -146,10 +177,14 @@ INSTRUCTIONS.md        The original brief, and how to recreate this project
 | `format.hpp` | Parse and serialize list files, with byte-for-byte round trips |
 | `merge.hpp` | Three-way (or two-way) merge of a Syncthing conflict copy |
 | `recurrence.hpp` | Next date for repeat rules |
-| `store.hpp` | The folder: loading, saving, conflict handling, list detection, smart-list queries |
+| `store.hpp` | One source's folder: loading, saving, conflict handling, list detection, smart-list queries |
+| `library.hpp` | Every source open at once: lists keyed `source/name`, smart lists, tags and search across sources, moves between them |
+| `sources.hpp` | The `[source.NAME]` sections of settings: loading, saving, the default source, opening one |
+| `backend.hpp` | Back ends (`syncthing`, `local`): what each adds to plain loading and saving |
 | `history.hpp` | Undo/redo as before/after snapshots of list files, merging around changes from other devices |
 | `syncthing.hpp` | Per-device state location and the `.stignore` entry |
-| `settings.hpp` | `~/.config/reminders/settings.ini`, shared by all clients, and the device name |
+| `settings.hpp` | `~/.config/reminders/settings.ini`, shared by all clients, sidebar layout, and the device name |
+| `clipboard.hpp` | Copying and pasting reminders as text |
 | `dates.hpp` | Local date, typed dates (`tomorrow`, `fri`, `+3d`), relative labels (`Tomorrow`, `Oct 3`) |
 
 ### The GNOME client
@@ -157,7 +192,7 @@ INSTRUCTIONS.md        The original brief, and how to recreate this project
 It uses the GTK and libadwaita **C APIs** directly from C++, with small helpers
 in `gtk_util.hpp`: an owning `Obj<T>` for GObjects, `connect<Sig>()` to attach
 lambdas to signals, actions, timeouts and shortcuts. The UI is rebuilt from the
-store after every change, which keeps the code simple. Lists are small.
+library after every change, which keeps the code simple. Lists are small.
 
 ## Development notes
 

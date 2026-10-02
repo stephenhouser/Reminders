@@ -467,8 +467,6 @@ settings in a `[source.NAME]` section; later the apps show several at once.
     and the last view with the app.
   - **Docs:** README, docs/FORMAT.md, docs/USING.md, docs/TERMINAL.md,
     docs/settings.example.ini.
-- **Not yet confirmed by the user:** the GUI right-click menu for moving
-  sidebar groups, after the popover fix above (tested headless only).
 - **Known gaps:**
   - No iOS, Android, Windows or macOS client yet. iOS can't be built on the
     Linux dev machine (no Swift or Xcode); nothing gets installed without
