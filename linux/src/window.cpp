@@ -6,6 +6,7 @@
 
 #include "dialogs.hpp"
 #include "reminders/format.hpp"
+#include "reminders/settings.hpp"
 #include "reminders/syncthing.hpp"
 #include "support.hpp"
 
@@ -99,8 +100,15 @@ const View* row_view(GtkListBoxRow* row) {
     return static_cast<const View*>(g_object_get_data(G_OBJECT(row), "view"));
 }
 
+// The shortcut that jumps to sidebar entry `index` (0-based), as GTK shows
+// accelerators ("Ctrl+1" … "Ctrl+0"), or "" past the tenth.
+std::string jump_shortcut(std::size_t index) {
+    if (index >= 10) return {};
+    return take_string(gtk_accelerator_get_label(GDK_KEY_0 + static_cast<guint>((index + 1) % 10), GDK_CONTROL_MASK));
+}
+
 GtkWidget* sidebar_row(const char* icon_name, std::string_view color, const std::string& title,
-                       std::optional<int> count) {
+                       std::optional<int> count, const std::string& shortcut = {}) {
     auto* row = gtk_list_box_row_new();
     auto* box = hbox(12);
     auto* img = icon(icon_name, {"list-icon"});
@@ -110,8 +118,41 @@ GtkWidget* sidebar_row(const char* icon_name, std::string_view color, const std:
     gtk_label_set_ellipsize(GTK_LABEL(name), PANGO_ELLIPSIZE_END);
     gtk_widget_set_hexpand(name, TRUE);
     append(box, {img, name});
-    if (count) append(box, {label(std::to_string(*count), {"dim-label", "numeric"})});
+    if (!shortcut.empty()) append(box, {label(shortcut, {"dim-label", "caption", "sidebar-shortcut"})});
+    // A fixed-width, right-aligned count column (empty for tags), so the
+    // shortcut labels line up whatever the counts are.
+    auto* count_label = label(count ? std::to_string(*count) : "", {"dim-label", "numeric", "sidebar-count"});
+    gtk_label_set_xalign(GTK_LABEL(count_label), 1);
+    append(box, {count_label});
     gtk_list_box_row_set_child(GTK_LIST_BOX_ROW(row), box);
+    return row;
+}
+
+// A group heading that folds or unfolds its group when clicked ("Smart
+// Lists", "Tags"). `group` is stored on the row for the click handler.
+enum FoldGroup { kFoldSmartLists = 1, kFoldTags = 2 };
+
+GtkWidget* fold_heading(const char* text, bool collapsed, FoldGroup group) {
+    auto* row = gtk_list_box_row_new();
+    gtk_list_box_row_set_selectable(GTK_LIST_BOX_ROW(row), FALSE);
+    auto* box = hbox(6);
+    auto* l = label(text, {"heading", "dim-label"});
+    gtk_widget_set_hexpand(l, TRUE);
+    append(box, {l, icon(collapsed ? "pan-end-symbolic" : "pan-down-symbolic", {"dim-label"})});
+    gtk_widget_add_css_class(box, "sidebar-heading");
+    gtk_list_box_row_set_child(GTK_LIST_BOX_ROW(row), box);
+    gtk_widget_set_tooltip_text(row, std::format("{} {}", collapsed ? "Show" : "Hide", text).c_str());
+    g_object_set_data(G_OBJECT(row), "fold-group", GINT_TO_POINTER(group));
+    return row;
+}
+
+// An empty, inert row: space between groups that have no heading.
+GtkWidget* sidebar_spacer() {
+    auto* row = gtk_list_box_row_new();
+    gtk_list_box_row_set_activatable(GTK_LIST_BOX_ROW(row), FALSE);
+    gtk_list_box_row_set_selectable(GTK_LIST_BOX_ROW(row), FALSE);
+    gtk_widget_set_can_focus(row, FALSE);
+    gtk_widget_set_size_request(row, -1, 12);
     return row;
 }
 
@@ -301,6 +342,11 @@ Window* Window::from(GtkWindow* window) {
     return window ? static_cast<Window*>(g_object_get_data(G_OBJECT(window), "ui-window")) : nullptr;
 }
 
+void Window::set_show_key_numbers(bool on) {
+    show_key_numbers_ = on;
+    if (store_) rebuild_sidebar();
+}
+
 void Window::show_reminder(const std::string& id) {
     if (!store_) return;
     auto ref = store_->find(id);
@@ -310,7 +356,9 @@ void Window::show_reminder(const std::string& id) {
     show_details(id);
 }
 
-Window::Window(AdwApplication* app, std::optional<std::filesystem::path> folder) : app_(app) {
+Window::Window(AdwApplication* app, std::optional<std::filesystem::path> folder)
+    : app_(app), show_key_numbers_(rem::load_bool_setting("show-key-numbers")),
+      smart_(rem::load_smart_lists_layout()), tags_(rem::load_tags_layout()) {
     build();
     add_actions();
     if (folder) {
@@ -407,7 +455,7 @@ void Window::build() {
         // them, which would take focus away from the selected result.
         if (!text.empty() && view_ == View{View::Search, text}) return;
         if (!text.empty()) select(View{View::Search, text});
-        else if (view_.kind == View::Search) select(View{View::Today, ""});
+        else if (view_.kind == View::Search) select(home_view());
     });
 
     sidebar_list_ = gtk_list_box_new();
@@ -415,6 +463,18 @@ void Window::build() {
     connect<void(GtkListBox*, GtkListBoxRow*)>(sidebar_list_, "row-activated",
                                                [this](GtkListBox*, GtkListBoxRow* row) {
                                                    if (updating_sidebar_) return;
+                                                   switch (GPOINTER_TO_INT(g_object_get_data(G_OBJECT(row), "fold-group"))) {
+                                                       case kFoldSmartLists:
+                                                           smart_.collapsed = !smart_.collapsed;
+                                                           rem::save_smart_lists_collapsed(smart_.collapsed);
+                                                           rebuild_sidebar();
+                                                           return;
+                                                       case kFoldTags:
+                                                           tags_.collapsed = !tags_.collapsed;
+                                                           rem::save_tags_collapsed(tags_.collapsed);
+                                                           rebuild_sidebar();
+                                                           return;
+                                                   }
                                                    if (auto* v = row_view(row)) {
                                                        select(*v);
                                                        show_content();
@@ -552,15 +612,16 @@ void Window::add_actions() {
         auto* split = ADW_OVERLAY_SPLIT_VIEW(split_);
         adw_overlay_split_view_set_show_sidebar(split, !adw_overlay_split_view_get_show_sidebar(split));
     });
-    add_action(window_, "show-subtasks", [this] {
-        collapsed_.clear();
-        rebuild_content();
-    });
-    add_action(window_, "hide-subtasks", [this] {
+    // Ctrl+E: hide every reminder's subtasks, or show them all if any are hidden.
+    add_action(window_, "toggle-subtasks", [this] {
         if (!store_) return;
-        for (auto* l : store_->lists())
-            for (auto* r : l->doc.reminders())
-                if (!r->subtasks.empty()) collapsed_.insert(r->id);
+        if (!collapsed_.empty()) {
+            collapsed_.clear();
+        } else {
+            for (auto* l : store_->lists())
+                for (auto* r : l->doc.reminders())
+                    if (!r->subtasks.empty()) collapsed_.insert(r->id);
+        }
         rebuild_content();
     });
     add_action(window_, "next-view", [this] { step_view(1); });
@@ -665,8 +726,13 @@ void Window::open_folder(const std::filesystem::path& folder, bool remember) {
     }
 
     gtk_stack_set_visible_child_name(GTK_STACK(main_stack_), "main");
-    view_ = remember ? view_from_string(load_last_view()) : View{View::Today, ""};
-    if (view_.kind == View::List && !store_->list(view_.name)) view_ = View{View::Today, ""};
+    view_ = remember ? view_from_string(load_last_view()) : home_view();
+    if (view_.kind == View::List && !store_->list(view_.name)) view_ = home_view();
+    if (smart_info(view_.kind)) {  // a smart list the settings hide
+        auto smart = smart_views();
+        if (std::ranges::find(smart, view_) == smart.end()) view_ = home_view();
+    }
+    if (view_.kind == View::Tag && tags_.hidden()) view_ = home_view();
     refresh();
 }
 
@@ -702,7 +768,7 @@ void Window::reload_pending() {
         if (store_->candidates() != candidates_before) update_banner();
         return;
     }
-    if (view_.kind == View::List && !store_->list(view_.name)) view_ = View{View::Today, ""};
+    if (view_.kind == View::List && !store_->list(view_.name)) view_ = home_view();
     refresh();
 }
 
@@ -745,41 +811,66 @@ void Window::rebuild_sidebar() {
     auto* list = GTK_LIST_BOX(sidebar_list_);
     gtk_list_box_remove_all(list);
     auto day = today();
+    // Optional "Ctrl+1"-style labels after each name (show-key-numbers),
+    // numbered in display order over the entries that are showing.
+    std::size_t index = 0;
+    auto shortcut = [this](std::size_t i) { return show_key_numbers_ ? jump_shortcut(i) : std::string(); };
 
-    for (auto& s : kSmart) {
-        std::size_t count = 0;
-        switch (s.kind) {
-            case View::Today: count = store_->today(day).size(); break;
-            case View::Scheduled: count = store_->scheduled().size(); break;
-            case View::All: count = store_->all().size(); break;
-            case View::Flagged: count = store_->flagged().size(); break;
-            case View::Completed: count = store_->completed().size(); break;
-            default: break;
+    auto smart_group = [&] {
+        auto views = smart_views();
+        if (views.empty()) return;
+        if (smart_.has_heading()) {
+            gtk_list_box_append(list, fold_heading("Smart Lists", smart_.collapsed, kFoldSmartLists));
+            if (smart_.folded()) return;
+        } else if (smart_.at_bottom) {
+            gtk_list_box_append(list, sidebar_spacer());  // no heading: keep them apart from the tags
         }
-        auto* row = sidebar_row(s.icon, s.color, s.title, static_cast<int>(count));
-        set_row_view(row, View{s.kind, ""});
-        gtk_list_box_append(list, row);
-    }
-
-    gtk_list_box_append(list, sidebar_heading("My Lists"));
-    for (auto* l : store_->lists()) {
-        auto* row = sidebar_row(list_icon_name(l->icon()), l->color(), l->name, open_count(*l));
-        set_row_view(row, View{View::List, l->name});
-        make_drop_target(row, DropStyle::Into, "", [this, name = l->name](std::string dropped, rem::Document::Place) {
-            move_to_list(dropped, name);
-        });
-        gtk_list_box_append(list, row);
-    }
-
-    auto tags = store_->tags();
-    if (!tags.empty()) {
-        gtk_list_box_append(list, sidebar_heading("Tags"));
+        for (auto& v : views) {
+            auto* s = smart_info(v.kind);
+            std::size_t count = 0;
+            switch (v.kind) {
+                case View::Today: count = store_->today(day).size(); break;
+                case View::Scheduled: count = store_->scheduled().size(); break;
+                case View::All: count = store_->all().size(); break;
+                case View::Flagged: count = store_->flagged().size(); break;
+                case View::Completed: count = store_->completed().size(); break;
+                default: break;
+            }
+            auto* row = sidebar_row(s->icon, s->color, s->title, static_cast<int>(count), shortcut(index++));
+            set_row_view(row, v);
+            gtk_list_box_append(list, row);
+        }
+    };
+    auto list_group = [&] {
+        gtk_list_box_append(list, sidebar_heading("My Lists"));
+        for (auto* l : store_->lists()) {
+            auto* row = sidebar_row(list_icon_name(l->icon()), l->color(), l->name, open_count(*l), shortcut(index++));
+            set_row_view(row, View{View::List, l->name});
+            make_drop_target(row, DropStyle::Into, "", [this, name = l->name](std::string dropped, rem::Document::Place) {
+                move_to_list(dropped, name);
+            });
+            gtk_list_box_append(list, row);
+        }
+    };
+    auto tag_group = [&] {
+        auto tags = store_->tags();
+        if (tags.empty() || tags_.hidden()) return;
+        if (tags_.foldable()) {
+            gtk_list_box_append(list, fold_heading("Tags", tags_.collapsed, kFoldTags));
+            if (tags_.folded()) return;
+        } else {
+            gtk_list_box_append(list, sidebar_heading("Tags"));
+        }
         for (auto& t : tags) {
-            auto* row = sidebar_row("sr-tag-symbolic", "gray", "#" + t, std::nullopt);
+            auto* row = sidebar_row("sr-tag-symbolic", "gray", "#" + t, std::nullopt, shortcut(index++));
             set_row_view(row, View{View::Tag, t});
             gtk_list_box_append(list, row);
         }
-    }
+    };
+    if (!smart_.at_bottom) smart_group();
+    list_group();
+    tag_group();
+    if (smart_.at_bottom) smart_group();
 
     gtk_list_box_unselect_all(list);
     for (int i = 0;; ++i) {
@@ -808,7 +899,7 @@ void Window::rebuild_content() {
     if (is_list) {
         auto* l = store_->list(view_.name);
         if (!l) {
-            view_ = View{View::Today, ""};
+            view_ = home_view();
             return refresh();
         }
         page_title = l->name;
@@ -1754,7 +1845,7 @@ void Window::delete_list(const std::string& name) {
             }
             store_->delete_list(name);
         });
-        if (view_.kind == View::List && view_.name == name) view_ = View{View::Today, ""};
+        if (view_.kind == View::List && view_.name == name) view_ = home_view();
         refresh();
         toast(std::format("“{}” deleted", name), "_Undo", [this, step, name] {
             if (history_.next_undo() != step) return;
@@ -1845,7 +1936,7 @@ void Window::quick_switcher() {
     adw_dialog_set_content_height(ADW_DIALOG(dialog), 460);
     auto* st = attach(dialog, "state", std::make_unique<State>());
     st->dialog = GTK_WIDGET(dialog);
-    for (auto& v : sidebar_views()) st->all.push_back(view_info(v));
+    for (auto& v : sidebar_views(true)) st->all.push_back(view_info(v));
 
     st->entry = gtk_search_entry_new();
     gtk_search_entry_set_placeholder_text(GTK_SEARCH_ENTRY(st->entry), "Go to a list or tag…");
@@ -1921,12 +2012,36 @@ void Window::quick_switcher() {
     adw_dialog_present(ADW_DIALOG(dialog), window_);
 }
 
-std::vector<View> Window::sidebar_views() {
+// The smart lists the settings show, in their order.
+std::vector<View> Window::smart_views() {
     std::vector<View> out;
-    for (auto& s : kSmart) out.push_back(View{s.kind, ""});
-    for (auto* l : store_->lists()) out.push_back(View{View::List, l->name});
-    for (auto& t : store_->tags()) out.push_back(View{View::Tag, t});
+    if (smart_.hidden()) return out;
+    for (auto& name : smart_.shown) {
+        auto v = view_from_string(name);
+        if (smart_info(v.kind)) out.push_back(v);
+    }
     return out;
+}
+
+// Sidebar entries in display order. `include_folded` adds the smart lists
+// while their group is collapsed (Go To finds them; numbers skip them).
+std::vector<View> Window::sidebar_views(bool include_folded) {
+    std::vector<View> smart, out;
+    if (!smart_.folded() || include_folded) smart = smart_views();
+    if (!smart_.at_bottom) out = smart;
+    for (auto* l : store_->lists()) out.push_back(View{View::List, l->name});
+    if (!tags_.hidden() && (!tags_.folded() || include_folded))
+        for (auto& t : store_->tags()) out.push_back(View{View::Tag, t});
+    if (smart_.at_bottom) out.insert(out.end(), smart.begin(), smart.end());
+    return out;
+}
+
+// Where to land when there's nothing better: Today, unless it's hidden.
+View Window::home_view() {
+    auto smart = smart_views();
+    if (std::ranges::find(smart, View{View::Today, ""}) != smart.end()) return View{View::Today, ""};
+    auto all = sidebar_views(true);
+    return all.empty() ? View{View::Today, ""} : all.front();
 }
 
 void Window::step_view(int delta) {

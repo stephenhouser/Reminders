@@ -166,9 +166,15 @@ store after every change, which keeps the code simple. Lists are small.
   `REMINDERS_SCREENSHOT=out.png ./build/linux/Reminders` saves a PNG after
   1.5 s and quits.
 - **Testing without touching your real session:** the app is single-instance,
-  so a test launch can be handed to your running copy. Isolate test runs:
+  so a test launch can be handed to your running copy, and a test window can
+  take keystrokes meant for something else. Run tests on a private D-Bus
+  session and a hidden screen (GNOME's mutter in headless mode):
   ```sh
-  dbus-run-session -- env XDG_CONFIG_HOME=/tmp/r/config ./build/linux/Reminders /tmp/r/lists
+  dbus-run-session -- sh -c '
+    mutter --headless --wayland --no-x11 --virtual-monitor 900x640 --wayland-display=test &
+    sleep 1
+    WAYLAND_DISPLAY=test XDG_CONFIG_HOME=/tmp/r/config REMINDERS_SCREENSHOT=/tmp/r/shot.png \
+      ./build/linux/Reminders /tmp/r/lists'
   ```
 - **Driving the app from scripts:** actions are exported over D-Bus, e.g.
   `gdbus call --session --dest com.stephenhouser.Reminders --object-path /com/stephenhouser/Reminders/window/1 --method org.gtk.Actions.Activate go-to '[]' '{}'`.

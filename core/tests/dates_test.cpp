@@ -50,6 +50,49 @@ TEST(settings_round_trip_keeps_other_lines) {
     std::string all((std::istreambuf_iterator<char>(in)), {});
     CHECK_EQ(all, "# mine\n[other]\nfolder=x\n[general]\nview=today\nfolder=/tmp/lists\n");
     CHECK(device_name().find('-') != std::string::npos);
+    CHECK(!load_bool_setting("show-key-numbers"));
+    save_setting("show-key-numbers", "Yes");
+    CHECK(load_bool_setting("show-key-numbers"));
+    CHECK_EQ(with_key_number("Today", 0, true), "(1) Today");
+    CHECK_EQ(with_key_number("Tenth", 9, true), "(0) Tenth");
+    CHECK_EQ(with_key_number("Eleventh", 10, true), "Eleventh");
+    CHECK_EQ(with_key_number("Today", 0, false), "Today");
+
+    // Smart lists: all five at the top by default, with no heading.
+    auto layout = load_smart_lists_layout();
+    CHECK_EQ(layout.shown.size(), 5u);
+    CHECK(!layout.at_bottom);
+    CHECK(layout.display == GroupDisplay::Visible);
+    CHECK(!layout.has_heading());
+    CHECK(!layout.folded());
+    save_setting("smart-lists", "Flagged, today,bogus, today");
+    save_setting("smart-lists-position", "bottom");
+    save_smart_lists_collapsed(true);
+    CHECK(!load_smart_lists_layout().folded());  // folding only applies when collapsible
+    save_setting("smart-lists-display", "Collapsable");
+    layout = load_smart_lists_layout();
+    CHECK(layout.has_heading());
+    CHECK(layout.folded());
+    CHECK_EQ(layout.shown.size(), 2u);
+    CHECK_EQ(layout.shown[0], "flagged");
+    CHECK_EQ(layout.shown[1], "today");
+    CHECK(layout.at_bottom);
+    CHECK(layout.collapsed);
+    save_setting("smart-lists", "none");
+    CHECK(load_smart_lists_layout().hidden());
+    save_setting("smart-lists", "today");
+    save_setting("smart-lists-display", "hidden");
+    CHECK(load_smart_lists_layout().hidden());
+
+    // Tags: visible (with a plain heading) by default.
+    CHECK(load_tags_layout().display == GroupDisplay::Visible);
+    CHECK(!load_tags_layout().foldable());
+    save_tags_collapsed(true);
+    CHECK(!load_tags_layout().folded());
+    save_setting("tags-display", "collapsible");
+    CHECK(load_tags_layout().folded());
+    save_setting("tags-display", "hidden");
+    CHECK(load_tags_layout().hidden());
     unsetenv("XDG_CONFIG_HOME");
     fs::remove_all(dir);
 }

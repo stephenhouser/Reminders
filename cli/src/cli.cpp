@@ -19,6 +19,7 @@
 #include "reminders/settings.hpp"
 #include "reminders/store.hpp"
 #include "reminders/syncthing.hpp"
+#include "editfile.hpp"
 #include "text.hpp"
 #include "tui.hpp"
 
@@ -32,13 +33,16 @@ With no command, opens the interactive (terminal) interface.
 
 Commands:
   lists                         Lists, with how many reminders are open in each
-  list [VIEW] [-a]              Reminders in VIEW: a list name, today (default),
+  list [VIEW] [-a]              Reminders in VIEW: a list name, today,
                                 scheduled, all, flagged, completed or #tag.
-                                -a also shows completed reminders
+                                Default: the list that last had focus in the
+                                app or TUI. -a also shows completed reminders
   show NAME                     Everything about one reminder
   add TEXT… [FIELDS]            Add a reminder (inline fields like "#tag" or
-                                "📅 2026-10-03" work in TEXT too)
-  edit NAME [FIELDS]            Change a reminder
+                                "📅 2026-10-03" work in TEXT too). Goes to
+                                --list, else the list that last had focus
+  edit NAME [FIELDS]            Change a reminder (no FIELDS: edit them all
+                                in $EDITOR)
   done NAME                     Complete (repeating reminders roll forward)
   undone NAME                   Mark as not completed
   move NAME --to LIST [--section S]
@@ -69,6 +73,10 @@ Options:
   -f, --folder PATH  Use PATH instead of the saved folder
   --json             Machine-readable output
   --no-color         No colours (also when NO_COLOR is set or not a terminal)
+  --show-key-numbers Label sidebar entries with their number key, e.g.
+                     "(1)Today" (interactive interface; overrides the
+                     show-key-numbers setting)
+  --hide-key-numbers Don't label them
   -h, --help         This help
   --version          Show the version
 )";
@@ -80,6 +88,7 @@ struct UsageError : std::runtime_error {
 struct Global {
     std::optional<rem::fs::path> folder;
     bool json = false;
+    std::optional<bool> key_numbers;  // --show-key-numbers / --hide-key-numbers
     bool color = false;
 };
 
@@ -225,8 +234,10 @@ std::string join(const std::vector<std::string>& v, std::size_t from = 0) {
 
 class App {
 public:
-    App(Global g, rem::fs::path folder)
-        : g_(g), st_{g.color}, store_(folder, rem::state_dir(folder, rem::device_name())), today_(rem::local_today()) {
+    // `own_folder`: this is the saved folder, so the saved view applies to it.
+    App(Global g, rem::fs::path folder, bool own_folder)
+        : g_(g), st_{g.color}, store_(folder, rem::state_dir(folder, rem::device_name())), today_(rem::local_today()),
+          own_folder_(own_folder) {
         try {
             rem::ignore_state_in_syncthing(folder);
         } catch (const std::exception&) {
@@ -242,8 +253,10 @@ private:
     Style st_;
     rem::Store store_;
     rem::Date today_;
+    bool own_folder_;
 
     rem::ListFile& list_named(const std::string& name);
+    term::SavedView saved_view();
     rem::ListFile& default_list();
     // Finds a reminder by name (or id); `in` limits the search to one list.
     rem::Ref resolve(const std::string& text, const std::optional<std::string>& in);
@@ -269,7 +282,17 @@ rem::ListFile& App::list_named(const std::string& name) {
     throw std::runtime_error(std::format("no list called “{}”", name));
 }
 
+// The list or view that last had focus (in the GUI or TUI), if it still exists.
+term::SavedView App::saved_view() {
+    if (!own_folder_) return {"today", ""};
+    auto v = term::parse_view_setting(rem::load_setting("view"));
+    if (v.kind == "list" && !store_.list(v.name)) return {"today", ""};
+    return v;
+}
+
+// For `add` without --list: the list that last had focus, else the first one.
 rem::ListFile& App::default_list() {
+    if (auto v = saved_view(); v.kind == "list") return *store_.list(v.name);
     auto lists = store_.lists();
     if (lists.empty()) throw std::runtime_error("there are no lists yet: create one with `reminders new-list NAME`");
     return *lists.front();
@@ -425,7 +448,13 @@ int App::cmd_lists() {
 }
 
 int App::cmd_list(const Args& a) {
-    auto view = a.positional.empty() ? std::string("today") : join(a.positional);
+    std::string view;
+    if (!a.positional.empty()) {
+        view = join(a.positional);
+    } else {  // the list that last had focus
+        auto v = saved_view();
+        view = v.kind == "list" ? v.name : v.kind == "tag" ? "#" + v.name : v.kind;
+    }
     bool with_done = a.has("all");
     auto v = term::lower(view);
 
@@ -582,6 +611,23 @@ int App::cmd_edit(const Args& a) {
     if (a.positional.empty()) throw UsageError("edit needs the name of a reminder (then the fields to change)");
     auto ref = resolve(join(a.positional), a.get("in"));
     auto id = ref.reminder->id;
+    bool only_lookup = std::ranges::all_of(a.options, [](auto& o) { return o.first == "in"; });
+    if (only_lookup) {
+        // No fields given: edit them all in $EDITOR.
+        if (!isatty(STDIN_FILENO) || !isatty(STDOUT_FILENO))
+            throw UsageError("edit needs fields to change (e.g. --due fri), or a terminal to open an editor in");
+        switch (editfile::edit(store_, id)) {
+            case editfile::Outcome::Saved: break;
+            case editfile::Outcome::Unchanged:
+                if (!g_.json) std::cout << "No changes\n";
+                return 0;
+            case editfile::Outcome::Reverted:
+                if (!g_.json) std::cout << "Reverted; the reminder is as it was\n";
+                return 1;
+        }
+        report("Updated", *store_.find(id));
+        return 0;
+    }
     apply_fields(*ref.reminder, a);
     store_.touch(id);
     if (auto l = a.get("list")) {
@@ -695,6 +741,16 @@ int main(int argc, char** argv) {
     std::vector<std::string> args(argv + 1, argv + argc);
     Global g;
     g.color = isatty(STDOUT_FILENO) && !std::getenv("NO_COLOR");
+    // --json and --no-color work anywhere on the line, not just before the command.
+    std::erase_if(args, [&](const std::string& s) {
+        if (s == "--json") return g.json = true;
+        if (s == "--show-key-numbers" || s == "--hide-key-numbers") {
+            g.key_numbers = s == "--show-key-numbers";
+            return true;
+        }
+        if (s == "--no-color") return !(g.color = false);
+        return false;
+    });
 
     // Global options come before the command.
     std::size_t i = 0;
@@ -745,11 +801,19 @@ int main(int argc, char** argv) {
         if (!folder) throw std::runtime_error("no folder: pass --folder PATH, or set one with `reminders folder PATH`");
         if (!rem::fs::is_directory(*folder)) throw std::runtime_error(std::format("“{}” is not a folder", folder->string()));
 
-        App app(g, *folder);
+        // A --folder other than the saved one is for this run only: the saved
+        // view belongs to the saved folder.
+        bool own_folder = true;
+        if (g.folder) {
+            std::error_code ec;
+            auto saved = rem::saved_folder();
+            own_folder = saved && rem::fs::equivalent(*saved, *folder, ec);
+        }
+        App app(g, *folder, own_folder);
         if (cmd == "tui") {
             if (!isatty(STDIN_FILENO) || !isatty(STDOUT_FILENO))
                 throw UsageError("the interactive interface needs a terminal; see reminders --help for commands");
-            return run_tui(app.store(), *folder);
+            return run_tui(app.store(), *folder, own_folder, g.key_numbers);
         }
         return app.run(cmd, parse_args(rest));
     } catch (const UsageError& e) {

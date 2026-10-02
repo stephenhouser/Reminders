@@ -12,6 +12,7 @@
 
 #include "gtk_util.hpp"
 #include "reminders/history.hpp"
+#include "reminders/settings.hpp"
 #include "reminders/store.hpp"
 
 namespace ui {
@@ -33,6 +34,8 @@ public:
     static Window* from(GtkWindow* window);
     // Opens a reminder's list and its details dialog (e.g. from a notification).
     void show_reminder(const std::string& id);
+    // Overrides the show-key-numbers setting (from the command line).
+    void set_show_key_numbers(bool on);
 
 private:
     Window(AdwApplication* app, std::optional<std::filesystem::path> folder);
@@ -72,7 +75,9 @@ private:
     void toggle_flag(const std::string& id);
     void set_priority(const std::string& id, rem::Priority priority);
     void indent(const std::string& id, bool in);  // false: outdent
-    std::vector<View> sidebar_views();             // in sidebar order
+    std::vector<View> smart_views();
+    std::vector<View> sidebar_views(bool include_folded = false);  // in sidebar order
+    View home_view();
     struct ViewInfo {
         View view;
         std::string title;
@@ -145,6 +150,9 @@ private:
     gint64 last_notify_check_ = 0;  // unix seconds
     bool updating_sidebar_ = false;
     bool show_completed_ = false;
+    bool show_key_numbers_ = false;  // settings.ini: show-key-numbers
+    rem::SmartListsLayout smart_;    // settings.ini: smart-lists, -display, -position, -collapsed
+    rem::TagsLayout tags_;           // settings.ini: tags-display, tags-collapsed
     std::set<std::string> collapsed_;  // reminders whose subtasks are hidden (this session)
     bool remember_view_ = true;  // false for a folder opened just for this session
     View view_;

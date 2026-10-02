@@ -91,6 +91,20 @@ inline MarkdownLine markdown_line(const rem::Reminder& r) {
     return m;
 }
 
+// The "view" setting shared by every front end (the list that last had
+// focus): "today", "scheduled", "all", "flagged", "completed", "list:NAME" or
+// "tag:NAME".
+struct SavedView {
+    std::string kind;
+    std::string name;
+};
+
+inline SavedView parse_view_setting(const std::string& s) {
+    auto colon = s.find(':');
+    if (colon == std::string::npos) return {s.empty() ? "today" : s, ""};
+    return {s.substr(0, colon), s.substr(colon + 1)};
+}
+
 inline std::string lower(std::string_view s) {
     std::string out(s);
     for (auto& c : out) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));

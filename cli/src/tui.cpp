@@ -1,13 +1,17 @@
 #include "tui.hpp"
 
 #include <ncurses.h>
+#include <termios.h>
+#include <unistd.h>
 
 #include <algorithm>
 #include <chrono>
 #include <climits>
 #include <clocale>
 #include <cwchar>
+#include <cstdlib>
 #include <format>
+#include <fstream>
 #include <map>
 #include <optional>
 #include <string>
@@ -16,6 +20,8 @@
 #include "reminders/dates.hpp"
 #include "reminders/format.hpp"
 #include "reminders/history.hpp"
+#include "reminders/settings.hpp"
+#include "editfile.hpp"
 #include "text.hpp"
 
 namespace {
@@ -143,6 +149,10 @@ struct SidebarEntry {
     std::string title;
     std::string color;
     int count = -1;
+    // Headings: "My Lists" is just a label; "Smart Lists" and "Tags" can be
+    // selected, and Enter/Space folds or unfolds their group.
+    // A Spacer is a blank line between groups that have no heading.
+    enum Kind { Item, Heading, SmartHeading, TagsHeading, Spacer } kind = Item;
 };
 
 struct Line {
@@ -158,35 +168,56 @@ struct Line {
 
 class Tui {
 public:
-    Tui(rem::Store& store, fs::path folder) : store_(store), folder_(std::move(folder)) {}
+    Tui(rem::Store& store, fs::path folder, bool remember)
+        : store_(store), folder_(std::move(folder)), remember_(remember) {}
     int run();
+    void set_show_key_numbers(bool on) { show_key_numbers_ = on; }
 
 private:
     rem::Store& store_;
     fs::path folder_;
+    bool remember_;
     rem::History history_;
     View view_;
     bool focus_items_ = false;
     bool show_completed_ = false;
+    bool hide_subtasks_ = false;   // Ctrl+E
+    bool hide_sidebar_ = false;    // Ctrl+B
+    bool show_key_numbers_ = rem::load_bool_setting("show-key-numbers");
+    rem::SmartListsLayout smart_ = rem::load_smart_lists_layout();
+    rem::TagsLayout tags_ = rem::load_tags_layout();
+    // Extended key codes for the GUI's modified keys, 0 if the terminal lacks them.
+    int alt_up_ = 0, alt_down_ = 0, ctrl_page_down_ = 0, ctrl_page_up_ = 0;
     int side_sel_ = 0;
     std::string item_sel_;  // selected reminder id
     int item_scroll_ = 0;
     std::string message_;
     std::map<std::string, std::pair<fs::file_time_type, std::uintmax_t>> seen_;  // folder signature
 
-    std::vector<SidebarEntry> sidebar();
+    std::vector<SidebarEntry> sidebar();        // every row, headings included
+    std::vector<SidebarEntry> sidebar_items();  // the selectable lists, in order (numbered)
+    std::vector<SidebarEntry> smart_entries();  // the smart lists the settings show
+    View home_view();
     std::vector<Line> lines();
     void draw();
     void draw_sidebar(int width, int height);
     void draw_items(int x, int width, int height);
     void draw_status();
     std::optional<std::string> prompt(const std::string& label, const std::string& initial = "");
+    std::optional<std::string> edit_line(int y, int x, int width, const std::string& initial, attr_t attr);
+    void edit_title_in_place(const std::string& id);
+    // Where the selected reminder's title is on screen (set while drawing).
+    int title_y_ = -1, title_x_ = 0, title_width_ = 0;
     bool confirm(const std::string& question);
     void show_help();
-    void show_details(const std::string& id);
-    bool handle_key(wint_t key, bool is_function_key);
+    // Edits every field of a reminder in the user's editor.
+    void edit_in_editor(const std::string& id);
+    bool handle_key(wint_t key, bool is_function_key, bool alt = false);
+    void step_sidebar(int delta);
     void move_selection(int delta);
     void select_view(const View& v);
+    void restore_view();
+    void remember_view();
     void check_folder();
 
     template <class F>
@@ -201,24 +232,73 @@ private:
     }
 };
 
-std::vector<SidebarEntry> Tui::sidebar() {
+std::vector<SidebarEntry> Tui::smart_entries() {
     auto today = rem::local_today();
-    std::vector<SidebarEntry> out = {
-        {{View::Today, ""}, "Today", "blue", static_cast<int>(store_.today(today).size())},
-        {{View::Scheduled, ""}, "Scheduled", "red", static_cast<int>(store_.scheduled().size())},
-        {{View::All, ""}, "All", "gray", static_cast<int>(store_.all().size())},
-        {{View::Flagged, ""}, "Flagged", "orange", static_cast<int>(store_.flagged().size())},
-        {{View::Completed, ""}, "Completed", "gray", static_cast<int>(store_.completed().size())},
+    std::vector<SidebarEntry> out;
+    if (smart_.hidden()) return out;
+    for (auto& name : smart_.shown) {
+        if (name == "today") out.push_back({{View::Today, ""}, "Today", "blue", static_cast<int>(store_.today(today).size())});
+        if (name == "scheduled") out.push_back({{View::Scheduled, ""}, "Scheduled", "red", static_cast<int>(store_.scheduled().size())});
+        if (name == "all") out.push_back({{View::All, ""}, "All", "gray", static_cast<int>(store_.all().size())});
+        if (name == "flagged") out.push_back({{View::Flagged, ""}, "Flagged", "orange", static_cast<int>(store_.flagged().size())});
+        if (name == "completed") out.push_back({{View::Completed, ""}, "Completed", "gray", static_cast<int>(store_.completed().size())});
+    }
+    return out;
+}
+
+std::vector<SidebarEntry> Tui::sidebar() {
+    std::vector<SidebarEntry> out;
+    auto smart_group = [&] {
+        auto smart = smart_entries();
+        if (smart.empty()) return;
+        if (smart_.has_heading()) {
+            SidebarEntry heading{{}, smart_.folded() ? "Smart Lists (folded)" : "Smart Lists", "", -1};
+            heading.kind = SidebarEntry::SmartHeading;
+            out.push_back(heading);
+            if (smart_.folded()) return;
+        } else if (!out.empty()) {
+            SidebarEntry gap{};
+            gap.kind = SidebarEntry::Spacer;  // no heading: keep them apart from the tags
+            out.push_back(gap);
+        }
+        out.insert(out.end(), smart.begin(), smart.end());
     };
+    if (!smart_.at_bottom) smart_group();
+    SidebarEntry lists_heading{{}, "My Lists", "", -1};
+    lists_heading.kind = SidebarEntry::Heading;
+    out.push_back(lists_heading);
     for (auto* l : store_.lists()) {
         int open = 0;
         l->doc.walk([&](rem::Reminder& r, rem::Reminder*) { open += !r.done; });
         out.push_back({{View::List, l->name}, l->name, l->color(), open});
     }
-    for (auto& t : store_.tags()) out.push_back({{View::Tag, t}, "#" + t, "gray", -1});
+    auto tags = store_.tags();
+    if (!tags.empty() && !tags_.hidden()) {
+        SidebarEntry tags_heading{{}, tags_.folded() ? "Tags (folded)" : "Tags", "", -1};
+        tags_heading.kind = tags_.foldable() ? SidebarEntry::TagsHeading : SidebarEntry::Heading;
+        out.push_back(tags_heading);
+        if (!tags_.folded())
+            for (auto& t : tags) out.push_back({{View::Tag, t}, "#" + t, "gray", -1});
+    }
+    if (smart_.at_bottom) smart_group();
     return out;
 }
 
+std::vector<SidebarEntry> Tui::sidebar_items() {
+    std::vector<SidebarEntry> out;
+    for (auto& e : sidebar())
+        if (e.kind == SidebarEntry::Item) out.push_back(e);
+    return out;
+}
+
+// Where to land when there's nothing better: Today, unless it's hidden.
+View Tui::home_view() {
+    auto smart = smart_entries();
+    if (std::ranges::any_of(smart, [](auto& e) { return e.view.kind == View::Today; })) return {View::Today, ""};
+    auto items = sidebar_items();
+    if (!items.empty()) return items.front().view;
+    return smart.empty() ? View{View::Today, ""} : smart.front().view;
+}
 std::vector<Line> Tui::lines() {
     std::vector<Line> out;
     auto today = rem::local_today();
@@ -251,6 +331,7 @@ std::vector<Line> Tui::lines() {
             for (auto* r : section.reminders) {
                 if (r->done && !show_completed_) continue;
                 item({l, r, nullptr}, 0, false);
+                if (hide_subtasks_) continue;
                 for (auto& s : r->subtasks)
                     if (!s.done || show_completed_) item({l, &s, r}, 2, false);
             }
@@ -298,30 +379,36 @@ std::vector<Line> Tui::lines() {
 void Tui::draw_sidebar(int width, int height) {
     auto entries = sidebar();
     side_sel_ = std::clamp(side_sel_, 0, static_cast<int>(entries.size()) - 1);
-    int y = 1;
+    attron(A_BOLD);
+    put(0, 1, "Reminders", width - 2);
+    attroff(A_BOLD);
+    int y = 2;  // a blank line under the title
+    std::size_t number = 0;  // key numbers follow the lists that are showing
     for (int i = 0; i < static_cast<int>(entries.size()) && y < height - 1; ++i, ++y) {
-        if (i == 5) {
-            attron(dim());
-            put(y++, 1, "My Lists", width - 2);
+        auto& e = entries[static_cast<std::size_t>(i)];
+        bool selected = i == side_sel_ && !focus_items_;
+        if (e.kind == SidebarEntry::Spacer) continue;  // the loop's own line step is the gap
+        if (e.kind != SidebarEntry::Item) {
+            if (i > 0) ++y;  // a blank line above each group
+            if (y >= height - 1) break;
+            if (selected) attron(COLOR_PAIR(kSelected) | A_BOLD);
+            else attron(dim());
+            mvhline(y, 0, ' ', width - 1);
+            put(y, 1, e.title, width - 2);
+            attroff(COLOR_PAIR(kSelected) | A_BOLD);
             attroff(dim());
+            continue;
         }
-        if (entries[i].view.kind == View::Tag && entries[i - 1].view.kind != View::Tag) {
-            attron(dim());
-            put(y++, 1, "Tags", width - 2);
-            attroff(dim());
-        }
-        if (y >= height - 1) break;
-        bool selected = i == side_sel_;
-        bool current = entries[i].view == view_;
-        if (selected && !focus_items_) attron(COLOR_PAIR(kSelected) | A_BOLD);
+        bool current = e.view == view_;
+        if (selected) attron(COLOR_PAIR(kSelected) | A_BOLD);
         else if (current) attron(A_BOLD);
         mvhline(y, 0, ' ', width - 1);
-        bool colored = entries[i].view.kind == View::List;
-        if (colored) attron(list_color(entries[i].color));
-        put(y, 1, entries[i].title, width - 8);
-        if (colored) attroff(list_color(entries[i].color));
-        if (entries[i].count >= 0) {
-            auto count = std::to_string(entries[i].count);
+        bool colored = e.view.kind == View::List;
+        if (colored) attron(list_color(e.color));
+        put(y, 1, rem::with_key_number(e.title, number++, show_key_numbers_), width - 8);
+        if (colored) attroff(list_color(e.color));
+        if (e.count >= 0) {
+            auto count = std::to_string(e.count);
             attron(dim());
             put(y, width - 2 - static_cast<int>(count.size()), count, static_cast<int>(count.size()));
             attroff(dim());
@@ -330,15 +417,18 @@ void Tui::draw_sidebar(int width, int height) {
     }
     mvvline_set(0, width - 1, WACS_VLINE, height - 1);
 }
-
 void Tui::draw_items(int x, int width, int height) {
+    title_y_ = -1;
     auto ls = lines();
     // Title
     std::string title;
     if (view_.kind == View::List) title = view_.name;
     else if (view_.kind == View::Tag) title = "#" + view_.name;
     else if (view_.kind == View::Search) title = std::format("Search: {}", view_.name);
-    else title = sidebar()[static_cast<std::size_t>(view_.kind)].title;
+    else {
+        static constexpr const char* smart_titles[] = {"Today", "Scheduled", "All", "Flagged", "Completed"};
+        title = smart_titles[static_cast<int>(view_.kind)];
+    }
     attron(A_BOLD);
     if (view_.kind == View::List)
         if (auto* l = store_.list(view_.name)) attron(list_color(l->color()));
@@ -390,6 +480,11 @@ void Tui::draw_items(int x, int width, int height) {
                     mvhline(y, x, ' ', width);
                 }
                 int col = x + 1 + l.depth, room = width - 2 - l.depth;
+                if (selected) {  // the title starts after "- [ ] "
+                    title_y_ = y;
+                    title_x_ = col + 6;
+                    title_width_ = std::max(1, room - 6);
+                }
                 auto part = [&](const std::string& text, attr_t a) {
                     if (text.empty() || room <= 1) return;
                     attrset(a);
@@ -412,8 +507,8 @@ void Tui::draw_status() {
     attron(COLOR_PAIR(kStatus));
     mvhline(h - 1, 0, ' ', COLS);
     auto text = message_.empty()
-                    ? std::string(focus_items_ ? " space done  a add  e edit  d due  f flag  x delete  u undo  / search  ? help  q quit"
-                                               : " ↑↓ choose  enter open  tab switch  g go to  N new list  / search  ? help  q quit")
+                    ? std::string(focus_items_ ? " x done  n new  enter title  e edit  d due  f flag  del delete  u undo  ? help  q quit"
+                                               : " ↑↓ choose  enter open  tab switch  g go to  n new  N new list  ? help  q quit")
                     : " " + message_;
     put(h - 1, 0, text, COLS);
     attroff(COLOR_PAIR(kStatus));
@@ -421,52 +516,119 @@ void Tui::draw_status() {
 
 void Tui::draw() {
     erase();
-    int side = std::min(28, std::max(18, COLS / 4));
-    draw_sidebar(side, LINES);
+    int extra = show_key_numbers_ ? 4 : 0;  // room for "(1) "
+    int side = hide_sidebar_ ? 0 : std::min(28 + extra, std::max(18 + extra, COLS / 4));
+    if (!hide_sidebar_) draw_sidebar(side, LINES);
     draw_items(side, COLS - side, LINES);
     draw_status();
     refresh();
 }
 
-std::optional<std::string> Tui::prompt(const std::string& label, const std::string& initial) {
+// Edits one line of text in `width` cells at (y, x), with a cursor: ←/→,
+// Home/End (Ctrl+A/E), Backspace/Delete, Ctrl+U clears, Ctrl+K cuts to the
+// end. Enter or Ctrl+S accepts, Esc cancels (nullopt).
+std::optional<std::string> Tui::edit_line(int y, int x, int width, const std::string& initial, attr_t attr) {
     auto text = widen(initial);
+    std::size_t cur = text.size();
     curs_set(1);
+    std::optional<std::string> result;
     while (true) {
-        attron(COLOR_PAIR(kStatus));
-        mvhline(LINES - 1, 0, ' ', COLS);
-        int used = put(LINES - 1, 0, " " + label + " ", COLS);
-        // Show the end of the text if it's too long.
-        std::wstring shown = text;
-        int room = COLS - used - 1;
-        while (text_width(shown) > room && !shown.empty()) shown.erase(0, 1);
-        mvaddnwstr(LINES - 1, used, shown.c_str(), static_cast<int>(shown.size()));
-        attroff(COLOR_PAIR(kStatus));
-        move(LINES - 1, used + text_width(shown));
+        // Scroll sideways so the cursor stays visible.
+        std::size_t start = 0;
+        while (start < cur && text_width(text.substr(start, cur - start)) > width - 1) ++start;
+        attrset(attr);
+        mvhline(y, x, ' ', width);
+        std::wstring shown;
+        int used = 0;
+        for (auto i = start; i < text.size(); ++i) {
+            int cw = cell_width(text[i]);
+            if (used + cw > width) break;
+            shown += text[i];
+            used += cw;
+        }
+        mvaddnwstr(y, x, shown.c_str(), static_cast<int>(shown.size()));
+        attrset(A_NORMAL);
+        move(y, x + text_width(text.substr(start, cur - start)));
         refresh();
 
         wint_t ch;
         int kind = get_wch(&ch);
         if (kind == ERR) continue;
         if (kind == KEY_CODE_YES) {
-            if (ch == KEY_BACKSPACE && !text.empty()) text.pop_back();
-            else if (ch == KEY_ENTER) break;
+            switch (ch) {
+                case KEY_LEFT: if (cur > 0) --cur; break;
+                case KEY_RIGHT: if (cur < text.size()) ++cur; break;
+                case KEY_HOME: cur = 0; break;
+                case KEY_END: cur = text.size(); break;
+                case KEY_BACKSPACE: if (cur > 0) text.erase(--cur, 1); break;
+                case KEY_DC: if (cur < text.size()) text.erase(cur, 1); break;
+                case KEY_ENTER: result = narrow(text); break;
+            }
+            if (result) break;
             continue;
         }
-        if (ch == 27) {  // Esc
-            curs_set(0);
-            return std::nullopt;
+        if (ch == 27) break;  // Esc: cancel
+        if (ch == '\n' || ch == '\r' || ch == 19) {  // Enter, or Ctrl+S as in the GNOME app
+            result = narrow(text);
+            break;
         }
-        if (ch == '\n' || ch == '\r') break;
-        if (ch == 127 || ch == 8) {
-            if (!text.empty()) text.pop_back();
-        } else if (ch == 21) {  // Ctrl+U
-            text.clear();
-        } else if (ch >= 32) {
-            text += static_cast<wchar_t>(ch);
+        switch (ch) {
+            case 127:
+            case 8: if (cur > 0) text.erase(--cur, 1); break;
+            case 1: cur = 0; break;            // Ctrl+A
+            case 5: cur = text.size(); break;  // Ctrl+E
+            case 21: text.clear(), cur = 0; break;  // Ctrl+U
+            case 11: text.erase(cur); break;   // Ctrl+K
+            default:
+                if (ch >= 32) text.insert(cur++, 1, static_cast<wchar_t>(ch));
         }
     }
     curs_set(0);
-    return narrow(text);
+    return result;
+}
+
+std::optional<std::string> Tui::prompt(const std::string& label, const std::string& initial) {
+    attron(COLOR_PAIR(kStatus));
+    mvhline(LINES - 1, 0, ' ', COLS);
+    int used = put(LINES - 1, 0, " " + label + " ", COLS);
+    attroff(COLOR_PAIR(kStatus));
+    return edit_line(LINES - 1, used, std::max(1, COLS - used - 1), initial, COLOR_PAIR(kStatus));
+}
+
+// Enter / F2: edit the selected reminder's title where it's shown. As in the
+// GNOME app, fields typed into it (#tag, 📅 date…) are applied, and clearing
+// it deletes the reminder.
+void Tui::edit_title_in_place(const std::string& id) {
+    draw();  // makes sure title_y_ etc. describe the selected row
+    auto ref = store_.find(id);
+    if (!ref || title_y_ < 0) return;
+    auto text = edit_line(title_y_, title_x_, title_width_, ref->reminder->title,
+                          focus_items_ ? COLOR_PAIR(kSelected) | A_BOLD : A_BOLD);
+    if (!text || *text == ref->reminder->title) return;
+
+    auto trimmed = *text;
+    while (!trimmed.empty() && trimmed.back() == ' ') trimmed.pop_back();
+    while (!trimmed.empty() && trimmed.front() == ' ') trimmed.erase(0, 1);
+    if (trimmed.empty()) {
+        move_selection(1);
+        if (item_sel_ == id) move_selection(-1);
+        undoable("Delete", [&] { store_.remove(id); });
+        message_ = "Deleted (u to undo)";
+        return;
+    }
+    undoable("Edit Title", [&] {
+        auto& r = *ref->reminder;
+        auto f = rem::parse_fields(trimmed);
+        r.title = f.title;
+        for (auto& t : f.tags)
+            if (std::ranges::find(r.tags, t) == r.tags.end()) r.tags.push_back(t);
+        if (f.priority != rem::Priority::None) r.priority = f.priority;
+        if (f.flagged) r.flagged = true;
+        if (f.repeat) r.repeat = f.repeat;
+        if (f.due_date) r.due_date = f.due_date, r.due_time = f.due_time;
+        if (f.url) r.url = f.url;
+        store_.touch(id);
+    });
 }
 
 bool Tui::confirm(const std::string& question) {
@@ -479,21 +641,28 @@ void Tui::show_help() {
         "Reminders: keys",
         "",
         "Anywhere",
-        "  ↑↓ / j k     move           tab         switch pane",
-        "  1-9          sidebar entry  g           go to a list by name",
+        "  ↑↓ / j k     move           tab         switch sidebar / reminders",
+        "  1-9, 0       sidebar entry  g / Ctrl+K  go to a list by name",
+        "  enter        on the Smart Lists or Tags heading: fold / unfold it",
         "  /            search         c           show/hide completed",
-        "  N            new list       u / Ctrl+R  undo / redo",
+        "  N            new list       u / r       undo / redo",
         "  ?            this help      q           quit",
         "",
         "On a reminder",
-        "  space        complete       a           add (inline fields work)",
-        "  e / enter    edit title     i           details",
+        "  x / space    done / not done  n         new reminder (inline fields work)",
+        "  enter / F2   edit the title in place (esc cancels)",
+        "  e / i        edit every field in your $EDITOR",
         "  d            due date (today, tomorrow, fri, +3d, 2026-10-31, none)",
         "  t / T        due today / tomorrow",
         "  f            flag           0-3         priority none-high",
         "  #            add tag (-tag removes)     m  move to list",
-        "  J / K        move down/up   > / <       indent / outdent",
-        "  x / Delete   delete",
+        "  J / K        move down/up   ] / [       indent / outdent",
+        "  Delete       delete (asks first)",
+        "",
+        "Same as the GNOME app",
+        "  Ctrl+N new   Ctrl+T today   Ctrl+K go to   Ctrl+F search   Ctrl+H completed",
+        "  Ctrl+E subtasks   Ctrl+B sidebar   F2 title",
+        "  Alt+0-3 priority   Alt+↑↓ move   Ctrl+PgUp/PgDn previous/next   Ctrl+Q quit",
         "",
         "Press any key to close.",
     };
@@ -509,69 +678,92 @@ void Tui::show_help() {
     delwin(win);
 }
 
-void Tui::show_details(const std::string& id) {
-    auto ref = store_.find(id);
-    if (!ref) return;
-    auto& r = *ref->reminder;
-    std::vector<std::string> rows = {term::markdown_line(r).text(), ""};
-    auto add = [&](const char* label, const std::string& v) {
-        if (!v.empty()) rows.push_back(std::format("{:<10}{}", label, v));
-    };
-    add("List", ref->list->name + (ref->parent ? " > " + ref->parent->title : ""));
-    add("Status", r.done ? "completed" : "open");
-    if (r.due_date) add("Due", rem::format_date(*r.due_date) + (r.due_time ? " " + rem::format_time(*r.due_time) : ""));
-    add("Repeat", r.repeat.value_or(""));
-    add("Priority", r.priority == rem::Priority::None ? "" : term::priority_name(r.priority));
-    add("Flagged", r.flagged ? "yes" : "");
-    std::string tags;
-    for (auto& t : r.tags) tags += (tags.empty() ? "#" : " #") + t;
-    add("Tags", tags);
-    add("URL", r.url.value_or(""));
-    if (!r.notes.empty()) {
-        rows.push_back("");
-        for (std::size_t s = 0;;) {
-            auto nl = r.notes.find('\n', s);
-            rows.push_back(r.notes.substr(s, nl - s));
-            if (nl == std::string::npos) break;
-            s = nl + 1;
-        }
+// Edits the reminder in $EDITOR as YAML-style fields (see editfile.hpp).
+void Tui::edit_in_editor(const std::string& id) {
+    def_prog_mode();
+    endwin();
+    auto outcome = editfile::Outcome::Unchanged;
+    try {
+        outcome = editfile::edit(store_, id, [&](const std::function<void()>& apply) {
+            auto before = store_.snapshot();
+            apply();  // errors go back to the editor, so don't swallow them here
+            history_.record("Edit Reminder", before, store_.snapshot());
+        });
+    } catch (const std::exception& e) {
+        message_ = std::format("Error: {}", e.what());
     }
-    for (auto& s : r.subtasks) rows.push_back("  " + term::markdown_line(s).text());
-    rows.push_back("");
-    rows.push_back("Press any key to close.");
+    reset_prog_mode();
+    refresh();
+    if (message_.empty())
+        message_ = outcome == editfile::Outcome::Saved      ? "Saved (u to undo)"
+                   : outcome == editfile::Outcome::Reverted ? "Reverted; the reminder is as it was"
+                                                            : "No changes";
+}
 
-    int w = std::min(COLS - 4, 76), h = std::min(LINES - 2, static_cast<int>(rows.size()) + 2);
-    auto* win = newwin(h, w, (LINES - h) / 2, (COLS - w) / 2);
-    box_set(win, WACS_VLINE, WACS_HLINE);
-    for (int i = 0; i < static_cast<int>(rows.size()) && i < h - 2; ++i) {
-        auto line = widen(rows[static_cast<std::size_t>(i)]);
-        while (text_width(line) > w - 4) line.pop_back();
-        mvwaddnwstr(win, i + 1, 2, line.c_str(), static_cast<int>(line.size()));
+constexpr std::pair<int, const char*> kViewSettings[] = {
+    {0, "today"}, {1, "scheduled"}, {2, "all"}, {3, "flagged"}, {4, "completed"}};
+
+// Opens on the list that last had focus here, in the GNOME app or via the CLI.
+void Tui::restore_view() {
+    if (!remember_) {
+        select_view(home_view());
+        return;
     }
-    wrefresh(win);
-    wint_t ch;
-    while (get_wch(&ch) == ERR) {
+    auto saved = term::parse_view_setting(rem::load_setting("view"));
+    for (auto [kind, name] : kViewSettings)
+        if (saved.kind == name) view_ = {static_cast<View::Kind>(kind), ""};
+    if (saved.kind == "list" && store_.list(saved.name)) view_ = {View::List, saved.name};
+    auto tags = store_.tags();
+    if (saved.kind == "tag" && !tags_.hidden() && std::ranges::find(tags, saved.name) != tags.end())
+        view_ = {View::Tag, saved.name};
+    bool smart = view_.kind != View::List && view_.kind != View::Tag && view_.kind != View::Search;
+    if (smart && std::ranges::none_of(smart_entries(), [&](auto& e) { return e.view == view_; })) view_ = home_view();
+    select_view(view_);
+}
+
+void Tui::remember_view() {
+    if (!remember_ || view_.kind == View::Search) return;
+    std::string value = view_.kind == View::List ? "list:" + view_.name
+                        : view_.kind == View::Tag ? "tag:" + view_.name
+                                                  : kViewSettings[static_cast<int>(view_.kind)].second;
+    try {
+        if (rem::load_setting("view") != value) rem::save_setting("view", value);
+    } catch (const std::exception&) {
+        // Not being able to save the last view isn't worth interrupting for.
     }
-    delwin(win);
 }
 
 void Tui::select_view(const View& v) {
     view_ = v;
+    remember_view();
     item_scroll_ = 0;
     item_sel_.clear();
     auto entries = sidebar();
     for (int i = 0; i < static_cast<int>(entries.size()); ++i)
-        if (entries[static_cast<std::size_t>(i)].view == v) side_sel_ = i;
+        if (entries[static_cast<std::size_t>(i)].kind == SidebarEntry::Item && entries[static_cast<std::size_t>(i)].view == v)
+            side_sel_ = i;
 }
-
 void Tui::move_selection(int delta) {
     if (!focus_items_) {
-        side_sel_ = std::max(0, side_sel_ + delta);
+        // Steps over the "My Lists" / "Tags" labels; stops on the Smart Lists
+        // heading (Enter folds it) and on lists, which open as you go.
         auto entries = sidebar();
-        side_sel_ = std::min(side_sel_, static_cast<int>(entries.size()) - 1);
-        view_ = entries[static_cast<std::size_t>(side_sel_)].view;
-        item_scroll_ = 0;
-        item_sel_.clear();
+        int n = static_cast<int>(entries.size()), step = delta < 0 ? -1 : 1;
+        for (int moved = 0, i = side_sel_; moved < std::abs(delta);) {
+            i += step;
+            if (i < 0 || i >= n) break;
+            auto k = entries[static_cast<std::size_t>(i)].kind;
+            if (k == SidebarEntry::Heading || k == SidebarEntry::Spacer) continue;
+            side_sel_ = i;
+            ++moved;
+        }
+        auto& e = entries[static_cast<std::size_t>(std::clamp(side_sel_, 0, n - 1))];
+        if (e.kind == SidebarEntry::Item && !(e.view == view_)) {
+            view_ = e.view;
+            remember_view();
+            item_scroll_ = 0;
+            item_sel_.clear();
+        }
         return;
     }
     auto ls = lines();
@@ -605,18 +797,78 @@ void Tui::check_folder() {
     }
 }
 
-bool Tui::handle_key(wint_t key, bool fn) {
+void Tui::step_sidebar(int delta) {
+    auto entries = sidebar_items();
+    if (entries.empty()) return;
+    auto at = std::ranges::find_if(entries, [&](auto& e) { return e.view == view_; });
+    long n = static_cast<long>(entries.size());
+    long i = at == entries.end() ? 0 : ((at - entries.begin()) + delta + n) % n;
+    select_view(entries[static_cast<std::size_t>(i)].view);
+}
+bool Tui::handle_key(wint_t key, bool fn, bool alt) {
     message_.clear();
     auto today = rem::local_today();
     auto id = item_sel_;
     auto ref = id.empty() ? std::nullopt : store_.find(id);
     bool in_list = view_.kind == View::List;
 
+    // The GNOME app's shortcuts, as far as a terminal can send them; they map
+    // onto the TUI's own keys below. (Ctrl+Shift+letter arrives as
+    // Ctrl+letter, Ctrl+I as Tab and Ctrl+[ as Esc, so those keep their
+    // letter keys.)
+    if (alt) {
+        if (!fn && key >= '0' && key <= '3') {  // Alt+0…3: priority
+            if (ref) {
+                auto p = static_cast<rem::Priority>(key - '0');
+                undoable("Priority", [&] {
+                    ref->reminder->priority = p;
+                    store_.touch(id);
+                });
+            }
+            return true;
+        }
+        if (fn && key == KEY_UP) key = 'K', fn = false;         // Alt+↑ (sent as Esc, ↑)
+        else if (fn && key == KEY_DOWN) key = 'J', fn = false;  // Alt+↓
+        else return true;
+        focus_items_ = true;
+    } else if (fn) {
+        if (alt_up_ && static_cast<int>(key) == alt_up_) key = 'K', fn = false, focus_items_ = true;
+        else if (alt_down_ && static_cast<int>(key) == alt_down_) key = 'J', fn = false, focus_items_ = true;
+        else if (ctrl_page_down_ && static_cast<int>(key) == ctrl_page_down_) return step_sidebar(1), true;
+        else if (ctrl_page_up_ && static_cast<int>(key) == ctrl_page_up_) return step_sidebar(-1), true;
+        else if (key == KEY_F(1)) key = '?', fn = false;
+        else if (key == KEY_F(2)) key = '\n', fn = false;
+    } else {
+        switch (key) {
+            case 14: key = 'n'; break;            // Ctrl+N: new reminder
+            case 20: key = 't'; break;            // Ctrl+T: due today
+            case 11: key = 'g'; break;            // Ctrl+K: go to
+            case 8: key = 'c'; break;             // Ctrl+H: show/hide completed
+            case 6: key = '/'; break;             // Ctrl+F: search
+            case 17: case 23: key = 'q'; break;   // Ctrl+Q, Ctrl+W: quit
+            case 5:                               // Ctrl+E: show/hide subtasks
+                hide_subtasks_ = !hide_subtasks_;
+                message_ = hide_subtasks_ ? "Subtasks hidden" : "Subtasks shown";
+                return true;
+            case 2:                               // Ctrl+B: show/hide sidebar
+                hide_sidebar_ = !hide_sidebar_;
+                if (hide_sidebar_) focus_items_ = true;
+                return true;
+        }
+    }
+
+    // Tab switches between the sidebar and the reminders. (A terminal sends
+    // Ctrl+I as Tab, so Ctrl+I can't also edit, as it does in the GNOME app.)
+    if (!fn && key == '\t') {
+        focus_items_ = !focus_items_;
+        return true;
+    }
+
     // Keys that work anywhere.
     if (!fn) switch (key) {
             case 'q': return false;
             case '?': show_help(); return true;
-            case '\t': focus_items_ = !focus_items_; return true;
+            case 'h': focus_items_ = false; return true;
             case 'j': move_selection(1); return true;
             case 'k': move_selection(-1); return true;
             case 'c': show_completed_ = !show_completed_; return true;
@@ -626,7 +878,7 @@ bool Tui::handle_key(wint_t key, bool fn) {
                 for (auto& s : r.skipped) message_ = std::format("“{}” changed elsewhere; left as it is", s);
                 return true;
             }
-            case 18: {  // Ctrl+R
+            case 'r': {  // redo
                 auto r = history_.redo(store_);
                 message_ = r.applied ? "Redone" : "Nothing to redo";
                 return true;
@@ -643,7 +895,12 @@ bool Tui::handle_key(wint_t key, bool fn) {
                     // Best match: a name starting with it, else containing it.
                     std::optional<View> best;
                     int best_score = 3;
-                    for (auto& e : sidebar()) {
+                    auto findable = sidebar_items();  // plus folded smart lists and tags
+                    if (smart_.folded())
+                        for (auto& e : smart_entries()) findable.push_back(e);
+                    if (tags_.folded())
+                        for (auto& t : store_.tags()) findable.push_back({{View::Tag, t}, "#" + t, "gray", -1});
+                    for (auto& e : findable) {
                         auto t = term::lower(e.title), s = term::lower(*q);
                         if (t.starts_with('#') && !s.starts_with('#')) t.erase(0, 1);
                         int score = t.starts_with(s) ? 0 : t.find(s) != std::string::npos ? 1 : 3;
@@ -664,9 +921,9 @@ bool Tui::handle_key(wint_t key, bool fn) {
                 }
                 return true;
         }
-    if (!fn && key >= '1' && key <= '9' && !focus_items_) {
-        auto entries = sidebar();
-        auto n = static_cast<std::size_t>(key - '1');
+    if (!fn && key >= '0' && key <= '9' && !focus_items_) {  // 1…9, then 0 for the 10th
+        auto entries = sidebar_items();
+        auto n = static_cast<std::size_t>(key == '0' ? 9 : key - '1');
         if (n < entries.size()) select_view(entries[n].view);
         return true;
     }
@@ -685,16 +942,30 @@ bool Tui::handle_key(wint_t key, bool fn) {
         }
 
     if (!focus_items_) {
+        auto entries = sidebar();
+        auto heading = side_sel_ >= 0 && side_sel_ < static_cast<int>(entries.size())
+                           ? entries[static_cast<std::size_t>(side_sel_)].kind
+                           : SidebarEntry::Item;
+        bool activate = (!fn && (key == '\n' || key == '\r' || key == ' ')) || (fn && key == KEY_ENTER);
+        if (activate && (heading == SidebarEntry::SmartHeading || heading == SidebarEntry::TagsHeading)) {
+            try {
+                if (heading == SidebarEntry::SmartHeading) rem::save_smart_lists_collapsed(smart_.collapsed = !smart_.collapsed);
+                else rem::save_tags_collapsed(tags_.collapsed = !tags_.collapsed);
+            } catch (const std::exception&) {
+                // Folding still works; it just won't be remembered.
+            }
+            return true;
+        }
         if ((!fn && (key == '\n' || key == '\r' || key == 'l')) || (fn && key == KEY_ENTER)) focus_items_ = true;
-        else if (!fn && key == 'a') {
+        else if (!fn && key == 'n') {
             focus_items_ = true;
-            return handle_key('a', false);
+            return handle_key('n', false);
         }
         return true;
     }
 
     // Adding works without a selection.
-    if (!fn && key == 'a') {
+    if (!fn && key == 'n') {
         auto text = prompt("New reminder:");
         if (!text || text->empty()) return true;
         rem::ListFile* l = in_list ? store_.list(view_.name) : nullptr;
@@ -724,21 +995,26 @@ bool Tui::handle_key(wint_t key, bool fn) {
             store_.touch(id);
         });
     };
-    if (fn && (key == KEY_DC)) key = 'x', fn = false;
-    if (fn && key == KEY_ENTER) key = 'e', fn = false;
+    constexpr wint_t kDelete = 0x110000;  // the Delete key, outside the range of characters
+    if (fn && key == KEY_DC) key = kDelete, fn = false;
+    if (fn && key == KEY_ENTER) key = '\n', fn = false;
     if (fn) return true;
 
     switch (key) {
-        case ' ':
+        case 'x':
+        case ' ': {
+            bool hides = !r.done && !show_completed_ && view_.kind != View::Completed;
+            if (hides) {  // it's about to disappear: keep the place by selecting its neighbour
+                move_selection(1);
+                if (item_sel_ == id) move_selection(-1);
+            }
             undoable("Complete", [&] { store_.set_done(id, !r.done, today); });
             break;
-        case 'e':
+        }
         case '\n':
-        case '\r':
-            if (auto t = prompt("Title:", r.title); t && !t->empty() && *t != r.title)
-                save("Edit Title", [&] { r.title = rem::parse_fields(*t).title; });
-            break;
-        case 'i': show_details(id); break;
+        case '\r': edit_title_in_place(id); break;
+        case 'e':
+        case 'i': edit_in_editor(id); break;
         case 'd':
             if (auto d = prompt("Due (today, tomorrow, fri, +3d, 2026-10-31, none):",
                                 r.due_date ? rem::format_date(*r.due_date) : "")) {
@@ -802,20 +1078,20 @@ bool Tui::handle_key(wint_t key, bool fn) {
                 if (ref->list->doc.move_step(id, key == 'K', visible)) store_.save(*ref->list);
             });
             break;
-        case '>':
-        case '<':
+        case ']':
+        case '[':
             if (!in_list) {
                 message_ = "Indent in a list view";
                 break;
             }
-            undoable(key == '>' ? "Indent" : "Outdent", [&] {
+            undoable(key == ']' ? "Indent" : "Outdent", [&] {
                 auto visible = [this](const rem::Reminder& x) { return show_completed_ || !x.done; };
-                bool ok = key == '>' ? ref->list->doc.indent(id, visible) : ref->list->doc.outdent(id);
+                bool ok = key == ']' ? ref->list->doc.indent(id, visible) : ref->list->doc.outdent(id);
                 if (ok) store_.save(*ref->list);
-                else message_ = key == '>' ? "Can't indent this one" : "Not a subtask";
+                else message_ = key == ']' ? "Can't indent this one" : "Not a subtask";
             });
             break;
-        case 'x':
+        case kDelete:
             if (confirm(std::format("Delete “{}”?", r.title))) {
                 move_selection(1);
                 if (item_sel_ == id) move_selection(-1);
@@ -831,13 +1107,33 @@ int Tui::run() {
     std::setlocale(LC_ALL, "");
     initscr();
     cbreak();
+    // Ctrl+S / Ctrl+Q are XOFF / XON (pause / resume output) in a terminal;
+    // turn that off so Ctrl+S reaches the app. ncurses restores it on exit.
+    termios tio{};
+    if (tcgetattr(STDIN_FILENO, &tio) == 0) {
+        tio.c_iflag &= ~static_cast<tcflag_t>(IXON);
+        tcsetattr(STDIN_FILENO, TCSANOW, &tio);
+    }
     noecho();
     keypad(stdscr, TRUE);
     set_escdelay(25);
     curs_set(0);
     timeout(1000);  // wake up every second to look for changes
+    // Modified keys that terminals send as escape sequences ncurses knows by
+    // these capability names (kUP3 = Alt+↑, kNXT5 = Ctrl+Page Down, …).
+    auto code = [](const char* cap) {
+        const char* seq = tigetstr(cap);
+        if (!seq || seq == reinterpret_cast<const char*>(-1)) return 0;
+        int c = key_defined(seq);
+        return c > 0 ? c : 0;
+    };
+    alt_up_ = code("kUP3");
+    alt_down_ = code("kDN3");
+    ctrl_page_down_ = code("kNXT5");
+    ctrl_page_up_ = code("kPRV5");
     setup_colors();
     check_folder();
+    restore_view();
 
     try {
         draw();
@@ -849,7 +1145,19 @@ int Tui::run() {
                 draw();
                 continue;
             }
-            if (!handle_key(key, kind == KEY_CODE_YES)) break;
+            bool alt = false;
+            if (kind == OK && key == 27) {  // Esc: on its own, or Alt+key (sent as Esc, key)
+                nodelay(stdscr, TRUE);
+                wint_t next;
+                int next_kind = get_wch(&next);
+                timeout(1000);
+                if (next_kind != ERR) {
+                    key = next;
+                    kind = next_kind;
+                    alt = true;
+                }
+            }
+            if (!handle_key(key, kind == KEY_CODE_YES, alt)) break;
             check_folder();
             draw();
         }
@@ -863,4 +1171,8 @@ int Tui::run() {
 
 }  // namespace
 
-int run_tui(rem::Store& store, const std::filesystem::path& folder) { return Tui(store, folder).run(); }
+int run_tui(rem::Store& store, const std::filesystem::path& folder, bool remember, std::optional<bool> key_numbers) {
+    Tui tui(store, folder, remember);
+    if (key_numbers) tui.set_show_key_numbers(*key_numbers);
+    return tui.run();
+}

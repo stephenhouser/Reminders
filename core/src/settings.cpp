@@ -2,6 +2,7 @@
 
 #include <unistd.h>
 
+#include <algorithm>
 #include <cctype>
 #include <cstdint>
 #include <cstdlib>
@@ -95,6 +96,63 @@ void save_setting(const std::string& key, const std::string& value) {
     }
     fs::rename(tmp, file);
 }
+
+bool load_bool_setting(const std::string& key, bool fallback) {
+    std::string v;
+    for (char c : load_setting(key)) v += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    if (v == "true" || v == "yes" || v == "1" || v == "on") return true;
+    if (v == "false" || v == "no" || v == "0" || v == "off") return false;
+    return fallback;
+}
+
+std::string with_key_number(const std::string& title, std::size_t index, bool show) {
+    if (!show || index >= 10) return title;
+    return std::format("({}) {}", (index + 1) % 10, title);
+}
+
+// "visible" (the default), "collapsible" (or "collapsable") or "hidden".
+GroupDisplay load_display(const std::string& key) {
+    std::string v;
+    for (char c : load_setting(key)) v += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    if (v == "collapsible" || v == "collapsable") return GroupDisplay::Collapsible;
+    if (v == "hidden" || v == "hide" || v == "none") return GroupDisplay::Hidden;
+    return GroupDisplay::Visible;
+}
+
+SmartListsLayout load_smart_lists_layout() {
+    static const std::vector<std::string> known = {"today", "scheduled", "all", "flagged", "completed"};
+    SmartListsLayout layout;
+    auto value = load_setting("smart-lists");
+    if (!value.empty()) {
+        layout.shown.clear();
+        std::string word;
+        for (char c : value + ",") {
+            if (c == ',' || c == ' ' || c == '\t') {
+                for (auto& ch : word) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+                bool ok = std::find(known.begin(), known.end(), word) != known.end();
+                if (ok && std::find(layout.shown.begin(), layout.shown.end(), word) == layout.shown.end())
+                    layout.shown.push_back(word);
+                word.clear();
+            } else {
+                word += c;
+            }
+        }
+    }
+    std::string position;
+    for (char c : load_setting("smart-lists-position")) position += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    layout.at_bottom = position == "bottom" || position == "end";
+    layout.display = load_display("smart-lists-display");
+    layout.collapsed = load_bool_setting("smart-lists-collapsed");
+    return layout;
+}
+
+void save_smart_lists_collapsed(bool collapsed) { save_setting("smart-lists-collapsed", collapsed ? "true" : "false"); }
+
+TagsLayout load_tags_layout() {
+    return TagsLayout{load_display("tags-display"), load_bool_setting("tags-collapsed")};
+}
+
+void save_tags_collapsed(bool collapsed) { save_setting("tags-collapsed", collapsed ? "true" : "false"); }
 
 std::optional<fs::path> saved_folder() {
     auto folder = load_setting("folder");

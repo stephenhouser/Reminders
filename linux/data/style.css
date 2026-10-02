@@ -78,3 +78,7 @@
 .navigation-sidebar row.drop-into { background-color: alpha(var(--accent-bg-color), 0.25); }
 
 .subtask-toggle { padding: 2px 6px; min-height: 24px; }
+
+/* Sidebar counts: a fixed column (room for two digits), so the optional
+   Ctrl+N shortcut labels beside them line up. */
+.sidebar-count { min-width: 22px; }

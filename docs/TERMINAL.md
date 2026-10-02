@@ -22,7 +22,7 @@ reminders --folder ~/Sync/Work list   # use another folder for one command
 ```
 reminders                        open the interactive interface
 reminders lists                  lists, with how many reminders are open
-reminders list [VIEW] [-a]       reminders in VIEW (default: today)
+reminders list [VIEW] [-a]       reminders in VIEW (default: the last list you had open)
 reminders show NAME              everything about one reminder
 reminders add TEXT… [FIELDS]     add a reminder
 reminders edit NAME [FIELDS]     change one
@@ -37,6 +37,17 @@ reminders folder [PATH]
 
 **VIEW** is a list name (case doesn't matter), `today`, `scheduled`, `all`,
 `flagged`, `completed` or `#tag`. `-a` includes completed reminders.
+
+**The last list you had open** is shared by the GNOME app, the TUI and the CLI
+(the `view` line in `~/.config/reminders/settings.ini`):
+
+- **The TUI** opens on it and updates it as you move around. Searches don't
+  count.
+- **`reminders list`** with no VIEW shows it.
+- **`reminders add`** without `--list` adds to it. If it isn't a list (Today,
+  say), `add` uses your first list.
+- **The CLI never changes it**, so scripts don't move your default around.
+- **`--folder` with a different folder** ignores it and leaves it alone.
 
 **NAME** is a reminder's title, or enough of it to pick it out; quotes are
 optional. The best match wins: an exact title, then one starting with NAME,
@@ -53,7 +64,7 @@ then one containing it, then one containing all of NAME's words in any order
 | Option | Meaning |
 |---|---|
 | `--title TEXT` | Title |
-| `--list LIST` | List (`add`: which list; `edit`: move it there). Default for `add`: the first list |
+| `--list LIST` | List (`add`: which list; `edit`: move it there). Default for `add`: the last list you had open |
 | `--section NAME` | Section to add into |
 | `--parent NAME` | Add as a subtask of NAME |
 | `--in LIST` | Find NAME (or `--parent NAME`) in this list only |
@@ -91,7 +102,8 @@ reminders search dentist
   `list`, `section`, `parent`, `title`, `done`, `due`, `time`, `completed`,
   `flagged`, `priority`, `tags`, `repeat`, `url` and `notes`.
 - Colours appear only when printing to a terminal; `--no-color` or the
-  `NO_COLOR` environment variable turns them off.
+  `NO_COLOR` environment variable turns them off. `--json` and `--no-color`
+  can go anywhere on the command line.
 - `delete` asks for confirmation when run interactively; `--yes` skips it.
 - Exit status: 0 success, 1 error (e.g. nothing matched), 2 bad usage.
 
@@ -124,21 +136,26 @@ for scripts.
 ## The interactive interface
 
 Run `reminders` with no command. The sidebar (smart lists, your lists, tags)
-is on the left, and the selected view on the right. Changes made elsewhere (in
+is on the left, and the selected view on the right. When the smart lists or tags
+are set to `collapsible`, move onto their heading and press Enter or Space to
+fold or unfold them. Which of them show, and where,
+follow the same settings as the app (see
+[the settings file](USING.md#the-settings-file)). It opens on the last list
+you had open, here or in the GNOME app. Changes made elsewhere (in
 the GNOME app, on another device through Syncthing, or in an editor) appear
 within a second.
 
 | Key | Action |
 |---|---|
 | ↑ ↓ / j k, Page Up/Down | Move |
-| Tab, ← → | Switch between the sidebar and the reminders |
+| Tab, ← → (h l) | Switch between the sidebar and the reminders |
 | Enter | Open the selected sidebar entry |
-| 1–9 | Jump to sidebar entry 1–9 (Today, Scheduled, All, Flagged, Completed, your lists) |
+| 1–9, 0 | Jump to sidebar entry 1–10 (Today, Scheduled, All, Flagged, Completed, your lists); `0` is the 10th |
 | g | Go to a list or tag by typing part of its name |
 | / | Search |
 | c | Show / hide completed |
 | N | New list |
-| u / Ctrl+R | Undo / redo |
+| u / r | Undo / redo |
 | ? | Help |
 | q | Quit |
 
@@ -146,10 +163,10 @@ On the selected reminder:
 
 | Key | Action |
 |---|---|
-| Space | Complete / not complete |
-| a | Add a reminder (inline fields work; in Today it gets today's date, in Flagged a flag) |
-| e, Enter | Edit the title |
-| i | Details |
+| x, Space | Done / not done |
+| n | New reminder (inline fields work; in Today it gets today's date, in Flagged a flag) |
+| Enter, F2 | Edit the title in place (see below) |
+| e, i | Edit every field in your editor (see below) |
 | d | Due date: `today`, `tomorrow 09:00`, `fri`, `+3d`, `2026-10-31`, or `none` |
 | t / T | Due today / tomorrow |
 | f | Flag / unflag |
@@ -157,10 +174,110 @@ On the selected reminder:
 | # | Add a tag (`-tag` removes it) |
 | m | Move to another list (type the start of its name) |
 | J / K | Move down / up (in a list) |
-| > / < | Indent / outdent (in a list) |
-| x, Delete | Delete (asks first; undo with u) |
+| ] / [ | Indent / outdent (in a list) |
+| Delete | Delete (asks first; undo with u) |
 
-In prompts, Enter accepts, Esc cancels and Ctrl+U clears.
+**Editing text**, whether a title in place or a prompt at the bottom (add,
+search, go to, due date):
+
+| Key | Action |
+|---|---|
+| Enter, Ctrl+S | Accept |
+| Esc | Cancel |
+| ← → | Move the cursor |
+| Home / End, Ctrl+A / Ctrl+E | Jump to the start / end |
+| Backspace / Delete | Delete a character |
+| Ctrl+U | Clear the line |
+| Ctrl+K | Cut to the end of the line |
+
+When you edit a title in place, fields you type into it (`#tag`,
+`📅 2026-10-03`, `🚩`) are applied, and clearing the title deletes the reminder
+(`u` brings it back), as in the GNOME app.
+
+**The GNOME app's shortcuts work too,** where a terminal can send them:
+
+| Key | Action |
+|---|---|
+| Ctrl+N | New reminder |
+| Ctrl+T | Due today |
+| Ctrl+K | Go to |
+| Ctrl+F | Search |
+| Ctrl+H | Show / hide completed |
+| Ctrl+E | Show / hide subtasks |
+| Ctrl+B | Show / hide the sidebar |
+| F2 | Edit the title in place |
+| F1 | Help |
+| Alt+0 … Alt+3 | Priority none / low / medium / high |
+| Alt+↑ / Alt+↓ | Move up / down |
+| Ctrl+Page Up / Down | Previous / next sidebar entry |
+| Ctrl+Q, Ctrl+W | Quit |
+
+Some GUI shortcuts can't reach a terminal app, so their letter keys above stand
+in for them:
+
+- **Ctrl+Shift+letter** arrives as plain Ctrl+letter. So Ctrl+Shift+N, F, T
+  and Z are `N`, `f`, `T` and `r` (Ctrl+E toggles, as in the app).
+- **Ctrl+I** is the same as Tab, which switches panes, so editing every field
+  is `e` or `i`.
+- **Ctrl+]** and **Ctrl+[** (indent / outdent) are `]` and `[`: Ctrl+[ is the
+  same as Esc.
+- **Ctrl+1–9 and Ctrl+0** usually arrive as plain digits, so sidebar entries
+  are `1`–`9` and `0`.
+- **Ctrl+Z** still suspends the program, as in any terminal app (`fg` brings it
+  back). Undo is `u`.
+
+### Editing a reminder
+
+`e` (or `i`) in the TUI, and `reminders edit NAME` with no field options,
+open the reminder in your editor (`$VISUAL`, then `$EDITOR`, else nano
+or vi) as simple `name: value` fields:
+
+```yaml
+# Editing “Milk” in Groceries. Change values, save and quit; an empty value
+# clears a field. Quit without saving to cancel.
+#   due: today, tomorrow, fri, +3d, 2026-10-31     time: 17:30
+#   repeat: never, every day, every weekday, every week, every 2 weeks, every month, every year
+#   priority: none, low, medium, high              list: Groceries, Work, Home
+#   subtasks: Markdown lines; add, remove, or tick them with [x]
+title: Milk
+done: false
+due: 2026-10-03
+time: 17:30
+repeat: never
+priority: high
+flagged: true
+tags: errands
+list: Groceries
+section:
+url:
+notes: |
+  2% if they have it
+subtasks:
+  - [ ] Check the date
+```
+
+- **Save and quit** to apply everything as one change (`u` undoes it in the
+  TUI). **Quit without saving**, or empty the file, to cancel.
+- **An empty value** clears a field (`due:` removes the date).
+- **Changing `list:` or `section:`** moves the reminder.
+- **Notes** are the indented lines under `notes: |`, blank lines included.
+- **Subtasks** are Markdown lines: add or remove lines, tick with `[x]`, and add
+  fields such as `📅 2026-10-05`. Subtasks you keep retain their notes.
+- **If something can't be read** (say `due: someday`), you're told what and
+  asked: `Edit it again, or revert to how it was? [E/r]`.
+  - **Enter or `e`** reopens the editor with your text, and the problem noted
+    on the first line.
+  - **`r`** discards the edit and leaves the reminder as it was. From the CLI,
+    the command then exits with status 1.
+
+## Showing the number keys
+
+Add `show-key-numbers=true` to `~/.config/reminders/settings.ini` to label the
+first ten sidebar entries with their key: `(1)Today` … `(0)…` in the TUI, and
+`Ctrl+1` … `Ctrl+0` after the names in the GNOME app. See [the settings file](USING.md#the-settings-file).
+
+For a single run, `reminders --show-key-numbers` or
+`reminders --hide-key-numbers` overrides the setting without changing it.
 
 ## Running both clients at once
 

@@ -183,7 +183,7 @@ Ground rules
   sections; Ctrl+K "Go to" switcher (prefix > word start > substring >
   subsequence; ↑/↓ while typing; last entry searches); Ctrl+1…9, Ctrl+0
   sidebar entries 1–10; Ctrl+Page Down/Up next/previous; Ctrl+H completed;
-  Ctrl+E / Ctrl+Shift+E show/hide all subtasks; Ctrl+B sidebar; Ctrl+F
+  Ctrl+E toggles all subtasks; Ctrl+B sidebar; Ctrl+F
   search (Enter or ↓ moves into the results); Ctrl+Z / Ctrl+Shift+Z;
   Ctrl+? shortcuts dialog (AdwShortcutsDialog).
 - Custom symbolic icons (cart, gift, briefcase, mortarboard, heart, book,
@@ -192,7 +192,29 @@ Ground rules
 
 4. The terminal client: `reminders` (separate binary, no GTK; ncursesw)
 - Settings and the device name live in the core library (shared with the
-  GUI): ~/.config/reminders/settings.ini, keeping other lines intact.
+  GUI): ~/.config/reminders/settings.ini, keeping other lines intact. The
+  "view" setting (the list that last had focus: today | … | list:NAME |
+  tag:NAME) is shared by all three: the GUI and TUI open on it and save it as
+  it changes (not for searches); `reminders list` with no VIEW shows it and
+  `add` without --list adds to it (else the first list); the CLI never writes
+  it; a --folder other than the saved folder ignores it.
+  "show-key-numbers=true" (settings file only, read at start-up) labels the
+  first ten sidebar entries with their jump key: in the GUI a dim
+  gtk_accelerator_get_label() "Ctrl+1" … "Ctrl+0" to the right of the name
+  (before the count), in the TUI a "(1)Today" … "(0)…" prefix (the TUI's 0 key jumps to the 10th entry, like Ctrl+0).
+  Sidebar groups: smart-lists-display and tags-display are visible |
+  collapsible | hidden (default visible; "collapsable" accepted). Visible smart
+  lists have no heading (a blank gap separates them when they're at the
+  bottom); visible tags have a plain "Tags" heading; collapsible gives a
+  heading that folds the group (GUI: click; TUI: select it, Enter/Space),
+  remembered as smart-lists-collapsed / tags-collapsed. smart-lists picks
+  which and in what order; smart-lists-position is top | bottom. One ordering
+  function per front end drives drawing, the number labels, Ctrl+1…/1…,
+  Ctrl+PgUp/PgDn (over what's showing) and Go To (which also finds folded
+  groups); a hidden saved view falls back to Today or the first entry. The
+  TUI sidebar starts with a bold "Reminders" title and a blank line.
+  --show-key-numbers / --hide-key-numbers on either command line override it
+  for that run without writing the file (and switch a running GUI).
 - CLI: lists, list [VIEW] [-a], show, add, edit, done, undone, move
   (--to LIST), delete [--yes], search, new-list, folder [PATH]; global
   --folder, --json, --no-color. Reminders are referred to by NAME, never by
@@ -207,8 +229,24 @@ Ground rules
   Field options --title --list --section --parent --in --due
   (today/tomorrow/weekday/+3d/YYYY-MM-DD) --time --no-due --flag/--unflag
   --priority --tag/--untag --repeat/--no-repeat --notes --url; exit codes 0/1/2.
-- TUI (no command): sidebar (plain names, lists in their colour) + reminders
-  pane in the same Markdown form, with the keys listed in docs/TERMINAL.md; undo via the same History class; poll the folder every
+- TUI (no command): sidebar (plain names, lists in their colour, a blank
+  line above "My Lists" and "Tags") + reminders pane in the same Markdown
+  form, with the keys listed in docs/TERMINAL.md; Enter/F2 edits the title
+  in place (a line editor with a cursor, shared with the bottom-line prompts;
+  typed fields applied, empty title deletes, as in the GUI); e/i opens the
+  reminder in $VISUAL/$EDITOR (nano, else vi) as YAML-style fields: title,
+  done, due, time, repeat, priority, flagged, tags, list, section, url,
+  notes (block), subtasks (Markdown lines, matched to existing ones by title
+  so they keep their notes); on a bad value, ask "Edit it again, or revert
+  to how it was? [E/r]" (Enter = edit again, with "# Error: …" on top; r =
+  discard); no change or an emptied file cancels; saving is one undo step.
+  `reminders edit NAME` with no field options does the same. Clear the
+  terminal's IXON so Ctrl+S isn't swallowed as XOFF. GNOME-app shortcuts
+  also work where terminals can send them (Ctrl+N/T/K/F/H/E/B, F2,
+  Alt+0-3 and Alt+arrows decoded from Esc-prefixed input and the kUP3/kDN3
+  key codes, Ctrl+PgUp/PgDn via kPRV5/kNXT5, Ctrl+Q/W quit); Ctrl+Z stays
+  "suspend"; Tab switches panes (so no Ctrl+I, which is the same key); TUI letter keys: n new reminder,
+  N new list, x/Space done, ]/[ indent/outdent, u/r undo/redo, Delete deletes; undo (u) via the same History class; poll the folder every
   second and reload changed lists; Unicode box drawing (WACS_*), wide-char
   input (get_wch).
 
@@ -273,6 +311,8 @@ only compiled.
   Always use `dbus-run-session`.
 - **`.stignore` is only read at the Syncthing folder root,** so find it via
   `.stfolder`.
+- **Ctrl+S in a terminal is XOFF** (pause output) unless IXON is cleared;
+  it froze the TUI the first time.
 - **Recognising your own writes after a restart needs persistent state** (the
   fingerprint), or unsynced local edits become the merge base and the other
   device's changes get lost in the next conflict.

@@ -89,8 +89,8 @@ Subtasks are one level deep, as in Apple Reminders.
 - **Make a reminder a subtask** of the one above: Ctrl+], or **⋮ → Indent**.
 - **Make it top-level again:** Ctrl+[, or **⋮ → Outdent**.
 - **Add subtasks** from the details dialog, under *Subtasks*.
-- **Collapse or expand** with the ⌄/› button. Ctrl+E shows all subtasks and
-  Ctrl+Shift+E hides all of them.
+- **Collapse or expand** with the ⌄/› button. Ctrl+E hides every reminder's
+  subtasks, and pressing it again shows them all.
 
 ### Moving and reordering
 
@@ -176,7 +176,7 @@ Press Ctrl+? in the app for this list.
 | Ctrl+Page Down / Ctrl+Page Up | Next / previous sidebar entry |
 | Ctrl+Shift+N | New list |
 | Ctrl+H | Show / hide completed |
-| Ctrl+E / Ctrl+Shift+E | Show / hide all subtasks |
+| Ctrl+E | Show / hide all subtasks |
 
 **General**
 
@@ -244,6 +244,68 @@ Groceries.md                      ← a list (synced)
 - **Deleting a list** moves its file to the Trash on that computer, and
   Syncthing deletes it on the others.
 
+## The settings file
+
+`~/.config/reminders/settings.ini` is shared by the GNOME app and the terminal
+client. Most of it is filled in for you; `show-key-numbers` is only set here.
+
+```ini
+[general]
+# The folder to open (set with Change Folder…)
+folder=/home/you/Sync/Reminders
+# The list that last had focus
+view=list:Groceries
+# Show each sidebar entry's jump key (Ctrl+1 …)
+show-key-numbers=true
+# Which smart lists to show, in this order
+smart-lists=today, scheduled, all, flagged, completed
+# How the smart lists appear: visible, collapsible or hidden
+smart-lists-display=visible
+# Where they go: top (default) or bottom (after your lists and tags)
+smart-lists-position=top
+# How the tags appear: visible, collapsible or hidden
+tags-display=visible
+# Set by the app when you fold a collapsible group
+smart-lists-collapsed=false
+tags-collapsed=false
+```
+
+Comments go on their own lines, starting with `#`.
+
+`show-key-numbers` labels the first ten sidebar entries with the key that jumps
+to them. In the app the shortcut is shown to the right of the name, e.g.
+`Today  Ctrl+1  4`, through `Ctrl+0`. In the terminal client it's a prefix,
+e.g. `(1)Today`, for the keys `1`–`9` and `0`. It accepts `true`, `yes` or `1`, is off when missing, and is
+read at start-up.
+
+**Smart lists and tags.** `smart-lists-display` and `tags-display` each take
+one of three values:
+
+| Value | Smart lists | Tags |
+|---|---|---|
+| `visible` (default) | Shown with no heading | Shown under a "Tags" heading |
+| `collapsible` | Under a "Smart Lists" heading; click it to fold or unfold them | Same, with a "Tags" heading |
+| `hidden` | Not shown | Not shown |
+
+The app remembers a folded group (`smart-lists-collapsed`, `tags-collapsed`);
+this only applies in `collapsible` mode.
+
+- **`smart-lists`** chooses which smart lists appear and in what order, e.g.
+  `smart-lists=today, flagged`.
+- **`smart-lists-position=bottom`** moves them below your lists and tags.
+- **Numbering:** the shortcuts (Ctrl+1 …), Ctrl+Page Up/Down and their labels
+  follow what's showing, in order. So hiding or folding the smart lists makes
+  your lists start at Ctrl+1.
+- **Go To (Ctrl+K)** still finds folded smart lists and tags, but not hidden
+  ones.
+- **A hidden last list:** if the list you last had open is now hidden, the app
+  opens on Today or the first entry showing.
+
+For one run, `--show-key-numbers` or `--hide-key-numbers` on the command line
+overrides it without changing the file (`Reminders --show-key-numbers`, or
+`reminders --hide-key-numbers`). Passing one to an app that's already running
+switches its sidebar.
+
 ## Troubleshooting
 
 | Problem | What to do |
@@ -252,4 +314,4 @@ Groceries.md                      ← a list (synced)
 | Changes from another device don't appear | Check that Syncthing is running and the folder is up to date (Syncthing's web UI at http://127.0.0.1:8384). Reminders reloads as soon as files change. |
 | A `.sync-conflict-` file stays in the folder | Reminders merges conflict copies of lists only. Copies of other files are left for you. |
 | A reminder came back after you deleted it | Without a merge base (for example the first sync on a new computer), conflict merges keep reminders rather than risk losing them. Delete it again. |
-| Settings | `~/.config/reminders/settings.ini` holds the chosen folder and the last view. |
+| Settings | See [The settings file](#the-settings-file). |
