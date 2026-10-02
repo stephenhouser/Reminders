@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gresources>
+  <gresource prefix="/com/stephenhouser/Reminders">
+    <file>style.css</file>
+    <file alias="icons/scalable/apps/com.stephenhouser.Reminders.svg">icons/hicolor/scalable/apps/com.stephenhouser.Reminders.svg</file>
+  </gresource>
+  <gresource prefix="/com/stephenhouser/Reminders/icons/scalable/actions">
+    <file alias="sr-book-symbolic.svg">icons/scalable/actions/sr-book-symbolic.svg</file>
+    <file alias="sr-cart-symbolic.svg">icons/scalable/actions/sr-cart-symbolic.svg</file>
+    <file alias="sr-flag-symbolic.svg">icons/scalable/actions/sr-flag-symbolic.svg</file>
+    <file alias="sr-gift-symbolic.svg">icons/scalable/actions/sr-gift-symbolic.svg</file>
+    <file alias="sr-heart-symbolic.svg">icons/scalable/actions/sr-heart-symbolic.svg</file>
+    <file alias="sr-money-symbolic.svg">icons/scalable/actions/sr-money-symbolic.svg</file>
+    <file alias="sr-pill-symbolic.svg">icons/scalable/actions/sr-pill-symbolic.svg</file>
+    <file alias="sr-school-symbolic.svg">icons/scalable/actions/sr-school-symbolic.svg</file>
+    <file alias="sr-tag-symbolic.svg">icons/scalable/actions/sr-tag-symbolic.svg</file>
+    <file alias="sr-work-symbolic.svg">icons/scalable/actions/sr-work-symbolic.svg</file>
+  </gresource>
+</gresources>

@@ -1,0 +1,17 @@
+# Build output
+/build/
+/build-*/
+
+# Personal reminder lists used while developing (your data, not the project)
+/Notes/
+
+# Files the app and Syncthing create next to lists
+.reminders/
+*.sync-conflict-*
+.*.md.tmp
+.syncthing.*.tmp
+
+# Editors
+.vscode/
+.idea/
+*.swp

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Reminders
+Comment=Reminders and to-do lists that sync with Syncthing
+Exec=reminders
+Icon=com.stephenhouser.Reminders
+Terminal=false
+Type=Application
+Categories=Office;ProjectManagement;GTK;GNOME;
+Keywords=todo;task;reminder;list;syncthing;
+StartupNotify=true
+DBusActivatable=false

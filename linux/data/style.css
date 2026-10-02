@@ -1,0 +1,80 @@
+/* List colours (libadwaita accent palette, readable in light and dark). */
+.color-red    { --list-color: #e62d42; }
+.color-orange { --list-color: #ed5b00; }
+.color-yellow { --list-color: #c88800; }
+.color-green  { --list-color: #3a944a; }
+.color-cyan   { --list-color: #2190a4; }
+.color-blue   { --list-color: #3584e4; }
+.color-indigo { --list-color: #5b5fc7; }
+.color-purple { --list-color: #9141ac; }
+.color-pink   { --list-color: #d56199; }
+.color-brown  { --list-color: #986a44; }
+.color-gray   { --list-color: #6f8396; }
+
+/* Round coloured badge behind a list's icon. */
+.list-icon {
+  background-color: var(--list-color);
+  color: white;
+  border-radius: 9999px;
+  padding: 5px;
+  -gtk-icon-size: 14px;
+}
+.list-icon-large {
+  padding: 18px;
+  -gtk-icon-size: 40px;
+}
+
+.sidebar-heading {
+  margin: 12px 6px 2px 6px;
+  font-size: 0.85em;
+}
+
+.list-heading {
+  color: oklab(from var(--list-color) var(--standalone-color-oklab));
+}
+
+/* Reminder rows take their list's colour as the accent. */
+.reminder-row {
+  --accent-bg-color: var(--list-color);
+  --accent-color: oklab(from var(--list-color) var(--standalone-color-oklab));
+}
+.reminder-row .priority { color: var(--accent-color); font-weight: 800; }
+.reminder-row .tags { color: var(--accent-color); }
+.reminder-row .flag-icon { color: #ed5b00; }
+.reminder-row editablelabel { min-height: 24px; }
+.reminder-row .inline-link { padding: 0; min-height: 0; }
+
+/* Row buttons show on hover or keyboard focus, as in other GNOME apps. */
+.reminder-row .row-button { opacity: 0; transition: opacity 150ms; }
+.reminder-row:hover .row-button,
+.reminder-row:focus-within .row-button,
+.reminder-row .row-button:checked { opacity: 1; }
+
+.new-reminder-row text { min-height: 24px; }
+
+/* List dialog. */
+.color-swatch {
+  background: var(--list-color);
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0;
+  border-radius: 9999px;
+  box-shadow: none;
+}
+.color-swatch:checked {
+  outline: 3px solid var(--list-color);
+  outline-offset: 3px;
+}
+.icon-swatch { min-width: 40px; min-height: 40px; }
+.icon-swatch:checked { background: alpha(currentColor, 0.15); }
+
+.notes-view { min-height: 96px; }
+
+/* Drag and drop. */
+.reminder-row.dragging { opacity: 0.35; }
+.reminder-row.drop-above,
+.new-reminder-row.drop-above { box-shadow: inset 0 2px 0 0 var(--accent-bg-color); }
+.reminder-row.drop-below { box-shadow: inset 0 -2px 0 0 var(--accent-bg-color); }
+.navigation-sidebar row.drop-into { background-color: alpha(var(--accent-bg-color), 0.25); }
+
+.subtask-toggle { padding: 2px 6px; min-height: 24px; }
