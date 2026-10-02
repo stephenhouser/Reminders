@@ -181,6 +181,13 @@ void save_group_collapsed(SidebarGroup group, bool collapsed) {
     save_setting(std::string(group_key(group)) + "-collapsed", collapsed ? "true" : "false");
 }
 
+void save_group_display(SidebarGroup group, GroupDisplay display) {
+    const char* value = display == GroupDisplay::Collapsible ? "collapsible"
+                        : display == GroupDisplay::Hidden    ? "hidden"
+                                                             : "visible";
+    save_setting(std::string(group_key(group)) + "-display", value);
+}
+
 std::vector<SidebarGroup> load_sidebar_order() {
     std::vector<SidebarGroup> order;
     std::string word;

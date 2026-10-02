@@ -79,7 +79,8 @@ TEST(settings_round_trip_keeps_other_lines) {
     CHECK(!load_my_lists_layout().foldable());
     save_setting("my-lists-display", "hidden");
     CHECK(!load_my_lists_layout().hidden());
-    save_setting("my-lists-display", "collapsible");
+    save_group_display(MyLists, GroupDisplay::Collapsible);
+    CHECK_EQ(load_setting("my-lists-display"), "collapsible");
     save_group_collapsed(MyLists, true);
     CHECK(load_my_lists_layout().folded());
 

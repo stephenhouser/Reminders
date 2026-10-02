@@ -80,6 +80,8 @@ GroupLayout load_tags_layout();
 
 // Remembers whether a group is folded (smart-lists-collapsed, …).
 void save_group_collapsed(SidebarGroup group, bool collapsed);
+// Sets how a group appears (smart-lists-display, …).
+void save_group_display(SidebarGroup group, GroupDisplay display);
 
 // The folder chosen in the app ("folder" setting), if it is set and exists.
 std::optional<fs::path> saved_folder();

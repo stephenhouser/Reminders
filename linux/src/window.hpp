@@ -131,7 +131,7 @@ private:
     GtkWidget* main_stack_ = nullptr;  // "welcome" / "main"
     GtkWidget* split_ = nullptr;
     GtkWidget* sidebar_list_ = nullptr;
-    GtkWidget* sidebar_scroller_ = nullptr;  // holds the sidebar menu (the list box is rebuilt)
+    GtkWidget* sidebar_menu_button_ = nullptr;  // invisible; hosts the sidebar's context menu
     GtkWidget* search_bar_ = nullptr;
     GtkWidget* search_entry_ = nullptr;
     GtkWidget* content_page_ = nullptr;
@@ -164,6 +164,7 @@ private:
     rem::GroupLayout lists_;         // settings.ini: my-lists-display, -collapsed
     rem::GroupLayout tags_;          // settings.ini: tags-display, tags-collapsed
     rem::SidebarGroup menu_group_ = rem::SidebarGroup::MyLists;  // the sidebar menu's group
+    GSimpleAction* collapsible_action_ = nullptr;  // the sidebar menu's "Collapsible" check item
     std::set<std::string> collapsed_;  // reminders whose subtasks are hidden (this session)
     bool remember_view_ = true;  // false for a folder opened just for this session
     View view_;

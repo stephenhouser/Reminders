@@ -295,7 +295,8 @@ the file:
 
 - **In the app:** right-click (or long-press) any entry or heading in the
   sidebar and choose Move Up or Move Down, or press Alt+↑ / Alt+↓ on a
-  sidebar entry.
+  sidebar entry. The same menu's **Collapsible** item switches the group
+  between `visible` and `collapsible`.
 - **In the terminal client:** select a sidebar entry and press `K` / `J` (or
   Alt+↑ / Alt+↓).
 

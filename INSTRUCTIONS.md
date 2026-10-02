@@ -211,7 +211,8 @@ Ground rules
   which smart lists and in what order. sidebar-order (smart-lists, my-lists,
   tags; missing/misspelled groups appended) orders the groups; my-lists-display
   is visible | collapsible (never hidden). Rearranging: GUI right-click /
-  long-press on a sidebar row → Move "Group" Up/Down, or Alt+↑/↓ on a row;
+  long-press on a sidebar row → Move "Group" Up/Down and a Collapsible check
+  item (visible <-> collapsible), or Alt+↑/↓ on a row;
   TUI J/K or Alt+↑/↓ in the sidebar (core move_sidebar_group skips groups
   not showing). TUI S opens settings.ini in $EDITOR and reloads it. One ordering
   function per front end drives drawing, the number labels, Ctrl+1…/1…,
@@ -321,10 +322,14 @@ only compiled.
 - **Recognising your own writes after a restart needs persistent state** (the
   fingerprint), or unsynced local edits become the merge base and the other
   device's changes get lost in the next conflict.
-- **Don't parent a popover to a `GtkListBox` that gets rebuilt.**
-  `gtk_list_box_remove_all()` tries to remove it as a row ("Tried to remove
-  non-child"), and the rebuild that the menu's own action triggers breaks.
-  The sidebar menu hangs off the scrolled window instead.
+- **Context menus need a proper popover host.** Parented to a `GtkListBox`
+  that gets rebuilt, `gtk_list_box_remove_all()` tries to remove the popover
+  as a row ("Tried to remove non-child") and the move fails. Parented to a
+  plain widget, the popover keeps its size from when it opened, while its
+  menu items arrive just after, so it comes out clipped with scrollbars.
+  Host it in a `GtkMenuButton`, which re-sizes its popover: the sidebar has
+  an invisible one in a `GtkOverlay` corner, and right-click points its
+  popover at the click.
 - **settings.ini keys outside `[general]` are silently ignored.** A
   hand-written file without the section header has no effect; the TUI's `S`
   creates the file with the header.

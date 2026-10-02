@@ -502,7 +502,7 @@ void Window::build() {
             return TRUE;
         });
     gtk_widget_add_controller(sidebar_list_, sidebar_keys);
-    auto* sidebar_scroller = sidebar_scroller_ = gtk_scrolled_window_new();
+    auto* sidebar_scroller = gtk_scrolled_window_new();
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(sidebar_scroller), GTK_POLICY_NEVER,
                                    GTK_POLICY_AUTOMATIC);
     gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(sidebar_scroller), sidebar_list_);
@@ -522,7 +522,18 @@ void Window::build() {
     auto* sidebar_view = adw_toolbar_view_new();
     adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(sidebar_view), sidebar_header);
     adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(sidebar_view), search_bar_);
-    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(sidebar_view), sidebar_scroller);
+    // An invisible menu button in the corner hosts the sidebar's context menu.
+    sidebar_menu_button_ = gtk_menu_button_new();
+    gtk_widget_set_halign(sidebar_menu_button_, GTK_ALIGN_START);
+    gtk_widget_set_valign(sidebar_menu_button_, GTK_ALIGN_START);
+    gtk_widget_set_opacity(sidebar_menu_button_, 0);
+    gtk_widget_set_can_target(sidebar_menu_button_, FALSE);
+    gtk_widget_set_can_focus(sidebar_menu_button_, FALSE);
+    gtk_accessible_update_state(GTK_ACCESSIBLE(sidebar_menu_button_), GTK_ACCESSIBLE_STATE_HIDDEN, TRUE, -1);
+    auto* sidebar_overlay = gtk_overlay_new();
+    gtk_overlay_set_child(GTK_OVERLAY(sidebar_overlay), sidebar_scroller);
+    gtk_overlay_add_overlay(GTK_OVERLAY(sidebar_overlay), sidebar_menu_button_);
+    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(sidebar_view), sidebar_overlay);
     adw_toolbar_view_add_bottom_bar(ADW_TOOLBAR_VIEW(sidebar_view), new_list_button);
     auto* sidebar_page = adw_navigation_page_new(sidebar_view, "Reminders");
 
@@ -648,6 +659,21 @@ void Window::add_actions() {
     });
     add_action(window_, "move-group-up", [this] { move_group(menu_group_, -1); });
     add_action(window_, "move-group-down", [this] { move_group(menu_group_, 1); });
+    // The sidebar menu's "Collapsible" check item: visible <-> collapsible.
+    collapsible_action_ = add_toggle(window_, "group-collapsible", false, [this](bool on) {
+        auto* l = layout_of(menu_group_);
+        auto& display = l ? l->display : smart_.display;
+        bool& collapsed = l ? l->collapsed : smart_.collapsed;
+        display = on ? rem::GroupDisplay::Collapsible : rem::GroupDisplay::Visible;
+        collapsed = false;  // a group made collapsible starts unfolded
+        try {
+            rem::save_group_display(menu_group_, display);
+            rem::save_group_collapsed(menu_group_, false);
+        } catch (const std::exception& e) {
+            toast(std::format("Couldn't save the setting: {}", e.what()));
+        }
+        rebuild_sidebar();
+    });
     add_action(window_, "next-view", [this] { step_view(1); });
     add_action(window_, "previous-view", [this] { step_view(-1); });
     undo_action_ = add_action(window_, "undo", [this] { undo(); });
@@ -1280,7 +1306,13 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
         add_meta(tag_label);
     }
     if (r.url) {
-        auto* link = gtk_link_button_new_with_label(r.url->c_str(), "Link");
+        // The URL itself, as in the terminal client; long ones are shortened
+        // with "…" (the tooltip has the full one).
+        auto* link = gtk_link_button_new_with_label(r.url->c_str(), r.url->c_str());
+        if (auto* text = gtk_button_get_child(GTK_BUTTON(link)); GTK_IS_LABEL(text)) {
+            gtk_label_set_ellipsize(GTK_LABEL(text), PANGO_ELLIPSIZE_END);
+            gtk_label_set_max_width_chars(GTK_LABEL(text), 50);
+        }
         gtk_widget_add_css_class(link, "caption");
         gtk_widget_add_css_class(link, "inline-link");
         add_meta(link);
@@ -2142,27 +2174,34 @@ void Window::sidebar_menu(GtkListBoxRow* row, double x, double y) {
         auto order = order_;
         return rem::move_sidebar_group(order, *group, delta, showing);
     };
+    // Every item goes in a section: loose items next to a section make the
+    // popover size itself wrongly (clipped, with scrollbars).
     auto* menu = g_menu_new();
+    auto* moves = menu_section(menu);
     auto title = std::string(rem::group_title(*group));
-    g_menu_append(menu, std::format("Move “{}” _Up", title).c_str(), "win.move-group-up");
-    g_menu_append(menu, std::format("Move “{}” _Down", title).c_str(), "win.move-group-down");
+    g_menu_append(moves, std::format("Move “{}” _Up", title).c_str(), "win.move-group-up");
+    g_menu_append(moves, std::format("Move “{}” _Down", title).c_str(), "win.move-group-down");
     auto enable = [this](const char* name, bool on) {
         g_simple_action_set_enabled(G_SIMPLE_ACTION(g_action_map_lookup_action(G_ACTION_MAP(window_), name)), on);
     };
     enable("move-group-up", can(-1));
     enable("move-group-down", can(1));
-    auto* popover = gtk_popover_menu_new_from_model(G_MENU_MODEL(menu));
+    g_menu_append(menu_section(menu), "_Collapsible", "win.group-collapsible");
+    g_simple_action_set_state(collapsible_action_, g_variant_new_boolean(group_foldable(*group)));
+    // The menu belongs to an invisible menu button over the sidebar, not to
+    // the list box (rebuilding that removes all its children, popovers too),
+    // and not to a plain widget, which never re-sizes a popover whose items
+    // arrive after it opens (it came out clipped, with scrollbars).
+    auto* button = GTK_MENU_BUTTON(sidebar_menu_button_);
+    gtk_menu_button_set_menu_model(button, G_MENU_MODEL(menu));
     g_object_unref(menu);
-    // Not the list box: rebuilding it removes all its children, popover included.
-    gtk_widget_set_parent(popover, sidebar_scroller_);
+    auto* popover = GTK_POPOVER(gtk_menu_button_get_popover(button));
     graphene_point_t in_list{static_cast<float>(x), static_cast<float>(y)}, point{};
-    if (!gtk_widget_compute_point(sidebar_list_, sidebar_scroller_, &in_list, &point)) point = in_list;
+    if (!gtk_widget_compute_point(sidebar_list_, sidebar_menu_button_, &in_list, &point)) point = in_list;
     GdkRectangle at{static_cast<int>(point.x), static_cast<int>(point.y), 1, 1};
-    gtk_popover_set_pointing_to(GTK_POPOVER(popover), &at);
-    gtk_popover_set_has_arrow(GTK_POPOVER(popover), FALSE);
-    gtk_widget_set_halign(popover, GTK_ALIGN_START);
-    on(popover, "closed", [popover] { idle([popover] { gtk_widget_unparent(popover); }); });
-    gtk_popover_popup(GTK_POPOVER(popover));
+    gtk_popover_set_pointing_to(popover, &at);
+    gtk_popover_set_has_arrow(popover, FALSE);
+    gtk_menu_button_popup(button);
 }
 
 // Where to land when there's nothing better: Today, unless it's hidden.
