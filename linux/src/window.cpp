@@ -16,7 +16,7 @@ namespace ui {
 namespace {
 
 constexpr guint kCompleteDelayMs = 900;  // a checked reminder lingers before it disappears
-constexpr double kContentWidthShare = 0.9;  // lists' width as a share of the content area
+constexpr double kContentWidthShare = 1.0; //0.98;  // lists' width as a share of the content area
 
 struct SmartInfo {
     View::Kind kind;
@@ -169,7 +169,8 @@ GtkWidget* sidebar_heading(const char* text) {
 GtkWidget* boxed_list() {
     auto* list = gtk_list_box_new();
     gtk_list_box_set_selection_mode(GTK_LIST_BOX(list), GTK_SELECTION_NONE);
-    gtk_widget_add_css_class(list, "boxed-list");
+    //gtk_widget_add_css_class(list, "boxed-list");
+    gtk_widget_add_css_class(list, "reminder-list");
     return list;
 }
 

@@ -82,3 +82,10 @@
 /* Sidebar counts: a fixed column (room for two digits), so the optional
    Ctrl+N shortcut labels beside them line up. */
 .sidebar-count { min-width: 22px; }
+
+/* Reminder lists: no card, just a faint line between rows. */
+.reminder-list { background: none; }
+.reminder-list > row { background: none; border-radius: 0; }
+.reminder-list > row:not(:last-child) {
+  border-bottom: 1px solid alpha(currentColor, 0.1);
+}
