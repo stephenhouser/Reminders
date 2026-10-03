@@ -190,33 +190,36 @@ std::string unique_source_name(const std::string& base, const std::vector<Source
 
 }  // namespace
 
-SourceConfig add_source(const fs::path& folder) {
-    auto existing = load_sources();
-    auto name = unique_source_name(name_for(folder), existing);
-    SourceConfig source{name, detect_backend(folder), folder, {}};
+std::string new_source_name(const SourceConfig& source) {
+    std::string base = source.title;
+    if (base.empty() && source.backend == BackendKind::Caldav && !source.caldav.url.empty()) {
+        // The host's second-to-last label: caldav.fastmail.com → fastmail.
+        auto start = source.caldav.url.find("://");
+        auto host = source.caldav.url.substr(start == std::string::npos ? 0 : start + 3);
+        host = host.substr(0, host.find_first_of("/:"));
+        auto last = host.rfind('.');
+        if (last != std::string::npos && last > 0) {
+            auto prev = host.rfind('.', last - 1);
+            auto from = prev == std::string::npos ? 0 : prev + 1;
+            host = host.substr(from, last - from);
+        }
+        base = host;
+    }
+    if (base.empty() && !source.folder.empty()) base = source.folder.filename().string();
+    if (base.empty()) base = source.backend == BackendKind::Caldav ? "caldav" : "reminders";
+    return unique_source_name(name_for(fs::path(base)), load_sources());
+}
+
+SourceConfig add_source(SourceConfig source) {
+    bool first = load_sources().empty();
+    if (source.name.empty()) source.name = new_source_name(source);
+    if (source.folder.empty() && source.backend == BackendKind::Caldav) source.folder = default_caldav_folder(source.name);
     save_source(source);
-    if (existing.empty()) save_setting("default-source", name);
+    if (first) save_setting("default-source", source.name);
     return source;
 }
 
-SourceConfig add_caldav_source(const CaldavSettings& caldav, const std::string& title) {
-    auto existing = load_sources();
-    std::string base = title;
-    if (base.empty()) {
-        // The host's second-to-last label: caldav.fastmail.com → fastmail.
-        auto start = caldav.url.find("://");
-        auto host = caldav.url.substr(start == std::string::npos ? 0 : start + 3);
-        host = host.substr(0, host.find_first_of("/:"));
-        auto last = host.rfind('.');
-        auto prev = last == std::string::npos || last == 0 ? std::string::npos : host.rfind('.', last - 1);
-        base = last == std::string::npos ? host : host.substr(prev == std::string::npos ? 0 : prev + 1, last - (prev == std::string::npos ? 0 : prev + 1));
-    }
-    auto name = unique_source_name(name_for(fs::path(base)), existing);
-    SourceConfig source{name, BackendKind::Caldav, default_caldav_folder(name), title, caldav};
-    save_source(source);
-    if (existing.empty()) save_setting("default-source", name);
-    return source;
-}
+SourceConfig add_source(const fs::path& folder) { return add_source(SourceConfig{"", detect_backend(folder), folder, {}}); }
 
 void remove_source(const std::string& name) {
     std::error_code ec;

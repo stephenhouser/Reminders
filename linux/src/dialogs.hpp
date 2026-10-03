@@ -47,9 +47,11 @@ void show_list_dialog(GtkWidget* parent, std::optional<ListEdit> existing,
 void show_tag_dialog(GtkWidget* parent, const std::string& tag, ListEdit style,
                      std::function<void(ListEdit)> on_done);
 
-// "Source Info": a source's title, back end and folder (CalDAV: its
-// server), and whether new lists go into it. Its name ([source.NAME]) is
-// fixed: settings refer to it. With `is_new` it's "Add CalDAV Account".
+// "Source Info": a source's title, type (back end), folder and, for CalDAV,
+// its server; and whether new lists go into it. Its name ([source.NAME]) is
+// fixed: settings refer to it. With `is_new` it's "Add Source": the name
+// comes from the title, and a CalDAV source's folder defaults to its place
+// in $XDG_DATA_HOME. The rows change with the type.
 struct SourceEdit {
     std::string name;
     std::string title;  // empty: from the name
@@ -64,12 +66,11 @@ struct SourceEdit {
 void show_source_dialog(GtkWidget* parent, SourceEdit source, std::function<std::string(const SourceEdit&)> validate,
                         std::function<void(SourceEdit)> on_done, std::function<void()> on_remove);
 
-// "Sources": every source, each opening its Source Info; Add Folder… and
-// (when `caldav`) Add CalDAV Account….
+// "Sources": every source, each opening its Source Info; and Add Source….
 struct SourceRow {
     std::string name, title, detail;
 };
 void show_sources_dialog(GtkWidget* parent, const std::vector<SourceRow>& rows, std::function<void(std::string)> on_open,
-                         std::function<void()> on_add_folder, std::function<void()> on_add_caldav);
+                         std::function<void()> on_add);
 
 }  // namespace ui

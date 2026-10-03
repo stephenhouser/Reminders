@@ -453,9 +453,14 @@ settings in a `[source.NAME]` section; later the apps show several at once.
    the selected group's source. CLI: `lists` grouped by source,
    `new-list --source`, ambiguous names ask for `source/name`.
    Main menu Sources… (dialogs.cpp show_sources_dialog: every source →
-   Source Info…, plus Add Source…); Source Info… (show_source_dialog: title,
-   Syncthing / Local Folder, folder with Change…, Default Source, Remove
-   Source…) is also on a source heading's menu with New List…. Change
+   Source Info…, plus one Add Source…); Source Info… and Add Source share
+   show_source_dialog: Name (title), Type (Syncthing / Local Folder /
+   CalDAV), Folder (Local Copy for CalDAV, defaulting to
+   $XDG_DATA_HOME/reminders/caldav/NAME and following the name until a
+   folder is chosen; choosing a folder for a new source detects its type),
+   a Server group shown only for CalDAV, Default Source, Remove Source….
+   Core: `add_source(SourceConfig)`, `new_source_name()`. Source Info… is
+   also on a source heading's menu with New List…. Change
    Folder… left the main menu (the welcome page's Choose Folder… and
    `reminders folder` set the default source's folder).
 4. New back ends. `local` keeps watching the folder for outside edits
@@ -484,8 +489,8 @@ settings in a `[source.NAME]` section; later the apps show several at once.
    `SyncRunner` (worker thread; detects list-file changes by mtime/size).
    CLI: `reminders sync [SOURCE]`, syncs before/after commands,
    `--offline`. TUI and GUI run a SyncRunner; GUI ☰ → Sync Now (hidden
-   without CalDAV sources), Sources… → Add CalDAV Account…, Source Info…
-   shows server, username, password command, interval. Known limits:
+   without CalDAV sources), Sources… → Add Source… with Type CalDAV;
+   its Server group has address, username, password command, interval. Known limits:
    moves/section changes made in other CalDAV clients aren't merged (local
    order wins); RRULEs beyond FORMAT.md's rules are kept, not shown.
 

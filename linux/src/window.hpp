@@ -49,13 +49,13 @@ private:
     void build();
     void add_actions();
 
-    // Sources. choose_folder: Change Folder… (the default source's folder);
-    // choose_source: Add Source….
-    void choose_folder(bool new_source = false);
+    // Sources. choose_folder: the welcome page's Choose Folder… (the default
+    // source's folder).
+    void choose_folder();
     void remove_source(const std::string& name);
     void source_info(const std::string& name);  // Source Info…
     void show_sources();                        // Sources… (main menu)
-    void add_caldav_source();                   // Add CalDAV Account…
+    void add_source();                          // Add Source…
 public:
     // With `folder` (from the command line), just that folder for this
     // session; otherwise every configured source, remembered.

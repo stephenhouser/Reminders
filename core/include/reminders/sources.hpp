@@ -89,14 +89,16 @@ SourceConfig source_for_folder(const fs::path& folder);
 // becomes a source of its own (the default) instead. Returns it.
 SourceConfig set_default_folder(const fs::path& folder);
 
-// Adds a source for `folder` (Add Source…): named after it (made unique),
-// with the back end it needs. It becomes the default if there was none.
+// The [source.NAME] a new source would get: from its title, else (CalDAV)
+// the server ("https://caldav.fastmail.com/" → "fastmail"), else its
+// folder's name; lower case, made unique among the configured sources.
+std::string new_source_name(const SourceConfig& source);
+// Adds a source (Add Source…). With no name it gets new_source_name(); a
+// CalDAV one with no folder keeps its lists in default_caldav_folder(name).
+// It becomes the default if there was none. Returns it as saved.
+SourceConfig add_source(SourceConfig source);
+// Adds a source for `folder`, with the back end it needs.
 SourceConfig add_source(const fs::path& folder);
-// Adds a CalDAV source (Add CalDAV Account…): named after `title`, else the
-// server ("https://caldav.fastmail.com/" → "fastmail"), made unique, with
-// its lists in default_caldav_folder(name). It becomes the default if there
-// was none.
-SourceConfig add_caldav_source(const CaldavSettings& caldav, const std::string& title);
 // Removes a source from settings.ini, and this device's records for it.
 // Its folder and files stay as they are, except a CalDAV source's local
 // copy in the default place, which is only a copy of the server's lists.

@@ -62,9 +62,9 @@ can reuse.
 
 ## Sources and back ends
 
-Sources are set up in the app (☰ → Sources… → Add Folder… or Add CalDAV
-Account…), with `reminders folder PATH` in a terminal, or by hand in
-`settings.ini`:
+Sources are set up in the app (☰ → Sources… → Add Source…: a name, a type
+and a folder, plus the server for CalDAV), with `reminders folder PATH` in a
+terminal, or by hand in `settings.ini`:
 
 ```ini
 [source.personal]

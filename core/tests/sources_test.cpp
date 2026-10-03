@@ -72,14 +72,21 @@ TEST(sources_caldav) {
     std::ofstream(dir / "config" / "reminders" / "settings.ini") << "[general]\n";
 
     // Named after the server; the local copy goes in the data folder.
-    auto a = add_caldav_source({"https://caldav.fastmail.com/dav/", "me@example.com", "pass show fm", 15}, "");
+    auto caldav = [](CaldavSettings c, std::string title) {
+        return add_source(SourceConfig{"", BackendKind::Caldav, {}, std::move(title), std::move(c)});
+    };
+    CHECK_EQ(new_source_name(SourceConfig{"", BackendKind::Caldav, {}, "", {"https://caldav.fastmail.com/dav/", "", "", 15}}),
+             "fastmail");
+    auto a = caldav({"https://caldav.fastmail.com/dav/", "me@example.com", "pass show fm", 15}, "");
     CHECK_EQ(a.name, "fastmail");
     CHECK(a.folder == dir / "data" / "reminders" / "caldav" / "fastmail");
     CHECK_EQ(load_setting("default-source"), "fastmail");
     // … or after its title, and made unique.
-    auto b = add_caldav_source({"http://localhost:5232/", "", "", 5}, "Fastmail");
+    auto b = caldav({"http://localhost:5232/", "", "", 5}, "Fastmail");
     CHECK_EQ(b.name, "fastmail-2");
-    auto c = add_caldav_source({"https://nextcloud.example.org/remote.php/dav", "", "", 15}, "");
+    auto c = caldav({"https://nextcloud.example.org/remote.php/dav", "", "", 15}, "");
+    CHECK_EQ(new_source_name(SourceConfig{"", BackendKind::Local, dir / "Home Lists"}), "home-lists");
+    CHECK_EQ(new_source_name(SourceConfig{"", BackendKind::Local, dir / "x", "My Stuff"}), "my-stuff");
     CHECK_EQ(c.name, "example");
 
     auto all = load_sources();

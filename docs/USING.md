@@ -456,15 +456,19 @@ folder as `~/…`, so the file works on another computer with a different home.
 | `local` | Just the folder: list files are read and saved as they are, and changes made by other programs still show up. |
 | `caldav` | Task lists on a CalDAV server (see [CalDAV accounts](#caldav-accounts)). The folder is a local copy, kept in step with the server. |
 
-- **☰ → Sources…** lists your sources. Choose one for **Source Info…**:
-  its title, how it's synced (Syncthing or Local Folder), its folder,
-  whether it's the **Default Source** (where new lists go), and **Remove
-  Source…**, which takes it out of the app and leaves its folder and files
-  as they are (a CalDAV source's local copy goes, since the server has the
-  lists). **Add Folder…** adds a folder as a new source, named after it
-  (`[source.NAME]`), with the back end it needs: `syncthing` inside a
-  Syncthing folder (one with `.stfolder`), else `local`. **Add CalDAV
-  Account…** adds a CalDAV server.
+- **☰ → Sources… → Add Source…** asks for the source's **Name**, its
+  **Type** (Syncthing, Local Folder or CalDAV) and its **Folder**.
+  Choosing a folder picks the type for you (Syncthing inside a Syncthing
+  folder, one with `.stfolder`, else Local Folder); you can change it. For
+  CalDAV the folder is the **Local Copy**, which starts out in
+  `~/.local/share/reminders/caldav/NAME`, and a **Server** section asks for
+  the account (see [CalDAV accounts](#caldav-accounts)). The settings
+  section is named after the Name (`[source.NAME]`, lower case), else the
+  server or the folder.
+- **Choose a source in Sources…** for **Source Info…**: the same rows, its
+  **Default Source** switch (where new lists go), and **Remove Source…**,
+  which takes it out of the app and leaves its folder and files as they are
+  (a CalDAV source's local copy goes, since the server has the lists).
 - **Right-click a source's group heading** for **New List…** in that source
   and its **Source Info…**.
 - **`reminders folder PATH`** (and the first-run Choose Folder…) sets the
@@ -496,7 +500,7 @@ folder as `~/…`, so the file works on another computer with a different home.
 A CalDAV source shows the task lists of an account on a CalDAV server
 (Nextcloud, Fastmail, Radicale, iCloud with an app-specific password, …):
 each of its task lists is a list here, and each list made here becomes a task
-list there. Add one with ☰ → Sources… → **Add CalDAV Account…**, or by hand:
+list there. Add one with ☰ → Sources… → **Add Source…**, Type **CalDAV**, or by hand:
 
 ```ini
 [source.fastmail]

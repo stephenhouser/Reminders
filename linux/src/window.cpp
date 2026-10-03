@@ -196,6 +196,25 @@ std::string caldav_problem(const rem::CaldavSettings& c) {
     return {};
 }
 
+// What's wrong with a source in Add Source / Source Info, or "". `self` is
+// the source being edited ("" for a new one).
+std::string source_problem(const SourceEdit& e, const std::string& self) {
+    std::error_code ec;
+    if (e.backend == rem::BackendKind::Caldav) {
+#ifndef REMINDERS_CALDAV
+        return "This copy of Reminders was built without CalDAV";
+#endif
+        if (auto p = caldav_problem(e.caldav); !p.empty()) return p;
+    } else {
+        if (e.folder.empty()) return "Choose a folder";
+        if (!std::filesystem::is_directory(e.folder, ec)) return "That folder doesn't exist";
+    }
+    for (auto& s : rem::load_sources())
+        if (s.name != self && (s.folder == e.folder || std::filesystem::equivalent(s.folder, e.folder, ec)))
+            return std::format("That folder is already the source “{}”", rem::source_title(s));
+    return {};
+}
+
 // Validates a list name for a file that must work on every synced platform.
 std::string list_name_error(const std::string& name) {
     if (name.empty()) return "Enter a name";
@@ -804,7 +823,7 @@ void Window::build() {
 
 void Window::add_actions() {
     add_action(window_, "change-folder", [this] { choose_folder(); });
-    add_action(window_, "add-source", [this] { choose_folder(true); });
+    add_action(window_, "add-source", [this] { add_source(); });
     add_action(window_, "sources", [this] { show_sources(); });
     sync_action_ = add_action(window_, "sync-now", [this] {
 #ifdef REMINDERS_CALDAV
@@ -907,19 +926,17 @@ void Window::add_actions() {
 
 // --- folder ----------------------------------------------------------------
 
-void Window::choose_folder(bool new_source) {
+void Window::choose_folder() {
     auto* dialog = gtk_file_dialog_new();
-    gtk_file_dialog_set_title(dialog, new_source ? "Add Source: Choose a Folder" : "Choose Folder");
+    gtk_file_dialog_set_title(dialog, "Choose Folder");
     if (store_ && !store_->sources().empty()) {
         auto current = Obj<GFile>::adopt(g_file_new_for_path(store_->sources().front().config.folder.c_str()));
         gtk_file_dialog_set_initial_folder(dialog, current.get());
     }
-    auto* add = new bool(new_source);
     gtk_file_dialog_select_folder(
         dialog, GTK_WINDOW(window_), nullptr,
-        [](GObject* source, GAsyncResult* res, gpointer data) {
+        [](GObject* source, GAsyncResult* res, gpointer) {
             auto* self = static_cast<Window*>(g_object_get_data(G_OBJECT(source), "window"));
-            std::unique_ptr<bool> add(static_cast<bool*>(data));
             GError* error = nullptr;
             auto file = Obj<GFile>::adopt(gtk_file_dialog_select_folder_finish(GTK_FILE_DIALOG(source), res, &error));
             if (error) {
@@ -931,22 +948,9 @@ void Window::choose_folder(bool new_source) {
                 self->toast("That folder isn't on a local disk");
                 return;
             }
-            if (!*add) return self->open_folder(path);
-            try {
-                for (auto& s : rem::load_sources())
-                    if (std::error_code ec; std::filesystem::equivalent(s.folder, path, ec)) {
-                        self->toast(std::format("That folder is already the source “{}”", rem::source_title(s)));
-                        return;
-                    }
-                auto added = rem::add_source(path);
-                self->toast(std::format("Added “{}” ({})", rem::source_title(added), rem::backend_name(added.backend)));
-            } catch (const std::exception& e) {
-                self->toast(std::format("Couldn't add the source: {}", e.what()));
-                return;
-            }
-            self->open_sources();
+            self->open_folder(path);
         },
-        add);
+        nullptr);
     g_object_set_data(G_OBJECT(dialog), "window", this);
     g_object_unref(dialog);
 }
@@ -998,16 +1002,7 @@ void Window::source_info(const std::string& name) {
                     rem::load_setting("default-source") == name || (store_ && store_->default_source() == name),
                     config->caldav, false};
     show_source_dialog(
-        window_, edit,
-        [name](const SourceEdit& e) -> std::string {
-            if (e.backend == rem::BackendKind::Caldav) return caldav_problem(e.caldav);
-            std::error_code ec;
-            if (!std::filesystem::is_directory(e.folder, ec)) return "That folder doesn't exist";
-            for (auto& s : rem::load_sources())
-                if (s.name != name && std::filesystem::equivalent(s.folder, e.folder, ec))
-                    return std::format("That folder is already the source “{}”", rem::source_title(s));
-            return {};
-        },
+        window_, edit, [name](const SourceEdit& e) { return source_problem(e, name); },
         [this](SourceEdit e) {
             try {
                 rem::save_source(rem::SourceConfig{e.name, e.backend, e.folder, e.title, e.caldav});
@@ -1030,29 +1025,27 @@ void Window::show_sources() {
                     : std::format("{} · {}", s.backend == rem::BackendKind::Local ? "Local folder" : "Syncthing", folder);
         rows.push_back({s.name, rem::source_title(s), detail});
     }
-    std::function<void()> add_caldav;
-#ifdef REMINDERS_CALDAV
-    add_caldav = [this] { idle([this] { add_caldav_source(); }); };
-#endif
     show_sources_dialog(
         window_, rows, [this](std::string name) { idle([this, name] { source_info(name); }); },
-        [this] { idle([this] { choose_folder(true); }); }, add_caldav);
+        [this] { idle([this] { add_source(); }); });
 }
 
-void Window::add_caldav_source() {
+void Window::add_source() {
     SourceEdit edit;
-    edit.backend = rem::BackendKind::Caldav;
     edit.is_new = true;
     edit.is_default = rem::load_sources().empty();
     show_source_dialog(
-        window_, edit, [](const SourceEdit& e) { return caldav_problem(e.caldav); },
+        window_, edit, [](const SourceEdit& e) { return source_problem(e, ""); },
         [this](SourceEdit e) {
             try {
-                auto config = rem::add_caldav_source(e.caldav, e.title);
+                if (e.backend != rem::BackendKind::Caldav) std::filesystem::create_directories(e.folder);
+                auto config = rem::add_source(rem::SourceConfig{"", e.backend, e.folder, e.title, e.caldav});
                 if (e.is_default) rem::save_setting("default-source", config.name);
-                toast(std::format("Added “{}”; its lists will appear once it has synced", rem::source_title(config)));
+                toast(e.backend == rem::BackendKind::Caldav
+                          ? std::format("Added “{}”; its lists appear once it has synced", rem::source_title(config))
+                          : std::format("Added “{}”", rem::source_title(config)));
             } catch (const std::exception& err) {
-                toast(std::format("Couldn't add the account: {}", err.what()));
+                toast(std::format("Couldn't add the source: {}", err.what()));
                 return;
             }
             open_sources();

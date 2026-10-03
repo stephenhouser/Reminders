@@ -5,6 +5,7 @@
 #include <memory>
 
 #include "gtk_util.hpp"
+#include "reminders/paths.hpp"
 #include "support.hpp"
 
 namespace ui {
@@ -537,19 +538,40 @@ void show_tag_dialog(GtkWidget* parent, const std::string& tag, ListEdit style, 
 
 namespace {
 
+// The back ends offered, in the Type row's order.
+constexpr rem::BackendKind kSourceTypes[] = {rem::BackendKind::Syncthing, rem::BackendKind::Local,
+                                             rem::BackendKind::Caldav};
+
 struct SourceDialog {
     SourceEdit edit;
     std::function<std::string(const SourceEdit&)> validate;
     GtkWidget* done = nullptr;
     GtkWidget* error = nullptr;
+    GtkWidget* type_row = nullptr;
     GtkWidget* folder_row = nullptr;
+    GtkWidget* server_group = nullptr;  // CalDAV only
+    // A new CalDAV source's folder follows its name (the default place in
+    // $XDG_DATA_HOME) until one is chosen.
+    bool folder_chosen = false;
+
+    bool caldav() const { return edit.backend == rem::BackendKind::Caldav; }
 
     void update() {
+        if (edit.is_new && caldav() && !folder_chosen)
+            edit.folder = rem::default_caldav_folder(
+                rem::new_source_name(rem::SourceConfig{"", edit.backend, {}, edit.title, edit.caldav}));
         auto err = validate(edit);
         gtk_label_set_text(GTK_LABEL(error), err.c_str());
         gtk_widget_set_visible(error, !err.empty());
         gtk_widget_set_sensitive(done, err.empty());
-        if (folder_row) adw_action_row_set_subtitle(ADW_ACTION_ROW(folder_row), edit.folder.string().c_str());
+        gtk_widget_set_visible(server_group, caldav());
+        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(folder_row), caldav() ? "Local Copy" : "Folder");
+        auto folder = edit.folder.empty() ? std::string("None chosen") : rem::contract_path(edit.folder);
+        adw_action_row_set_subtitle(ADW_ACTION_ROW(folder_row), folder.c_str());
+        adw_action_row_set_subtitle(ADW_ACTION_ROW(type_row),
+                                    edit.backend == rem::BackendKind::Syncthing ? "A folder Syncthing keeps in step; conflict copies are merged"
+                                    : edit.backend == rem::BackendKind::Local   ? "A folder on this computer; files are read and saved as they are"
+                                                                                : "Task lists on a CalDAV server, with a copy kept here");
     }
 };
 
@@ -558,11 +580,12 @@ struct SourceDialog {
 void show_source_dialog(GtkWidget* parent, SourceEdit source, std::function<std::string(const SourceEdit&)> validate,
                         std::function<void(SourceEdit)> on_done, std::function<void()> on_remove) {
     auto* dialog = adw_dialog_new();
-    adw_dialog_set_title(ADW_DIALOG(dialog), source.is_new ? "Add CalDAV Account" : "Source Info");
-    adw_dialog_set_content_width(ADW_DIALOG(dialog), 460);
+    adw_dialog_set_title(ADW_DIALOG(dialog), source.is_new ? "Add Source" : "Source Info");
+    adw_dialog_set_content_width(ADW_DIALOG(dialog), 480);
     auto* d = attach(dialog, "state", std::make_unique<SourceDialog>());
     d->edit = std::move(source);
     d->validate = std::move(validate);
+    d->folder_chosen = !d->edit.is_new || !d->edit.folder.empty();
 
     GtkWidget* cancel;
     auto* header = header_with_buttons(d->edit.is_new ? "_Add" : "_Done", &cancel, &d->done);
@@ -571,11 +594,10 @@ void show_source_dialog(GtkWidget* parent, SourceEdit source, std::function<std:
     auto* main = adw_preferences_group_new();
     adw_preferences_group_set_description(
         ADW_PREFERENCES_GROUP(main),
-        d->edit.is_new ? "Task lists on a CalDAV server, such as Nextcloud, Fastmail or Radicale. Each of its task "
-                         "lists becomes a list here."
+        d->edit.is_new ? "Where lists come from: a folder, or an account on a CalDAV server."
                        : std::format("Settings name it “{}” ([source.{}]).", d->edit.name, d->edit.name).c_str());
     auto* title = adw_entry_row_new();
-    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(title), "Title");
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(title), "Name");
     gtk_editable_set_text(GTK_EDITABLE(title), d->edit.title.c_str());
     on(title, "changed", [d, title] {
         d->edit.title = trim(gtk_editable_get_text(GTK_EDITABLE(title)));
@@ -583,92 +605,68 @@ void show_source_dialog(GtkWidget* parent, SourceEdit source, std::function<std:
     });
     adw_preferences_group_add(ADW_PREFERENCES_GROUP(main), title);
 
-    if (d->edit.backend == rem::BackendKind::Caldav) {
-        auto entry = [&](const char* title, std::string* value, const char* hint) {
-            auto* row = adw_entry_row_new();
-            adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), title);
-            gtk_editable_set_text(GTK_EDITABLE(row), value->c_str());
-            if (hint) gtk_widget_set_tooltip_text(row, hint);
-            on(row, "changed", [d, row, value] {
-                *value = trim(gtk_editable_get_text(GTK_EDITABLE(row)));
-                d->update();
-            });
-            adw_preferences_group_add(ADW_PREFERENCES_GROUP(main), row);
-            return row;
-        };
-        auto* url = entry("Server", &d->edit.caldav.url, "The server's address, e.g. https://caldav.fastmail.com/");
-        gtk_editable_set_enable_undo(GTK_EDITABLE(url), TRUE);
-        entry("Username", &d->edit.caldav.username, nullptr);
-        entry("Password Command", &d->edit.caldav.password_command,
-              "A command that prints the password, e.g. “secret-tool lookup reminders caldav” or “pass show caldav”");
-        auto* every = adw_spin_row_new_with_range(1, 1440, 1);
-        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(every), "Sync Every");
-        adw_action_row_set_subtitle(ADW_ACTION_ROW(every), "Minutes; changes made here are sent straight away");
-        adw_spin_row_set_value(ADW_SPIN_ROW(every), d->edit.caldav.interval);
-        connect<void(GObject*, GParamSpec*)>(every, "notify::value", [d, every](GObject*, GParamSpec*) {
-            d->edit.caldav.interval = static_cast<int>(adw_spin_row_get_value(ADW_SPIN_ROW(every)));
-        });
-        adw_preferences_group_add(ADW_PREFERENCES_GROUP(main), every);
-        if (!d->edit.is_new) {
-            d->folder_row = adw_action_row_new();
-            adw_preferences_row_set_title(ADW_PREFERENCES_ROW(d->folder_row), "Local Copy");
-            adw_action_row_set_subtitle_selectable(ADW_ACTION_ROW(d->folder_row), TRUE);
-            adw_preferences_group_add(ADW_PREFERENCES_GROUP(main), d->folder_row);
-        }
-    } else {
-        auto* backend = adw_combo_row_new();
-        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(backend), "Syncing");
-        auto* kinds = string_list({"Syncthing", "Local Folder"});
-        adw_combo_row_set_model(ADW_COMBO_ROW(backend), G_LIST_MODEL(kinds));
-        g_object_unref(kinds);
-        adw_combo_row_set_selected(ADW_COMBO_ROW(backend), d->edit.backend == rem::BackendKind::Local ? 1 : 0);
-        auto backend_subtitle = [backend](guint i) {
-            adw_action_row_set_subtitle(ADW_ACTION_ROW(backend),
-                                        i == 1 ? "Files are read and saved as they are"
-                                               : "Conflict copies from other devices are merged");
-        };
-        backend_subtitle(adw_combo_row_get_selected(ADW_COMBO_ROW(backend)));
-        connect<void(GObject*, GParamSpec*)>(backend, "notify::selected", [d, backend, backend_subtitle](GObject*, GParamSpec*) {
-            auto i = adw_combo_row_get_selected(ADW_COMBO_ROW(backend));
-            d->edit.backend = i == 1 ? rem::BackendKind::Local : rem::BackendKind::Syncthing;
-            backend_subtitle(i);
-        });
-        adw_preferences_group_add(ADW_PREFERENCES_GROUP(main), backend);
+    d->type_row = adw_combo_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(d->type_row), "Type");
+    auto* kinds = string_list({"Syncthing", "Local Folder", "CalDAV"});
+    adw_combo_row_set_model(ADW_COMBO_ROW(d->type_row), G_LIST_MODEL(kinds));
+    g_object_unref(kinds);
+    auto type_index = [](rem::BackendKind k) {
+        return static_cast<guint>(std::ranges::find(kSourceTypes, k) - std::begin(kSourceTypes));
+    };
+    adw_combo_row_set_selected(ADW_COMBO_ROW(d->type_row), type_index(d->edit.backend));
+    connect<void(GObject*, GParamSpec*)>(d->type_row, "notify::selected", [d](GObject*, GParamSpec*) {
+        auto i = adw_combo_row_get_selected(ADW_COMBO_ROW(d->type_row));
+        if (i >= std::size(kSourceTypes)) return;
+        bool was_caldav = d->caldav();
+        d->edit.backend = kSourceTypes[i];
+        // A new source's default CalDAV folder isn't a folder to sync.
+        if (d->edit.is_new && was_caldav && !d->caldav() && !d->folder_chosen) d->edit.folder.clear();
+        d->update();
+    });
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(main), d->type_row);
 
-        d->folder_row = adw_action_row_new();
-        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(d->folder_row), "Folder");
-        adw_action_row_set_subtitle_selectable(ADW_ACTION_ROW(d->folder_row), TRUE);
-        auto* change = gtk_button_new_with_mnemonic("_Change…");
-        gtk_widget_set_valign(change, GTK_ALIGN_CENTER);
-        adw_action_row_add_suffix(ADW_ACTION_ROW(d->folder_row), change);
-        on(change, "clicked", [d, dialog] {
-            auto* chooser = gtk_file_dialog_new();
-            gtk_file_dialog_set_title(chooser, "Choose the Source's Folder");
+    d->folder_row = adw_action_row_new();
+    adw_action_row_set_subtitle_selectable(ADW_ACTION_ROW(d->folder_row), TRUE);
+    auto* change = gtk_button_new_with_mnemonic(d->edit.is_new ? "_Choose…" : "_Change…");
+    gtk_widget_set_valign(change, GTK_ALIGN_CENTER);
+    adw_action_row_add_suffix(ADW_ACTION_ROW(d->folder_row), change);
+    on(change, "clicked", [d, dialog] {
+        auto* chooser = gtk_file_dialog_new();
+        gtk_file_dialog_set_title(chooser, d->caldav() ? "Choose Where to Keep the Lists" : "Choose the Source's Folder");
+        if (!d->edit.folder.empty() && std::filesystem::is_directory(d->edit.folder)) {
             auto current = Obj<GFile>::adopt(g_file_new_for_path(d->edit.folder.c_str()));
             gtk_file_dialog_set_initial_folder(chooser, current.get());
-            auto keep = Obj<GtkWidget>::ref(GTK_WIDGET(dialog));
-            gtk_file_dialog_select_folder(
-                chooser, GTK_WINDOW(gtk_widget_get_root(GTK_WIDGET(dialog))), nullptr,
-                [](GObject* src, GAsyncResult* res, gpointer data) {
-                    std::unique_ptr<Obj<GtkWidget>> keep(static_cast<Obj<GtkWidget>*>(data));
-                    auto* d = static_cast<SourceDialog*>(g_object_get_data(G_OBJECT(keep->get()), "state"));
-                    GError* error = nullptr;
-                    auto file = Obj<GFile>::adopt(gtk_file_dialog_select_folder_finish(GTK_FILE_DIALOG(src), res, &error));
-                    if (error) {
-                        g_error_free(error);  // cancelled
-                        return;
+        }
+        auto keep = Obj<GtkWidget>::ref(GTK_WIDGET(dialog));
+        gtk_file_dialog_select_folder(
+            chooser, GTK_WINDOW(gtk_widget_get_root(GTK_WIDGET(dialog))), nullptr,
+            [](GObject* src, GAsyncResult* res, gpointer data) {
+                std::unique_ptr<Obj<GtkWidget>> keep(static_cast<Obj<GtkWidget>*>(data));
+                auto* d = static_cast<SourceDialog*>(g_object_get_data(G_OBJECT(keep->get()), "state"));
+                GError* error = nullptr;
+                auto file = Obj<GFile>::adopt(gtk_file_dialog_select_folder_finish(GTK_FILE_DIALOG(src), res, &error));
+                if (error) {
+                    g_error_free(error);  // cancelled
+                    return;
+                }
+                if (auto* path = g_file_get_path(file.get())) {
+                    d->edit.folder = path;
+                    g_free(path);
+                    d->folder_chosen = true;
+                    // A new folder source: Syncthing inside a Syncthing folder, else local.
+                    if (d->edit.is_new && !d->caldav()) {
+                        d->edit.backend = rem::detect_backend(d->edit.folder);
+                        adw_combo_row_set_selected(
+                            ADW_COMBO_ROW(d->type_row),
+                            static_cast<guint>(std::ranges::find(kSourceTypes, d->edit.backend) - std::begin(kSourceTypes)));
                     }
-                    if (auto* path = g_file_get_path(file.get())) {
-                        d->edit.folder = path;
-                        g_free(path);
-                        d->update();
-                    }
-                },
-                new Obj<GtkWidget>(std::move(keep)));
-            g_object_unref(chooser);
-        });
-        adw_preferences_group_add(ADW_PREFERENCES_GROUP(main), d->folder_row);
-    }
+                    d->update();
+                }
+            },
+            new Obj<GtkWidget>(std::move(keep)));
+        g_object_unref(chooser);
+    });
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(main), d->folder_row);
 
     auto* is_default = adw_switch_row_new();
     adw_preferences_row_set_title(ADW_PREFERENCES_ROW(is_default), "Default Source");
@@ -679,10 +677,41 @@ void show_source_dialog(GtkWidget* parent, SourceEdit source, std::function<std:
         d->edit.is_default = adw_switch_row_get_active(ADW_SWITCH_ROW(is_default));
     });
     adw_preferences_group_add(ADW_PREFERENCES_GROUP(main), is_default);
+
+    // CalDAV: the server, shown only for that type.
+    d->server_group = adw_preferences_group_new();
+    adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(d->server_group), "Server");
+    adw_preferences_group_set_description(ADW_PREFERENCES_GROUP(d->server_group),
+                                          "Each of the account's task lists becomes a list here (Nextcloud, Fastmail, "
+                                          "Radicale, …).");
+    auto entry = [&](const char* row_title, std::string* value, const char* hint) {
+        auto* row = adw_entry_row_new();
+        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), row_title);
+        gtk_editable_set_text(GTK_EDITABLE(row), value->c_str());
+        if (hint) gtk_widget_set_tooltip_text(row, hint);
+        on(row, "changed", [d, row, value] {
+            *value = trim(gtk_editable_get_text(GTK_EDITABLE(row)));
+            d->update();
+        });
+        adw_preferences_group_add(ADW_PREFERENCES_GROUP(d->server_group), row);
+    };
+    entry("Address", &d->edit.caldav.url, "The server's address, e.g. https://caldav.fastmail.com/");
+    entry("Username", &d->edit.caldav.username, nullptr);
+    entry("Password Command", &d->edit.caldav.password_command,
+          "A command that prints the password, e.g. “secret-tool lookup service reminders-caldav” or “pass show caldav”");
+    auto* every = adw_spin_row_new_with_range(1, 1440, 1);
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(every), "Sync Every");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(every), "Minutes; changes made here are sent straight away");
+    adw_spin_row_set_value(ADW_SPIN_ROW(every), d->edit.caldav.interval);
+    connect<void(GObject*, GParamSpec*)>(every, "notify::value", [d, every](GObject*, GParamSpec*) {
+        d->edit.caldav.interval = static_cast<int>(adw_spin_row_get_value(ADW_SPIN_ROW(every)));
+    });
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(d->server_group), every);
+
     d->error = label("", {"error", "caption"});
-    gtk_widget_set_margin_top(d->error, 6);
     gtk_widget_set_margin_start(d->error, 12);
-    adw_preferences_group_add(ADW_PREFERENCES_GROUP(main), d->error);
+    auto* errors = adw_preferences_group_new();
+    adw_preferences_group_add(ADW_PREFERENCES_GROUP(errors), d->error);
 
     auto* danger = adw_preferences_group_new();
     auto* remove = adw_button_row_new();
@@ -696,6 +725,8 @@ void show_source_dialog(GtkWidget* parent, SourceEdit source, std::function<std:
     });
 
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(main));
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(d->server_group));
+    adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(errors));
     if (!d->edit.is_new) adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(danger));
 
     on(cancel, "clicked", [dialog] { adw_dialog_close(ADW_DIALOG(dialog)); });
@@ -718,7 +749,7 @@ void show_source_dialog(GtkWidget* parent, SourceEdit source, std::function<std:
 }
 
 void show_sources_dialog(GtkWidget* parent, const std::vector<SourceRow>& rows, std::function<void(std::string)> on_open,
-                         std::function<void()> on_add_folder, std::function<void()> on_add_caldav) {
+                         std::function<void()> on_add) {
     auto* dialog = adw_dialog_new();
     adw_dialog_set_title(ADW_DIALOG(dialog), "Sources");
     adw_dialog_set_content_width(ADW_DIALOG(dialog), 460);
@@ -752,8 +783,7 @@ void show_sources_dialog(GtkWidget* parent, const std::vector<SourceRow>& rows, 
         });
         adw_preferences_group_add(ADW_PREFERENCES_GROUP(adds), add);
     };
-    add_row("_Add Folder…", "folder-new-symbolic", std::move(on_add_folder));
-    if (on_add_caldav) add_row("Add _CalDAV Account…", "network-server-symbolic", std::move(on_add_caldav));
+    add_row("_Add Source…", "list-add-symbolic", std::move(on_add));
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(group));
     adw_preferences_page_add(ADW_PREFERENCES_PAGE(page), ADW_PREFERENCES_GROUP(adds));
     auto* view = adw_toolbar_view_new();
