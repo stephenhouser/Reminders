@@ -1,5 +1,6 @@
 // Importing reminders from a file: ☰ → Import… in the app and `reminders
-// import`. Three kinds, told apart by their content (read_import):
+// import`. Five kinds, told apart by the file's name and content
+// (detect_kind), or chosen (read_as):
 //
 //   iCalendar (.ics)  each VTODO becomes a reminder, read as the CalDAV back
 //                     end reads them (vtodo.hpp): title, notes, done, due,
@@ -14,6 +15,16 @@
 //                     entry ("Pay rent #home 📅 2026-10-31"). Bullets and
 //                     numbering are dropped, "# Heading" lines start a
 //                     section, indented lines are subtasks of the line above.
+//   todo.txt          one task per line (todotxt.org): "x" and dates, "(A)"
+//                     priority, +project and @context as tags, due:, and the
+//                     common extensions rec: (repeat), id: and p: (parent,
+//                     as topydo writes it), plus this app's time:, flag:
+//                     and url:.
+//   CSV               a header row, then a reminder per row. Columns are
+//                     found by name, as this app and others call them
+//                     (Title / Name / Task / Content, Due / Due Date, Tags /
+//                     Labels, Notes / Description, …); the delimiter (comma,
+//                     semicolon or tab) is found from the header.
 //
 // Reminders keep their ids: from the file (^id), or for a task from its UID
 // (id_for_uid). Importing the same file again skips the reminders already
@@ -34,7 +45,7 @@
 namespace rem {
 
 struct Import {
-    enum class Kind { Ics, Markdown, Text };
+    enum class Kind { Ics, Markdown, Text, Todotxt, Csv };
     Kind kind = Kind::Text;
     std::string name;   // the calendar's name (X-WR-CALNAME), may be empty
     std::string color;  // the app colour of the calendar or list, may be empty
@@ -52,9 +63,22 @@ Import read_ics(std::string_view text, const std::chrono::time_zone* local);
 Import read_markdown(std::string_view text);
 // One reminder per non-empty line.
 Import read_plain_text(std::string_view text);
-// Whichever of the three the text is: iCalendar if it starts with
-// BEGIN:VCALENDAR, Markdown if it has checklist lines, else plain text.
-Import read_import(std::string_view text, const std::chrono::time_zone* local);
+// todo.txt lines.
+Import read_todotxt(std::string_view text);
+// A CSV file with a header row. Throws std::runtime_error if no column
+// holds titles.
+Import read_csv(std::string_view text);
+
+// "iCalendar", "Markdown", "plain text", "todo.txt", "CSV".
+std::string_view kind_name(Import::Kind kind);
+// What a file is: iCalendar if it starts with BEGIN:VCALENDAR; then by its
+// name (.csv; todo.txt, done.txt, *.todo.txt; .md); then by content:
+// Markdown with checklist lines, CSV with a title column in its header,
+// todo.txt when most lines look like it, else plain text.
+Import::Kind detect_kind(std::string_view text, std::string_view file_name = {});
+Import read_as(std::string_view text, Import::Kind kind, const std::chrono::time_zone* local);
+// read_as(text, detect_kind(text, file_name)).
+Import read_import(std::string_view text, const std::chrono::time_zone* local, std::string_view file_name = {});
 
 // A reminder id for a task's UID: the UID itself when it's usable as an id
 // (6 or more lower-case letters and digits), else one derived from it.

@@ -138,8 +138,9 @@ Ctrl+Z.
 
 ## Importing reminders
 
-**☰ → Import…** reads reminders from a file. Three kinds work, whatever
-the file is called:
+**☰ → Import…** reads reminders from a file. Five kinds work. Reminders
+works out which one a file is from its name and content and shows it under
+**Read As**, where you can change it.
 
 - **An iCalendar file** (`.ics`), such as tasks exported from another
   reminders or calendar app. Each task's title, notes, completion, due date
@@ -149,6 +150,16 @@ the file is called:
 - **A Markdown checklist** (`- [ ] …` lines), such as a list file from
   another Reminders folder or notes from another app. Everything comes
   along: fields, notes, subtasks, sections and the list's colour.
+- **A todo.txt file** ([todotxt.org](http://todotxt.org)): `x` for done,
+  `(A)`–`(C)` for high, medium and low priority, `+project` and `@context`
+  as tags, `due:` dates, and the common extras `rec:` (repeat), `id:` and
+  `p:` (a subtask's parent).
+- **A CSV file** with a header row, such as a spreadsheet or another app's
+  export. The columns are found by their names: **Title** (or Name, Task,
+  Content), **Due Date**, **Priority**, **Tags** (or Labels), **Notes** (or
+  Description), **Done**, **Flagged**, **Repeat**, **URL**, **Section**,
+  **Parent** and others. Commas, semicolons and tabs all work as
+  separators.
 - **A plain text file**, one reminder per line. Bullets (`-`, `*`, `•`) and
   numbering (`1.`) are dropped. A `# Heading` line starts a section, and an
   indented line becomes a subtask of the line above. Inline fields work as
@@ -159,18 +170,20 @@ Then:
 - **Where they go:** choose the list under **Into**. The first choice is a
   new list named after the calendar (or the file); a list that already has
   that name is chosen to begin with.
-- **Importing the same file again** doesn't double anything. Reminders from
-  a calendar or a Reminders list are recognised by their ids, wherever they
-  have moved since. Lines of plain text are recognised by their titles: a
-  line is skipped when the list already has an open reminder of that name.
+- **Importing the same file again** doesn't double anything. Reminders that
+  have ids (from a calendar, a Reminders list, or an export from here) are
+  recognised wherever they have moved since. Others are recognised by their
+  titles: one is skipped when the list already has an open reminder of that
+  name. If nothing is new, no new list is made.
 - **Undo** (Ctrl+Z) takes the whole import back.
 
-In a terminal: `reminders import FILE [--list LIST]`.
+In a terminal: `reminders import FILE [--list LIST] [--format F]`.
 
-## Exporting a list
+## Exporting lists
 
-**⋮ → Export…** (or right-click the list in the sidebar) saves a list as a
-file, in the same three formats Import reads:
+**⋮ → Export…** (or right-click the list in the sidebar) saves one list as
+a file; **☰ → Export All Lists…** saves every list, a file each, into a
+folder you choose. The formats are the ones Import reads:
 
 - **Markdown:** the list file itself, with everything. Import it into
   another Reminders folder, or keep it as a copy.
@@ -178,15 +191,26 @@ file, in the same three formats Import reads:
   Reminder (`Pay rent #home 📅 2026-10-31`), with subtasks indented and
   sections as `# Headings`. **Include Completed** adds the completed ones.
   Notes are left out.
+- **todo.txt** (`List.todo.txt`): a line per reminder, completed ones too,
+  for todo.txt apps. Due times are written as `time:`, flags as `flag:yes`
+  and links as `url:`. Notes and sections are left out, and so is an
+  "every weekend" repeat, which todo.txt can't express.
+- **CSV:** a row per reminder and subtask, with a header row (List,
+  Section, Title, Done, Due Date, Due Time, Priority, Flagged, Tags, Repeat,
+  URL, Notes, Completed, Created, ID, Parent ID), for spreadsheets and other
+  apps.
 - **iCalendar** (`.ics`): the list as tasks for other calendar and
   reminders apps, named after the list and in its colour. Notes, subtasks,
   repeats, flags and sections all come along.
 
-An exported list imports back as it was. A Markdown or iCalendar file keeps
-the reminders' ids, so importing it where the list still is adds nothing
-twice.
+An exported list imports back as it was, less what its format can't hold.
+Every format but plain text keeps the reminders' ids, so importing an
+export where the list still is adds nothing twice. Export All names each
+file after its list, as `source-List` where two sources have a list of the
+same name, and replaces files of the same name in that folder.
 
-In a terminal: `reminders export LIST [--format md|txt|ics] [-o FILE]`.
+In a terminal: `reminders export LIST [--format F] [-o FILE]`, or without
+LIST, `reminders export -o FOLDER` for every list.
 
 ## Sections
 

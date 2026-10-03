@@ -146,8 +146,9 @@ private:
     void new_list(std::string source = {});
     // ☰ → Import…: a file of reminders (.ics, Markdown, text), into a new or existing list.
     void import_file();
-    void import_tasks(const std::string& file_name, rem::Import imp);
-    // ⋮ → Export…: a list as Markdown, plain text or iCalendar.
+    void import_tasks(const std::filesystem::path& file, std::string text);
+    // ⋮ → Export… (a list) and ☰ → Export All Lists… (an empty key): as
+    // Markdown, plain text, todo.txt, CSV or iCalendar.
     void export_list(const std::string& key);
     void edit_list(const std::string& name);
     void delete_list(const std::string& name);

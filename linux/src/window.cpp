@@ -565,6 +565,7 @@ void Window::build() {
     auto* s1 = menu_section(primary_menu);
     g_menu_append(s1, "_New List…", "win.new-list");
     g_menu_append(s1, "_Import…", "win.import");
+    g_menu_append(s1, "_Export All Lists…", "win.export-all");
     g_menu_append(s1, "S_ources…", "win.sources");
     auto* sync_item = g_menu_item_new("S_ync Now", "win.sync-now");
     g_menu_item_set_attribute(sync_item, "hidden-when", "s", "action-disabled");  // no CalDAV or WebDAV sources
@@ -926,6 +927,9 @@ void Window::add_actions() {
     });
     add_action(window_, "delete-list", [this] {
         if (view_.kind == View::List) delete_list(view_.name);
+    });
+    add_action(window_, "export-all", [this] {
+        if (store_) export_list("");
     });
     add_action(window_, "export-list", [this] {
         if (view_.kind == View::List) export_list(view_.name);
@@ -2310,9 +2314,9 @@ void Window::import_file() {
     auto* dialog = gtk_file_dialog_new();
     gtk_file_dialog_set_title(dialog, "Import Reminders");
     auto* filter = gtk_file_filter_new();
-    gtk_file_filter_set_name(filter, "Calendar, Markdown and text files");
-    for (auto suffix : {"ics", "md", "markdown", "txt"}) gtk_file_filter_add_suffix(filter, suffix);
-    for (auto mime : {"text/calendar", "text/markdown", "text/plain"}) gtk_file_filter_add_mime_type(filter, mime);
+    gtk_file_filter_set_name(filter, "Calendar, Markdown, text and CSV files");
+    for (auto suffix : {"ics", "md", "markdown", "txt", "csv"}) gtk_file_filter_add_suffix(filter, suffix);
+    for (auto mime : {"text/calendar", "text/markdown", "text/plain", "text/csv"}) gtk_file_filter_add_mime_type(filter, mime);
     auto* all = gtk_file_filter_new();
     gtk_file_filter_set_name(all, "All files");
     gtk_file_filter_add_pattern(all, "*");
@@ -2339,17 +2343,11 @@ void Window::import_file() {
             std::ifstream in(path, std::ios::binary);
             std::ostringstream text;
             text << in.rdbuf();
-            try {
-                auto imp = rem::read_import(text.str(), std::chrono::current_zone());
-                if (imp.items.empty()) {
-                    self->toast(std::format("There are no reminders to import in “{}”", path.filename().string()));
-                    return;
-                }
-                if (imp.name.empty()) imp.name = path.stem().string();
-                self->import_tasks(path.filename().string(), std::move(imp));
-            } catch (const std::exception& e) {
-                self->toast(std::format("Couldn't import “{}”: {}", path.filename().string(), e.what()));
+            if (!in && !in.eof()) {
+                self->toast(std::format("Couldn't read “{}”", path.filename().string()));
+                return;
             }
+            self->import_tasks(path, text.str());
         },
         nullptr);
     g_object_set_data(G_OBJECT(dialog), "window", this);
@@ -2358,11 +2356,35 @@ void Window::import_file() {
 
 // Asks which list the reminders go into: a new one named after the
 // calendar or file (first), or any list; one already called that is
-// chosen to begin with.
-void Window::import_tasks(const std::string& file_name, rem::Import imp) {
+// chosen to begin with. "Read As" shows the kind of file found, and
+// reads it again as another.
+void Window::import_tasks(const std::filesystem::path& file, std::string text) {
+    static constexpr rem::Import::Kind kKinds[] = {rem::Import::Kind::Markdown, rem::Import::Kind::Text,
+                                                   rem::Import::Kind::Todotxt, rem::Import::Kind::Csv,
+                                                   rem::Import::Kind::Ics};
+    struct State {
+        std::string text, file_name;
+        std::optional<rem::Import> imp;  // as read with the kind chosen; nullopt if it couldn't be
+    };
+    auto state = std::make_shared<State>(State{std::move(text), file.filename().string(), std::nullopt});
+    auto detected = rem::detect_kind(state->text, state->file_name);
+
     auto* in_view = view_.kind == View::List ? store_->list(view_.name) : nullptr;
     auto source = in_view ? store_->source_of(*in_view)->config.name : store_->default_source();
-    auto name = imp.name;
+    // The new list's name: the calendar's, else the file's.
+    std::string name;
+    try {
+        name = rem::read_as(state->text, detected, std::chrono::current_zone()).name;
+    } catch (const std::exception&) {
+    }
+    if (name.empty()) {
+        name = file.filename().string();
+        for (auto suffix : {".todo.txt", ".txt", ".md", ".markdown", ".csv", ".ics"})
+            if (lower(name).ends_with(suffix)) {
+                name.resize(name.size() - std::string_view(suffix).size());
+                break;
+            }
+    }
     for (auto& c : name)
         if (std::string_view("/\\<>:\"|?*").find(c) != std::string_view::npos) c = '-';
     if (!list_name_error(name).empty()) name = "Imported";
@@ -2376,18 +2398,20 @@ void Window::import_tasks(const std::string& file_name, rem::Import imp) {
         labels.push_back(store_->label(*l));
     }
 
-    auto count = rem::reminder_count(imp);
-    auto body = std::format("{} {} from “{}”.", count, count == 1 ? "reminder" : "reminders", file_name);
-    if (imp.skipped > 0)
-        body += std::format(" {} {} left out: only tasks are imported.", imp.skipped,
-                            imp.skipped == 1 ? "event or other item is" : "events or other items are");
-    if (imp.kind == rem::Import::Kind::Text) body += " Each line of the file is a reminder.";
-    auto* dialog = adw_alert_dialog_new("Import Reminders", body.c_str());
+    auto* dialog = adw_alert_dialog_new("Import Reminders", nullptr);
     adw_alert_dialog_add_responses(ADW_ALERT_DIALOG(dialog), "cancel", "_Cancel", "import", "_Import", nullptr);
     adw_alert_dialog_set_response_appearance(ADW_ALERT_DIALOG(dialog), "import", ADW_RESPONSE_SUGGESTED);
     adw_alert_dialog_set_default_response(ADW_ALERT_DIALOG(dialog), "import");
     adw_alert_dialog_set_close_response(ADW_ALERT_DIALOG(dialog), "cancel");
     auto* rows = boxed_list();
+    auto* read_as = adw_combo_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(read_as), "Read As");
+    auto* kinds = gtk_string_list_new(nullptr);
+    for (auto label : {"Markdown", "Plain Text", "todo.txt", "CSV", "iCalendar"}) gtk_string_list_append(kinds, label);
+    adw_combo_row_set_model(ADW_COMBO_ROW(read_as), G_LIST_MODEL(kinds));
+    g_object_unref(kinds);
+    adw_combo_row_set_selected(ADW_COMBO_ROW(read_as),
+                               static_cast<guint>(std::ranges::find(kKinds, detected) - std::begin(kKinds)));
     auto* into = adw_combo_row_new();
     adw_preferences_row_set_title(ADW_PREFERENCES_ROW(into), "Into");
     auto* model = gtk_string_list_new(nullptr);
@@ -2395,18 +2419,46 @@ void Window::import_tasks(const std::string& file_name, rem::Import imp) {
     adw_combo_row_set_model(ADW_COMBO_ROW(into), G_LIST_MODEL(model));
     g_object_unref(model);
     adw_combo_row_set_selected(ADW_COMBO_ROW(into), selected);
+    gtk_list_box_append(GTK_LIST_BOX(rows), read_as);
     gtk_list_box_append(GTK_LIST_BOX(rows), into);
     adw_alert_dialog_set_extra_child(ADW_ALERT_DIALOG(dialog), rows);
 
+    // Reads the file as the kind chosen, and says what it found.
+    auto reread = [state, dialog, read_as] {
+        auto i = std::min<guint>(adw_combo_row_get_selected(ADW_COMBO_ROW(read_as)), std::size(kKinds) - 1);
+        std::string body;
+        try {
+            state->imp = rem::read_as(state->text, kKinds[i], std::chrono::current_zone());
+            auto count = rem::reminder_count(*state->imp);
+            body = count == 0 ? std::format("There are no reminders in “{}” read as {}.", state->file_name,
+                                            rem::kind_name(kKinds[i]))
+                              : std::format("{} {} from “{}”.", count, count == 1 ? "reminder" : "reminders",
+                                            state->file_name);
+            if (state->imp->skipped > 0)
+                body += std::format(" {} {} left out: only tasks are imported.", state->imp->skipped,
+                                    state->imp->skipped == 1 ? "event or other item is" : "events or other items are");
+            if (count > 0 && kKinds[i] == rem::Import::Kind::Text) body += " Each line of the file is a reminder.";
+            if (count == 0) state->imp.reset();
+        } catch (const std::exception& e) {
+            state->imp.reset();
+            body = std::format("“{}” can't be read as {}: {}.", state->file_name, rem::kind_name(kKinds[i]), e.what());
+        }
+        adw_alert_dialog_set_body(ADW_ALERT_DIALOG(dialog), body.c_str());
+        adw_alert_dialog_set_response_enabled(ADW_ALERT_DIALOG(dialog), "import", state->imp.has_value());
+    };
+    reread();
+    connect<void(GObject*, GParamSpec*)>(read_as, "notify::selected", [reread](GObject*, GParamSpec*) { reread(); });
+
     connect<void(AdwAlertDialog*, const char*)>(
-        dialog, "response",
-        [this, into, keys, source, name, imp = std::move(imp)](AdwAlertDialog*, const char* response) {
-            if (std::string_view(response) != "import" || !store_) return;
+        dialog, "response", [this, into, keys, source, name, state](AdwAlertDialog*, const char* response) {
+            if (std::string_view(response) != "import" || !store_ || !state->imp) return;
+            auto& imp = *state->imp;
             auto key = keys.at(std::min<std::size_t>(adw_combo_row_get_selected(ADW_COMBO_ROW(into)), keys.size() - 1));
             rem::ImportResult result;
             undoable("Import", [&] {
                 try {
                     rem::ListFile* list = key.empty() ? nullptr : store_->list(key);
+                    bool created = !list;
                     if (!list) {
                         // A new list, its name made unique in the source.
                         auto unique = name;
@@ -2419,12 +2471,22 @@ void Window::import_tasks(const std::string& file_name, rem::Import imp) {
                     }
                     key = store_->key_of(*list);
                     result = rem::import_into(*store_, *list, imp);
+                    if (result.added == 0 && created) {  // nothing new: no empty list either
+                        store_->delete_list(key);
+                        key = "-";
+                    }
                 } catch (const std::exception& e) {
                     toast(std::format("Couldn't import: {}", e.what()));
                     key.clear();
                 }
             });
             if (key.empty()) return;
+            if (key == "-") {
+                toast(std::format("Nothing to import: {} already here",
+                                  result.already == 1 ? "the one reminder is"
+                                                      : std::format("all {} reminders are", result.already)));
+                return;
+            }
             auto text = std::format("Imported {} {}", result.added, result.added == 1 ? "reminder" : "reminders");
             if (result.already > 0)
                 text += std::format("; {} {} already here", result.already, result.already == 1 ? "was" : "were");
@@ -2435,34 +2497,43 @@ void Window::import_tasks(const std::string& file_name, rem::Import imp) {
     adw_dialog_present(ADW_DIALOG(dialog), window_);
 }
 
+// A list ("source/name"), or with an empty key every list, into a folder.
 void Window::export_list(const std::string& key) {
-    auto* l = store_ ? store_->list(key) : nullptr;
-    if (!l) return;
-    auto* dialog = adw_alert_dialog_new(std::format("Export “{}”", l->name).c_str(),
-                                        "Exported lists can be imported again, here or on another computer.");
+    auto* l = store_ && !key.empty() ? store_->list(key) : nullptr;
+    if (!store_ || (!key.empty() && !l)) return;
+    bool all = key.empty();
+    auto* dialog = adw_alert_dialog_new(
+        all ? "Export All Lists" : std::format("Export “{}”", l->name).c_str(),
+        all ? "Each list is saved as a file of its own, in a folder you choose. They can be imported again, here or "
+              "on another computer."
+            : "Exported lists can be imported again, here or on another computer.");
     adw_alert_dialog_add_responses(ADW_ALERT_DIALOG(dialog), "cancel", "_Cancel", "export", "_Export…", nullptr);
     adw_alert_dialog_set_response_appearance(ADW_ALERT_DIALOG(dialog), "export", ADW_RESPONSE_SUGGESTED);
     adw_alert_dialog_set_default_response(ADW_ALERT_DIALOG(dialog), "export");
     adw_alert_dialog_set_close_response(ADW_ALERT_DIALOG(dialog), "cancel");
 
     static constexpr rem::ExportFormat kFormats[] = {rem::ExportFormat::Markdown, rem::ExportFormat::Text,
+                                                     rem::ExportFormat::Todotxt, rem::ExportFormat::Csv,
                                                      rem::ExportFormat::Ics};
     auto* rows = boxed_list();
     auto* format = adw_combo_row_new();
     adw_preferences_row_set_title(ADW_PREFERENCES_ROW(format), "Format");
     auto* model = gtk_string_list_new(nullptr);
-    for (auto name : {"Markdown", "Plain Text", "iCalendar"}) gtk_string_list_append(model, name);
+    for (auto name : {"Markdown", "Plain Text", "todo.txt", "CSV", "iCalendar"}) gtk_string_list_append(model, name);
     adw_combo_row_set_model(ADW_COMBO_ROW(format), G_LIST_MODEL(model));
     g_object_unref(model);
     auto* completed = adw_switch_row_new();
     adw_preferences_row_set_title(ADW_PREFERENCES_ROW(completed), "Include Completed");
     auto describe = [format, completed] {
-        auto i = adw_combo_row_get_selected(ADW_COMBO_ROW(format));
-        adw_action_row_set_subtitle(ADW_ACTION_ROW(format),
-                                    i == 1   ? "A line per reminder, as you'd type it"
-                                    : i == 2 ? "Tasks for calendar and reminders apps (.ics)"
-                                             : "The list file itself, with everything (.md)");
-        gtk_widget_set_visible(completed, i == 1);  // the others always have everything
+        auto f = kFormats[std::min<guint>(adw_combo_row_get_selected(ADW_COMBO_ROW(format)), std::size(kFormats) - 1)];
+        adw_action_row_set_subtitle(
+            ADW_ACTION_ROW(format),
+            f == rem::ExportFormat::Text      ? "A line per reminder, as you'd type it (.txt)"
+            : f == rem::ExportFormat::Todotxt ? "For todo.txt apps; without notes or sections (.todo.txt)"
+            : f == rem::ExportFormat::Csv     ? "A row per reminder, for spreadsheets (.csv)"
+            : f == rem::ExportFormat::Ics     ? "Tasks for calendar and reminders apps (.ics)"
+                                              : "The list file itself, with everything (.md)");
+        gtk_widget_set_visible(completed, f == rem::ExportFormat::Text);  // the others always have everything
     };
     describe();
     connect<void(GObject*, GParamSpec*)>(format, "notify::selected", [describe](GObject*, GParamSpec*) { describe(); });
@@ -2471,47 +2542,73 @@ void Window::export_list(const std::string& key) {
     adw_alert_dialog_set_extra_child(ADW_ALERT_DIALOG(dialog), rows);
 
     connect<void(AdwAlertDialog*, const char*)>(
-        dialog, "response", [this, key, format, completed](AdwAlertDialog*, const char* response) {
-            if (std::string_view(response) != "export") return;
-            auto i = std::min<guint>(adw_combo_row_get_selected(ADW_COMBO_ROW(format)), std::size(kFormats) - 1);
-            auto fmt = kFormats[i];
-            bool with_completed = adw_switch_row_get_active(ADW_SWITCH_ROW(completed));
-            auto* l = store_ ? store_->list(key) : nullptr;
-            if (!l) return;
+        dialog, "response", [this, key, all, format, completed](AdwAlertDialog*, const char* response) {
+            if (std::string_view(response) != "export" || !store_) return;
+            auto fmt = kFormats[std::min<guint>(adw_combo_row_get_selected(ADW_COMBO_ROW(format)), std::size(kFormats) - 1)];
+            rem::ExportOptions options;
+            options.completed = adw_switch_row_get_active(ADW_SWITCH_ROW(completed));
+            auto* list = all ? nullptr : store_->list(key);
+            if (!all && !list) return;
 
-            auto* chooser = gtk_file_dialog_new();
-            gtk_file_dialog_set_title(chooser, "Export List");
-            gtk_file_dialog_set_initial_name(chooser,
-                                             std::format("{}.{}", l->name, rem::export_extension(fmt)).c_str());
             struct Job {
                 Window* self;
                 std::string key;
                 rem::ExportFormat format;
-                bool completed;
+                rem::ExportOptions options;
             };
-            gtk_file_dialog_save(
-                chooser, GTK_WINDOW(window_), nullptr,
-                [](GObject* source, GAsyncResult* res, gpointer data) {
-                    std::unique_ptr<Job> job(static_cast<Job*>(data));
-                    GError* error = nullptr;
-                    auto file = Obj<GFile>::adopt(gtk_file_dialog_save_finish(GTK_FILE_DIALOG(source), res, &error));
-                    if (error) {
-                        g_error_free(error);  // cancelled
-                        return;
-                    }
-                    auto* self = job->self;
-                    auto* list = self->store_ ? self->store_->list(job->key) : nullptr;
-                    auto path = std::filesystem::path(take_string(g_file_get_path(file.get())));
-                    if (!list || path.empty()) return;
-                    rem::ExportOptions options;
-                    options.completed = job->completed;
-                    std::ofstream out(path, std::ios::binary | std::ios::trunc);
-                    out << rem::export_list(*list, job->format, options);
-                    out.close();
-                    self->toast(out ? std::format("Exported “{}” to {}", list->name, rem::contract_path(path))
-                                    : std::format("Couldn't write {}", path.string()));
-                },
-                new Job{this, key, fmt, with_completed});
+            auto* chooser = gtk_file_dialog_new();
+            auto* job = new Job{this, key, fmt, options};
+            if (all) {
+                gtk_file_dialog_set_title(chooser, "Choose a Folder for the Lists");
+                gtk_file_dialog_select_folder(
+                    chooser, GTK_WINDOW(window_), nullptr,
+                    [](GObject* source, GAsyncResult* res, gpointer data) {
+                        std::unique_ptr<Job> job(static_cast<Job*>(data));
+                        GError* error = nullptr;
+                        auto file = Obj<GFile>::adopt(
+                            gtk_file_dialog_select_folder_finish(GTK_FILE_DIALOG(source), res, &error));
+                        if (error) {
+                            g_error_free(error);  // cancelled
+                            return;
+                        }
+                        auto* self = job->self;
+                        auto folder = std::filesystem::path(take_string(g_file_get_path(file.get())));
+                        if (!self->store_ || folder.empty()) return;
+                        try {
+                            auto files = rem::export_all(*self->store_, folder, job->format, job->options);
+                            self->toast(std::format("Exported {} {} to {}", files.size(),
+                                                    files.size() == 1 ? "list" : "lists", rem::contract_path(folder)));
+                        } catch (const std::exception& e) {
+                            self->toast(std::format("Couldn't export: {}", e.what()));
+                        }
+                    },
+                    job);
+            } else {
+                gtk_file_dialog_set_title(chooser, "Export List");
+                gtk_file_dialog_set_initial_name(chooser,
+                                                 std::format("{}.{}", list->name, rem::export_extension(fmt)).c_str());
+                gtk_file_dialog_save(
+                    chooser, GTK_WINDOW(window_), nullptr,
+                    [](GObject* source, GAsyncResult* res, gpointer data) {
+                        std::unique_ptr<Job> job(static_cast<Job*>(data));
+                        GError* error = nullptr;
+                        auto file = Obj<GFile>::adopt(gtk_file_dialog_save_finish(GTK_FILE_DIALOG(source), res, &error));
+                        if (error) {
+                            g_error_free(error);  // cancelled
+                            return;
+                        }
+                        auto* self = job->self;
+                        auto* list = self->store_ ? self->store_->list(job->key) : nullptr;
+                        auto path = std::filesystem::path(take_string(g_file_get_path(file.get())));
+                        if (!list || path.empty()) return;
+                        std::ofstream out(path, std::ios::binary | std::ios::trunc);
+                        out << rem::export_list(*list, job->format, job->options);
+                        out.close();
+                        self->toast(out ? std::format("Exported “{}” to {}", list->name, rem::contract_path(path))
+                                        : std::format("Couldn't write {}", path.string()));
+                    },
+                    job);
+            }
             g_object_unref(chooser);
         });
     adw_dialog_present(ADW_DIALOG(dialog), window_);

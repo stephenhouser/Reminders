@@ -52,8 +52,8 @@ reminders move NAME --to LIST [--section S]
 reminders delete NAME [--yes]
 reminders search TEXT
 reminders new-list NAME [--color C] [--icon I] [--source S]
-reminders import FILE [--list LIST] [--source S]
-reminders export LIST [--format md|txt|ics] [-o FILE] [-a]
+reminders import FILE [--list LIST] [--source S] [--format F]
+reminders export [LIST] [--format F] [-o FILE] [-a]
 reminders folder [PATH]
 reminders sync [SOURCE]
 ```
@@ -106,23 +106,29 @@ The inline fields from the file format also work in the text you add:
 `reminders add "Call dentist #health 📅 2026-10-12"`.
 
 **`import`** reads reminders from a file into LIST: the tasks in an
-iCalendar file (`.ics`; events are skipped), a Markdown checklist, or plain
-text with one reminder per line (see [Importing
-reminders](USING.md#importing-reminders)). Without `--list` they go to a
+iCalendar file (`.ics`; events are skipped), a Markdown checklist, a
+todo.txt file, a CSV file with a header row, or plain text with one
+reminder per line (see [Importing reminders](USING.md#importing-reminders)).
+The kind is found from the file's name and content; `--format md|txt|
+todo.txt|csv|ics` says which instead, and the message says which was used. Without `--list` they go to a
 list named after the calendar, else after the file. The list is made (in
 `--source`, else the default source) if there's none. Importing a file
-twice doesn't double anything: reminders with ids (from a calendar or a
-Reminders list) are skipped if they're anywhere already, lines of text if
-the list has an open reminder of that title. With `--json`, the result is
+twice doesn't double anything: reminders with ids (from a calendar, a
+Reminders list or an export) are skipped if they're anywhere already,
+others if the list has an open reminder of that title. If nothing is new,
+no list is made. With `--json`, the result is
 `{"list", "created", "added", "already", "skipped"}`.
 
-**`export`** writes a list in the same formats (see [Exporting a
-list](USING.md#exporting-a-list)): `md`, the list file itself (the
-default); `txt`, a line per open reminder (`-a` adds completed ones); or
-`ics`, iCalendar tasks. Without `--format`, the extension of `-o FILE`
-says which. Without `-o` (or with `-o -`) the export goes to the terminal;
-with a folder, it's written there as `LIST.md` (or `.txt`, `.ics`). With
-`--json`, the result is `{"list", "format", "file"}`.
+**`export`** writes a list in the same formats (see [Exporting
+lists](USING.md#exporting-lists)): `md`, the list file itself (the
+default); `txt`, a line per open reminder (`-a` adds completed ones);
+`todo.txt`; `csv`; or `ics`, iCalendar tasks. Without `--format`, the name
+of `-o FILE` says which (`todo.txt` and `*.todo.txt` are todo.txt). Without
+`-o` (or with `-o -`) the export goes to the terminal; with a folder, it's
+written there as `LIST.md` (or `.txt`, `.todo.txt`, `.csv`, `.ics`).
+Without LIST, every list is exported into the folder `-o` names. With
+`--json`, the result is `{"list", "format", "file"}`, or for every list
+`{"format", "files"}`.
 
 ### Examples
 
@@ -140,6 +146,8 @@ reminders import ~/Downloads/tasks.ics --list Work
 reminders import packing.txt       # one reminder per line, into a new list "packing"
 reminders export Groceries --format txt | wl-copy   # the open items, to paste elsewhere
 reminders export Work -o ~/Backup/                  # ~/Backup/Work.md
+reminders export -o ~/Backup/ --format csv          # every list, a .csv each
+reminders import ~/Downloads/todo.txt --list Inbox  # a todo.txt file
 ```
 
 ### Scripting

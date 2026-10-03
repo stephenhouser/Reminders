@@ -62,19 +62,21 @@ Commands:
   delete NAME [--yes]           Delete
   search TEXT                   Search titles and notes
   new-list NAME [--color C] [--icon I]
-  import FILE [--list LIST] [--source S]
-                                Import reminders from an iCalendar (.ics),
-                                Markdown or plain text file (a line each)
-                                into LIST, made in S if missing (default:
-                                the calendar's name, else the file's).
-                                Ones imported before are skipped
-  export LIST [--format F] [-o FILE] [-a]
+  import FILE [--list LIST] [--source S] [--format F]
+                                Import reminders from a file into LIST,
+                                made in S if missing (default: the
+                                calendar's name, else the file's). F, found
+                                from the file if not given: md, txt (a line
+                                each), todo.txt, csv or ics. Ones imported
+                                before are skipped
+  export [LIST] [--format F] [-o FILE] [-a]
                                 Write LIST as F: md (the list file, the
                                 default), txt (a line per open reminder; -a
-                                adds completed ones) or ics (iCalendar).
-                                Without --format, FILE's extension says.
-                                To FILE (a folder: LIST.EXT in it), else
-                                to the terminal
+                                adds completed ones), todo.txt, csv or ics.
+                                Without --format, FILE's name says. To FILE
+                                (a folder: LIST.EXT in it), else to the
+                                terminal. Without LIST: every list, into
+                                the folder -o names
   folder [PATH]                 Show or set the folder (shared with the app)
   sync [SOURCE]                 Sync CalDAV and WebDAV sources with their servers now
                                 (other commands sync before and after, too)
@@ -823,13 +825,23 @@ int App::cmd_new_list(const Args& a) {
 }
 
 int App::cmd_import(const Args& a) {
-    if (a.positional.size() != 1) throw UsageError("usage: reminders import FILE [--list LIST] [--source SOURCE]");
+    if (a.positional.size() != 1) throw UsageError("usage: reminders import FILE [--list LIST] [--source SOURCE] [--format F]");
     auto path = folder_arg(a.positional[0]);
     std::ifstream in(path, std::ios::binary);
     if (!in) throw std::runtime_error(std::format("can't read {}", path.string()));
     std::ostringstream text;
     text << in.rdbuf();
-    auto imp = rem::read_import(text.str(), std::chrono::current_zone());
+    rem::Import imp;
+    if (auto f = a.get("format")) {
+        auto format = rem::export_format(*f);
+        if (!format) throw UsageError("--format is md, txt, todo.txt, csv or ics");
+        static constexpr rem::Import::Kind kKinds[] = {rem::Import::Kind::Markdown, rem::Import::Kind::Text,
+                                                       rem::Import::Kind::Ics, rem::Import::Kind::Todotxt,
+                                                       rem::Import::Kind::Csv};
+        imp = rem::read_as(text.str(), kKinds[static_cast<int>(*format)], std::chrono::current_zone());
+    } else {
+        imp = rem::read_import(text.str(), std::chrono::current_zone(), path.filename().string());
+    }
     if (imp.items.empty())
         throw std::runtime_error(std::format("there are no reminders to import in {}", path.filename().string()));
 
@@ -860,6 +872,18 @@ int App::cmd_import(const Args& a) {
         created = true;
     }
     auto r = rem::import_into(store_, *list, imp);
+    if (created && r.added == 0) {  // nothing new: no empty list either
+        store_.delete_list(store_.key_of(*list));
+        if (g_.json) {
+            std::cout << std::format(R"({{"list":null,"created":false,"added":0,"already":{},"skipped":{}}})", r.already,
+                                     imp.skipped)
+                      << "\n";
+            return 0;
+        }
+        std::cout << std::format("Nothing to import: {} already here\n",
+                                 r.already == 1 ? "the one reminder is" : std::format("all {} reminders are", r.already));
+        return 0;
+    }
     if (g_.json) {
         std::cout << std::format(R"({{"list":{},"created":{},"added":{},"already":{},"skipped":{}}})", json_escape(store_.key_of(*list)),
                                  created, r.added, r.already, imp.skipped)
@@ -869,8 +893,8 @@ int App::cmd_import(const Args& a) {
     auto plural = [](int n, std::string_view one, std::string_view many) {
         return std::format("{} {}", n, n == 1 ? one : many);
     };
-    std::cout << std::format("Imported {} into {}{}", plural(r.added, "reminder", "reminders"), store_.label(*list),
-                             created ? " (a new list)" : "");
+    std::cout << std::format("Imported {} ({}) into {}{}", plural(r.added, "reminder", "reminders"),
+                             rem::kind_name(imp.kind), store_.label(*list), created ? " (a new list)" : "");
     std::vector<std::string> notes;
     if (r.already) notes.push_back(plural(r.already, "was already there", "were already there"));
     if (imp.skipped) notes.push_back(plural(imp.skipped, "event or other item skipped", "events or other items skipped"));
@@ -880,19 +904,37 @@ int App::cmd_import(const Args& a) {
 }
 
 int App::cmd_export(const Args& a) {
-    if (a.positional.empty()) throw UsageError("usage: reminders export LIST [--format md|txt|ics] [-o FILE] [-a]");
-    auto& list = list_named(join(a.positional));
     auto out = a.get("output");
     std::optional<rem::ExportFormat> format;
     if (auto f = a.get("format")) {
         format = rem::export_format(*f);
-        if (!format) throw UsageError("--format is md, txt or ics");
-    } else if (out) {
+        if (!format) throw UsageError("--format is md, txt, todo.txt, csv or ics");
+    } else if (out && !a.positional.empty()) {
         format = rem::export_format_for(*out);
     }
     auto fmt = format.value_or(rem::ExportFormat::Markdown);
     rem::ExportOptions options;
     options.completed = a.has("all");
+
+    // Every list, into a folder.
+    if (a.positional.empty()) {
+        if (!out || *out == "-")
+            throw UsageError("usage: reminders export [LIST] [--format F] [-o FILE]; without LIST, -o names a folder");
+        auto folder = folder_arg(*out);
+        if (std::filesystem::exists(folder) && !std::filesystem::is_directory(folder))
+            throw std::runtime_error(std::format("{} isn't a folder", folder.string()));
+        auto files = rem::export_all(store_, folder, fmt, options);
+        if (g_.json) {
+            std::string list;
+            for (auto& f : files) list += (list.empty() ? "" : ",") + json_escape(f.string());
+            std::cout << std::format(R"({{"format":"{}","files":[{}]}})", rem::export_extension(fmt), list) << "\n";
+        } else {
+            std::cout << std::format("Exported {} {} to {}\n", files.size(), files.size() == 1 ? "list" : "lists",
+                                     folder.string());
+        }
+        return 0;
+    }
+    auto& list = list_named(join(a.positional));
     auto text = rem::export_list(list, fmt, options);
     if (!out || *out == "-") {
         std::cout << text;

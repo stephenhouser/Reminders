@@ -549,7 +549,7 @@ settings in a `[source.NAME]` section; later the apps show several at once.
     trips, three-way merging of Syncthing conflict copies, undo/redo history,
     settings, the XDG base directories, and sources: several open at once
     (`Library`), each with its own back end (syncthing, local, caldav,
-    webdav). Unit tests pass (130).
+    webdav). Unit tests pass (135).
   - **CalDAV and WebDAV back ends** (net/, libcurl + libxml2): a local
     Markdown copy kept in step with the server, merged three-way; synced on
     open, every `interval=` minutes and shortly after edits. Tested against
@@ -590,6 +590,26 @@ settings in a `[source.NAME]` section; later the apps show several at once.
     [--format md|txt|ics] [-o FILE|DIR|-] [-a]` (format from -o's
     extension). GUI ⋮ → Export… (header and sidebar menus): alert with
     Format (+ Include Completed for text), then a save dialog.
+  - **todo.txt, CSV, export all** (2026-10-03): `Import::Kind` and
+    `ExportFormat` gained Todotxt and Csv. todo.txt: x/dates, (A)–(C) ↔
+    high/medium/low (pri: on done lines), +project/@context → tags (export
+    writes +tag), due:, and extensions time:, rec: (Nd/w/m/y, 1b = every
+    weekday; "every weekend" isn't written), flag:yes, url:, id:, p:
+    (topydo-style parent); unknown key:value words stay in the title. CSV:
+    RFC 4180 with delimiter (, ; tab) found from the header; columns by
+    normalised header name with synonyms (Todoist's CONTENT / DESCRIPTION
+    / PRIORITY 1–4 work); Parent by id or title (`nest`). Export columns
+    List, Section, Title, Done, Due Date, Due Time, Priority, Flagged, Tags,
+    Repeat, URL, Notes, Completed, Created, ID, Parent ID; CRLF.
+    `detect_kind(text, file_name)`: BEGIN:VCALENDAR; .csv / todo.txt /
+    done.txt / *.todo.txt / .ics names; checklist → Markdown; header with
+    Title + another known column → CSV; half the lines todo.txt-like →
+    todo.txt; else plain text. `export_all(library, folder, format)`: a
+    file per list, `source-Name` on clashes. An import that made a new
+    list and added nothing deletes it again. CLI: `import --format`,
+    `export` without LIST → every list into `-o FOLDER`. GUI: Import's
+    alert has Read As (re-reads; Import disabled when it can't), ☰ →
+    Export All Lists… (same alert, then a folder chooser).
   - **Docs:** README, docs/FORMAT.md, docs/USING.md, docs/TERMINAL.md,
     docs/settings.example.ini.
 - **Known gaps:**
