@@ -18,6 +18,7 @@
 #include "reminders/format.hpp"
 #include "reminders/settings.hpp"
 #include "reminders/library.hpp"
+#include "reminders/paths.hpp"
 #include "reminders/sources.hpp"
 #include "reminders/store.hpp"
 #include "reminders/syncthing.hpp"
@@ -126,6 +127,13 @@ bool sync_caldav(rem::Library& library, const std::string& only = "", bool verbo
     (void)library, (void)only, (void)verbose;
 #endif
     return ok;
+}
+
+// A folder from the command line: relative to the current folder, as the
+// shell means it; "~" and "$VAR" work even when quoted.
+rem::fs::path folder_arg(const std::string& arg) {
+    if (arg.starts_with('~') || arg.find('$') != std::string::npos) return rem::expand_path(arg);
+    return rem::fs::absolute(arg).lexically_normal();
 }
 
 bool has_caldav(const rem::Library& library) {
@@ -861,10 +869,9 @@ int main(int argc, char** argv) {
                 std::cout << f->string() << "\n";
                 return 0;
             }
-            std::error_code ec;
-            auto path = rem::fs::absolute(rest[0], ec);
-            if (ec || !rem::fs::is_directory(path)) throw std::runtime_error(std::format("“{}” is not a folder", rest[0]));
-            auto source = rem::set_default_folder(path.lexically_normal());
+            auto path = folder_arg(rest[0]);
+            if (!rem::fs::is_directory(path)) throw std::runtime_error(std::format("“{}” is not a folder", rest[0]));
+            auto source = rem::set_default_folder(path);
             std::cout << std::format("Folder set to {} (source “{}”, {})\n", source.folder.string(), source.name,
                                      rem::backend_name(source.backend));
             return 0;
@@ -873,7 +880,7 @@ int main(int argc, char** argv) {
         // Every configured source, or just the --folder one for this run.
         std::optional<rem::fs::path> folder;
         if (g.folder) {
-            folder = rem::fs::absolute(*g.folder).lexically_normal();
+            folder = folder_arg(g.folder->string());
             if (!rem::fs::is_directory(*folder)) throw std::runtime_error(std::format("“{}” is not a folder", folder->string()));
         }
         auto library = rem::open_library(folder, rem::device_name());

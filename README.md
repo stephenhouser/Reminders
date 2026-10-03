@@ -69,11 +69,11 @@ Account…), with `reminders folder PATH` in a terminal, or by hand in
 ```ini
 [source.personal]
 backend=syncthing
-folder=/home/me/Sync/Reminders
+folder=~/Sync/Reminders
 
 [source.work]
 backend=local
-folder=/home/me/Documents/Work lists
+folder=~/Documents/Work lists
 title=Work
 
 [source.fastmail]
@@ -199,8 +199,9 @@ INSTRUCTIONS.md        The original brief, and how to recreate this project
 | `ical.hpp` | iCalendar components and properties, kept close to the text so unknown properties survive |
 | `vtodo.hpp` | VTODO ↔ reminder, changing only the properties whose meaning changed |
 | `history.hpp` | Undo/redo as before/after snapshots of list files, merging around changes from other devices |
-| `syncthing.hpp` | Per-device state location and the `.stignore` entry |
-| `settings.hpp` | `~/.config/reminders/settings.ini`, shared by all clients, sidebar layout, and the device name |
+| `syncthing.hpp` | Syncthing sources' per-device state location and the `.stignore` entry |
+| `paths.hpp` | The XDG base directories (config, data, state, cache), and `~` / `$VAR` in paths from settings |
+| `settings.hpp` | `$XDG_CONFIG_HOME/reminders/settings.ini`, shared by all clients, sidebar layout, and the device name |
 | `clipboard.hpp` | Copying and pasting reminders as text |
 | `dates.hpp` | Local date, typed dates (`tomorrow`, `fri`, `+3d`), relative labels (`Tomorrow`, `Oct 3`) |
 
@@ -232,7 +233,8 @@ library after every change, which keeps the code simple. Lists are small.
   dbus-run-session -- sh -c '
     mutter --headless --wayland --no-x11 --virtual-monitor 900x640 --wayland-display=test &
     sleep 1
-    WAYLAND_DISPLAY=test XDG_CONFIG_HOME=/tmp/r/config REMINDERS_SCREENSHOT=/tmp/r/shot.png \
+    WAYLAND_DISPLAY=test XDG_CONFIG_HOME=/tmp/r/config XDG_STATE_HOME=/tmp/r/state XDG_DATA_HOME=/tmp/r/data \
+      XDG_CACHE_HOME=/tmp/r/cache REMINDERS_SCREENSHOT=/tmp/r/shot.png \
       ./build/linux/Reminders /tmp/r/lists'
   ```
 - **Driving the app from scripts:** actions are exported over D-Bus, e.g.

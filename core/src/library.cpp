@@ -305,7 +305,7 @@ void Library::add(const SourceConfig& config, const std::string& device) {
     try {
         store = open_source(config, device);
     } catch (const std::exception&) {  // the back end's set-up failed: open it anyway
-        store = std::make_unique<Store>(config.folder, state_dir(config.folder, device), config.backend);
+        store = std::make_unique<Store>(config.folder, source_state_dir(config, device), config.backend);
     }
     add(config, std::move(store));
 }

@@ -134,12 +134,12 @@ as open and notes are copied.
 
 ## Per-device state
 
-Each client keeps its own working state in `.reminders/<device>/`, where
-`<device>` is a name unique to that device (for example the host name plus a
-short code). The Linux client keeps, per list, `base/<list>.md` (the last
-version received from another device, the base for three-way merges) and
-`written/<list>` (a fingerprint of the last version it wrote), plus
-`declined.txt`.
+Each client keeps its own working state for a Syncthing folder in
+`.reminders/<device>/`, where `<device>` is a name unique to that device (for
+example the host name plus a short code). The Linux client keeps, per list,
+`base/<list>.md` (the last version received from another device, the base for
+three-way merges) and `written/<list>` (a fingerprint of the last version it
+wrote), plus `declined.txt`.
 
 - A client only ever reads and writes its own `<device>` folder and ignores the
   others.
@@ -148,6 +148,12 @@ version received from another device, the base for three-way merges) and
   holding `.stfolder`). The `(?d)` lets Syncthing remove it when the folder
   around it is deleted on another device. If it is synced anyway (another sync tool, or the line
   was removed), nothing breaks: each device writes only to its own subfolder.
+- Losing this state is harmless: the next conflict is merged two-way (no
+  deletions).
+- Sources that aren't Syncthing folders (a plain local folder, a CalDAV
+  account) keep their state where the platform keeps app state; the Linux
+  client uses `$XDG_STATE_HOME/reminders/<device>/<source>/`
+  (`~/.local/state/…`), with a CalDAV source's sync records in `caldav/`.
 
 ## CalDAV
 

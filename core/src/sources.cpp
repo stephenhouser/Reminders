@@ -4,8 +4,10 @@
 #include <cctype>
 #include <charconv>
 #include <cstdlib>
+#include <cstdint>
 #include <format>
 
+#include "reminders/paths.hpp"
 #include "reminders/settings.hpp"
 #include "reminders/syncthing.hpp"
 
@@ -21,7 +23,7 @@ SourceConfig read_source(const std::string& name) {
     SourceConfig s;
     s.name = name;
     s.backend = parse_backend(load_section_setting(section_of(name), "backend")).value_or(BackendKind::Syncthing);
-    s.folder = load_section_setting(section_of(name), "folder");
+    if (auto folder = load_section_setting(section_of(name), "folder"); !folder.empty()) s.folder = expand_path(folder);
     s.title = load_section_setting(section_of(name), "title");
     if (s.backend == BackendKind::Caldav) {
         auto section = section_of(name);
@@ -49,13 +51,50 @@ std::string name_for(const fs::path& folder) {
     return out.empty() ? "reminders" : out;
 }
 
+// Moves a source's per-device records from `from` to `to`, unless `to`
+// already has some.
+void move_state_dir(const fs::path& from, const fs::path& to) {
+    std::error_code ec;
+    if (from == to || !fs::is_directory(from, ec) || fs::exists(to, ec)) return;
+    fs::create_directories(to.parent_path(), ec);
+    fs::rename(from, to, ec);
+    if (ec) {  // another file system
+        ec.clear();
+        fs::copy(from, to, fs::copy_options::recursive, ec);
+        if (!ec) fs::remove_all(from, ec);
+    }
+    if (fs::is_empty(from.parent_path(), ec)) fs::remove(from.parent_path(), ec);
+}
+
+// Records in the other place a source's could be: <folder>/.reminders/<device>
+// (where every source's were before 2026-10-03, and Syncthing's still are) or
+// $XDG_STATE_HOME/reminders/<device>/<name> (where a build of 2026-10-03 put
+// Syncthing's too). They move to where they belong.
+void move_misplaced_state(const SourceConfig& source, const std::string& device, const fs::path& state) {
+    auto in_folder = source.folder / kStateDirName / device;
+    if (source.backend == BackendKind::Syncthing) {
+        if (!source.name.empty()) move_state_dir(state_dir() / device / source.name, in_folder);
+    } else {
+        move_state_dir(in_folder, state);
+    }
+}
+
 }  // namespace
 
-fs::path default_caldav_folder(const std::string& name) {
-    fs::path data;
-    if (const char* xdg = std::getenv("XDG_DATA_HOME"); xdg && *xdg) data = xdg;
-    else data = fs::path(std::getenv("HOME") ? std::getenv("HOME") : ".") / ".local" / "share";
-    return data / "reminders" / "caldav" / name;
+fs::path default_caldav_folder(const std::string& name) { return data_dir() / "caldav" / name; }
+
+fs::path source_state_dir(const SourceConfig& source, const std::string& device) {
+    if (source.backend == BackendKind::Syncthing) return state_dir(source.folder, device);
+    auto base = state_dir() / device;
+    if (!source.name.empty()) return base / source.name;
+    std::error_code ec;
+    auto folder = fs::weakly_canonical(source.folder, ec).string();
+    std::uint64_t h = 0xcbf29ce484222325ULL;  // FNV-1a
+    for (unsigned char c : folder) {
+        h ^= c;
+        h *= 0x100000001b3ULL;
+    }
+    return base / std::format("folder-{:016x}", h);
 }
 
 std::vector<SourceConfig> load_sources() {
@@ -92,8 +131,17 @@ std::optional<fs::path> saved_folder() {
 }
 
 void save_source(const SourceConfig& source) {
-    save_section_setting(section_of(source.name), "backend", std::string(backend_name(source.backend)));
-    save_section_setting(section_of(source.name), "folder", source.folder.string());
+    // Records kept for another folder (or server) don't apply any more.
+    auto section = section_of(source.name);
+    auto old_folder = load_section_setting(section, "folder");
+    auto old_url = load_section_setting(section, "url");
+    if ((!old_folder.empty() && expand_path(old_folder) != source.folder) ||
+        (source.backend == BackendKind::Caldav && !old_url.empty() && old_url != source.caldav.url)) {
+        std::error_code ec;
+        fs::remove_all(source_state_dir(source, device_name()), ec);
+    }
+    save_section_setting(section, "backend", std::string(backend_name(source.backend)));
+    save_section_setting(section, "folder", contract_path(source.folder));
     if (!source.title.empty()) save_section_setting(section_of(source.name), "title", source.title);
     if (source.backend == BackendKind::Caldav) {
         auto section = section_of(source.name);
@@ -171,6 +219,12 @@ SourceConfig add_caldav_source(const CaldavSettings& caldav, const std::string& 
 }
 
 void remove_source(const std::string& name) {
+    std::error_code ec;
+    for (auto& s : load_sources())
+        if (s.name == name) {
+            fs::remove_all(source_state_dir(s, device_name()), ec);
+            if (s.backend == BackendKind::Caldav && s.folder == default_caldav_folder(name)) fs::remove_all(s.folder, ec);
+        }
     remove_section(section_of(name));
     if (load_setting("default-source") == name) {
         auto rest = load_sources();
@@ -180,7 +234,9 @@ void remove_source(const std::string& name) {
 
 std::unique_ptr<Store> open_source(const SourceConfig& source, const std::string& device) {
     if (source.backend == BackendKind::Caldav) fs::create_directories(source.folder);
-    auto store = std::make_unique<Store>(source.folder, state_dir(source.folder, device), source.backend);
+    auto state = source_state_dir(source, device);
+    move_misplaced_state(source, device, state);
+    auto store = std::make_unique<Store>(source.folder, state, source.backend);
     store->prepare();
     return store;
 }

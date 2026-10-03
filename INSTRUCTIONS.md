@@ -45,7 +45,8 @@ from them rather than reopen them.
 | List marker | Front matter `reminders: 1` (format version) | So the folder can hold other notes |
 | Sections | `## Heading` lines | Plain Markdown |
 | Sync | The app only reads and writes files; Syncthing does the syncing. Conflict copies are merged three-way | No server, no account |
-| Per-device state | `<folder>/.reminders/<device>/`, excluded via `(?d).reminders` in the Syncthing root's `.stignore` | Everything about a list stays in its folder |
+| Per-device state | Syncthing sources: `<folder>/.reminders/<device>/`, excluded via `(?d).reminders` in the Syncthing root's `.stignore` (user's choice, kept 2026-10-03). Local and CalDAV sources: `$XDG_STATE_HOME/reminders/<device>/<source>/` | A Syncthing list's state stays with its folder; device in the path because folders (and home, over NFS) are shared |
+| Paths | XDG config / data / state / cache dirs (core paths.hpp); `folder=` accepts `~`, `$HOME`, `${VAR}`, home-relative; saved as `~/…` | User's request 2026-10-03 |
 | iOS sync (later) | Syncthing embedded via gomobile, not the Möbius Sync app | Self-contained app |
 | Names | GNOME app `Reminders`, terminal client `reminders` (CLI + TUI in one binary; not `rem`, too close to DOS `rem`), app ID `com.stephenhouser.Reminders`, config `~/.config/reminders/` | Case-sensitive file names on Linux let both live in one `bin` |
 | Terminal client | Separate binary from the GUI, no GTK dependency; ncurses for the TUI | Works over SSH and on headless Syncthing machines |
@@ -117,13 +118,20 @@ Ground rules
   after their nearest earlier common reminder. Without a base: union, main
   wins, nothing deleted. Merge front matter the same way. Conflict copies of
   non-list files are left alone.
-- Per-device state in `<folder>/.reminders/<device>/` (device = hostname plus
-  4 hex digits of a hash of /etc/machine-id): base/<list>.md (the last
-  version received from elsewhere: the merge base), written/<list> (a 64-bit
-  FNV-1a fingerprint of our last write, to recognise our own writes after a
-  restart), declined.txt. Move it on rename and remove it on delete. Find the
-  Syncthing root (nearest ancestor with `.stfolder`) and append
-  `(?d).reminders` to its `.stignore` once.
+- Per-device state for a Syncthing source in `<folder>/.reminders/<device>/`
+  (device = hostname plus 4 hex digits of a hash of /etc/machine-id):
+  base/<list>.md (the last version received from elsewhere: the merge
+  base), written/<list> (a 64-bit FNV-1a fingerprint of our last write, to
+  recognise our own writes after a restart), declined.txt. Move it on
+  rename and remove it on delete. Find the Syncthing root (nearest ancestor
+  with `.stfolder`) and append `(?d).reminders` to its `.stignore` once.
+  Local and CalDAV sources keep theirs in
+  `$XDG_STATE_HOME/reminders/<device>/<source>/` (open_source moves a
+  local source's old `<folder>/.reminders/<device>/` there).
+- Every file location comes from the XDG base directories (config, data,
+  state, cache; an unset or relative variable falls back to the spec's
+  default). Paths in settings accept `~`, `$HOME`, `${VAR}` and
+  home-relative paths, and are written back as `~/…` under home.
 
 3. The GNOME app
 - Layout: AdwOverlaySplitView (the sidebar can be hidden at any width;
@@ -457,7 +465,7 @@ settings in a `[source.NAME]` section; later the apps show several at once.
    a fake server (net/tests/fake_caldav.py, Python stdlib; nothing
    installed), sync on open + `interval=` timer + shortly after edits.
    Design: a CalDAV source's folder is a local Markdown copy
-   (`~/.local/share/reminders/caldav/NAME`), so Store/apps/undo are
+   (`$XDG_DATA_HOME/reminders/caldav/NAME`), so Store/apps/undo are
    unchanged. core caldav.hpp `caldav_sync(folder, state, Remote&, lock)`:
    per calendar, pull (CTag, then ETags, then multiget) into "theirs" =
    base.md + server changes; `merge(ours, theirs, base)`; write the list

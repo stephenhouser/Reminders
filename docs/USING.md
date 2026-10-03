@@ -276,9 +276,27 @@ Groceries.md                      ← a list (synced)
 - **Deleting a list** moves its file to the Trash on that computer, and
   Syncthing deletes it on the others.
 
+## Where files are kept
+
+Reminders follows the XDG base directory rules: each place below moves with
+its variable when that's set to an absolute path.
+
+| What | Where |
+|---|---|
+| Settings | `$XDG_CONFIG_HOME/reminders/settings.ini` (`~/.config/reminders/settings.ini`) |
+| CalDAV sources' lists | `$XDG_DATA_HOME/reminders/caldav/NAME/` (`~/.local/share/…`) |
+| This computer's records for a Syncthing source (merge bases) | `.reminders/DEVICE/` in its folder, kept out of the sync by `.stignore` |
+| … for other sources (CalDAV sync records) | `$XDG_STATE_HOME/reminders/DEVICE/NAME/` (`~/.local/state/…`) |
+| Things found again if lost (CalDAV servers' calendar addresses) | `$XDG_CACHE_HOME/reminders/` (`~/.cache/…`) |
+
+`DEVICE` is the computer's name plus a short code, so computers sharing a
+home folder keep separate records. Deleting the state or cache folders is
+safe: merges after that keep everything rather than guess at deletions, and
+CalDAV sources fetch their lists again.
+
 ## The settings file
 
-`~/.config/reminders/settings.ini` is shared by the GNOME app and the terminal
+`$XDG_CONFIG_HOME/reminders/settings.ini` (`~/.config/reminders/settings.ini`) is shared by the GNOME app and the terminal
 client. Most of it is filled in for you; `show-key-numbers` is only set here.
 In the app, **main menu → Settings…** opens it in your default text editor
 (creating it if needed), and changes apply as soon as you save. In the
@@ -424,8 +442,13 @@ handles it, in a section of its own at the end of the file:
 ```ini
 [source.personal]
 backend=syncthing
-folder=/home/you/Sync/Reminders
+folder=~/Sync/Reminders
 ```
+
+A `folder=` can start with `~` (your home folder) and use environment
+variables (`$HOME/Sync`, `${XDG_DATA_HOME}/lists`); a relative one is taken
+from your home folder (`Sync/Reminders`). The app writes folders in your home
+folder as `~/…`, so the file works on another computer with a different home.
 
 | Back end | What it does |
 |---|---|
@@ -437,7 +460,8 @@ folder=/home/you/Sync/Reminders
   its title, how it's synced (Syncthing or Local Folder), its folder,
   whether it's the **Default Source** (where new lists go), and **Remove
   Source…**, which takes it out of the app and leaves its folder and files
-  as they are. **Add Folder…** adds a folder as a new source, named after it
+  as they are (a CalDAV source's local copy goes, since the server has the
+  lists). **Add Folder…** adds a folder as a new source, named after it
   (`[source.NAME]`), with the back end it needs: `syncthing` inside a
   Syncthing folder (one with `.stfolder`), else `local`. **Add CalDAV
   Account…** adds a CalDAV server.
@@ -496,8 +520,8 @@ title=Fastmail
   15), and a couple of seconds after you change something. **☰ → Sync Now**
   syncs straight away. Offline changes wait in the local copy until the
   next sync.
-- **The local copy** is in `~/.local/share/reminders/caldav/NAME/`
-  (`folder=` moves it): one Markdown file per task list, like any other
+- **The local copy** is in `$XDG_DATA_HOME/reminders/caldav/NAME/`
+  (`~/.local/share/…`; `folder=` moves it): one Markdown file per task list, like any other
   source, which you can open in an editor.
 - **Changes on both sides** are merged reminder by reminder, field by field,
   as for Syncthing conflicts; when both sides changed the same field, this

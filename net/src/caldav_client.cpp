@@ -8,9 +8,12 @@
 #include <cctype>
 #include <cstdio>
 #include <format>
+#include <fstream>
 #include <map>
 #include <random>
 #include <sys/wait.h>
+
+#include "reminders/paths.hpp"
 
 namespace rem {
 
@@ -197,7 +200,8 @@ std::string new_collection_name() {
 
 class CurlRemote : public Remote {
 public:
-    CurlRemote(const CaldavSettings& s, std::string password) : http_(s.username, std::move(password)), url_(s.url) {
+    CurlRemote(const CaldavSettings& s, std::string password, fs::path cache_file)
+        : http_(s.username, std::move(password)), url_(s.url), username_(s.username), cache_file_(std::move(cache_file)) {
         auto scheme = url_.find("://");
         if (scheme == std::string::npos) throw CaldavError("url= needs to start with https:// (or http://)");
         auto path = url_.find('/', scheme + 3);
@@ -206,6 +210,20 @@ public:
     }
 
     std::vector<RemoteCalendar> calendars() override {
+        try {
+            return list_calendars();
+        } catch (const CaldavError&) {
+            if (!home_from_cache_) throw;
+            // The remembered calendar home may be out of date: find it again.
+            home_.clear();
+            home_from_cache_ = false;
+            std::error_code ec;
+            fs::remove(cache_file_, ec);
+            return list_calendars();
+        }
+    }
+
+    std::vector<RemoteCalendar> list_calendars() {
         auto& home = calendar_home();
         auto body = std::format(R"(<?xml version="1.0" encoding="utf-8"?><d:propfind {}><d:prop>)"
                                 R"(<d:resourcetype/><d:displayname/><cs:getctag/><d:sync-token/>)"
@@ -310,7 +328,9 @@ public:
 
 private:
     Http http_;
-    std::string url_, origin_, home_;
+    std::string url_, origin_, home_, username_;
+    fs::path cache_file_;  // url, username and calendar home, a line each
+    bool home_from_cache_ = false;
 
     static std::string color_prop(const std::string& color) {
         return color.empty() ? "" : "<a:calendar-color>" + xml_escape(color) + "</a:calendar-color>";
@@ -358,12 +378,26 @@ private:
 
     const std::string& calendar_home() {
         if (!home_.empty()) return home_;
+        if (!cache_file_.empty()) {
+            std::ifstream in(cache_file_);
+            std::string url, user, home;
+            if (std::getline(in, url) && std::getline(in, user) && std::getline(in, home) && url == url_ &&
+                user == username_ && home.starts_with('/')) {
+                home_from_cache_ = true;
+                return home_ = home;
+            }
+        }
         auto path = path_of(url_);
         auto home = home_from(path);
         if (!home) home = home_from("/.well-known/caldav");
         if (!home) throw CaldavError(std::format("no CalDAV calendars found at {}", url_));
         home_ = *home;
         if (!home_.ends_with('/')) home_ += '/';
+        if (!cache_file_.empty()) {
+            std::error_code ec;
+            fs::create_directories(cache_file_.parent_path(), ec);
+            std::ofstream(cache_file_) << url_ << '\n' << username_ << '\n' << home_ << '\n';
+        }
         return home_;
     }
 };
@@ -385,15 +419,16 @@ std::string run_password_command(const std::string& command) {
     return out;
 }
 
-std::unique_ptr<Remote> make_caldav_remote(const CaldavSettings& settings) {
+std::unique_ptr<Remote> make_caldav_remote(const CaldavSettings& settings, const fs::path& cache_file) {
     if (settings.url.empty()) throw CaldavError("the source has no url=");
-    return std::make_unique<CurlRemote>(settings, run_password_command(settings.password_command));
+    return std::make_unique<CurlRemote>(settings, run_password_command(settings.password_command), cache_file);
 }
 
 SyncResult sync_caldav_source(Store& store, const SourceConfig& source) {
     auto* backend = dynamic_cast<CaldavBackend*>(&store.backend_object());
     if (!backend) throw CaldavError(std::format("{} isn't a CalDAV source", source.name));
-    auto remote = make_caldav_remote(source.caldav);
+    auto cache = source.name.empty() ? fs::path{} : cache_dir() / "caldav" / (source.name + ".home");
+    auto remote = make_caldav_remote(source.caldav, cache);
     return caldav_sync(store.folder(), store.state_dir(), *remote, backend->lock());
 }
 

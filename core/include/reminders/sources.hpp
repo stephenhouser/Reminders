@@ -6,7 +6,7 @@
 //
 //   [source.personal]
 //   backend=syncthing        (or local or caldav; see backend.hpp)
-//   folder=/home/you/Sync/Reminders
+//   folder=~/Sync/Reminders  (~, $HOME and ${VAR} work; see expand_path)
 //
 //   [source.fastmail]
 //   backend=caldav
@@ -16,7 +16,8 @@
 //   interval=15              (minutes between syncs)
 //
 // A CalDAV source's folder is its local copy, by default
-// ~/.local/share/reminders/caldav/NAME/.
+// $XDG_DATA_HOME/reminders/caldav/NAME/. Each source's per-device records
+// are in source_state_dir().
 #pragma once
 
 #include <filesystem>
@@ -54,6 +55,13 @@ struct SourceConfig {
 // $XDG_DATA_HOME/reminders/caldav/NAME (~/.local/share/…).
 fs::path default_caldav_folder(const std::string& name);
 
+// A source's per-device records. Syncthing: <folder>/.reminders/DEVICE/
+// (merge bases; .stignore keeps it out of the sync). Others:
+// $XDG_STATE_HOME/reminders/DEVICE/NAME, or …/DEVICE/folder-HASH for a
+// folder that isn't a configured source. The device is part of the path
+// because a folder is shared between devices, and a home folder can be.
+fs::path source_state_dir(const SourceConfig& source, const std::string& device);
+
 // The source's title: title=, else its name capitalised ("personal" →
 // "Personal"), else the folder's name.
 std::string source_title(const SourceConfig& source);
@@ -89,11 +97,14 @@ SourceConfig add_source(const fs::path& folder);
 // its lists in default_caldav_folder(name). It becomes the default if there
 // was none.
 SourceConfig add_caldav_source(const CaldavSettings& caldav, const std::string& title);
-// Removes a source from settings.ini (its folder and files stay as they are).
+// Removes a source from settings.ini, and this device's records for it.
+// Its folder and files stay as they are, except a CalDAV source's local
+// copy in the default place, which is only a copy of the server's lists.
 void remove_source(const std::string& name);
 
-// Opens a source: its Store, with per-device state in
-// <folder>/.reminders/<device>/, and the back end set up (Syncthing:
+// Opens a source: its Store, with per-device state in source_state_dir()
+// (for a local or CalDAV source, moved there from <folder>/.reminders/,
+// where older versions kept it), and the back end set up (Syncthing:
 // .stignore). Doesn't load the lists.
 std::unique_ptr<Store> open_source(const SourceConfig& source, const std::string& device);
 

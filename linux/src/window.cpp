@@ -8,6 +8,7 @@
 #include "dialogs.hpp"
 #include "reminders/clipboard.hpp"
 #include "reminders/format.hpp"
+#include "reminders/paths.hpp"
 #include "reminders/settings.hpp"
 #include "reminders/sources.hpp"
 #include "reminders/syncthing.hpp"
@@ -1024,8 +1025,7 @@ void Window::source_info(const std::string& name) {
 void Window::show_sources() {
     std::vector<SourceRow> rows;
     for (auto& s : rem::load_sources()) {
-        auto folder = s.folder.string();  // ~/… for folders in the home folder
-        if (std::string home = g_get_home_dir(); folder.starts_with(home + "/")) folder = "~" + folder.substr(home.size());
+        auto folder = rem::contract_path(s.folder);  // ~/… for folders in the home folder
         auto detail = s.backend == rem::BackendKind::Caldav ? std::format("CalDAV · {}", s.caldav.url)
                     : std::format("{} · {}", s.backend == rem::BackendKind::Local ? "Local folder" : "Syncthing", folder);
         rows.push_back({s.name, rem::source_title(s), detail});

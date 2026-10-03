@@ -167,7 +167,9 @@ void save_tag_style(const std::string& tag, const TagStyle& style);
 // both apps and read at start-up (load_bool_setting("show-sidebar", true)).
 
 
-// This device's name for <folder>/.reminders/<device>/: the host name plus 4
+// This device's name for its state folders (<folder>/.reminders/<device>/ for
+// Syncthing, $XDG_STATE_HOME/reminders/<device>/ otherwise; different per
+// computer even with a shared home folder): the host name plus 4
 // hex digits from the machine id (so two machines both called "fedora" differ).
 std::string device_name();
 

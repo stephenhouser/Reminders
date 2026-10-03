@@ -9,7 +9,7 @@ it also suits SSH sessions and headless machines running Syncthing.
 ## The folder
 
 `reminders` uses the folder chosen in the GNOME app (saved in
-`~/.config/reminders/settings.ini`). To set or check it from the terminal:
+`~/.config/reminders/settings.ini`, or under `$XDG_CONFIG_HOME`). To set or check it from the terminal:
 
 ```sh
 reminders folder ~/Sync/Reminders     # set (shared with the app)

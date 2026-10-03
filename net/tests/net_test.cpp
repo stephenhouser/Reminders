@@ -166,6 +166,27 @@ TEST(net_sync_runner) {
     other->delete_calendar(href);
 }
 
+TEST(net_calendar_home_cache) {
+    Dir dir;
+    auto cache = dir.path / "fm.home";
+    make_caldav_remote(settings(), cache)->calendars();
+    CHECK_EQ(read(cache), server_url + "/\nalice\n/dav/calendars/alice/\n");
+    // A home that stopped working is found again (and the cache fixed).
+    std::ofstream(cache) << server_url << "/\nalice\n/dav/old/home/\n";
+    bool ok = true;
+    try {
+        make_caldav_remote(settings(), cache)->calendars();
+    } catch (const CaldavError&) {
+        ok = false;
+    }
+    CHECK(ok);
+    CHECK_EQ(read(cache), server_url + "/\nalice\n/dav/calendars/alice/\n");
+    // Another account's cache isn't used.
+    std::ofstream(cache) << server_url << "/\nbob\n/dav/old/home/\n";
+    make_caldav_remote(settings(), cache)->calendars();
+    CHECK_EQ(read(cache), server_url + "/\nalice\n/dav/calendars/alice/\n");
+}
+
 int main(int argc, char** argv) {
     // net_tests PATH/fake_caldav.py
     if (argc < 2) {

@@ -1,5 +1,7 @@
 #include "reminders/settings.hpp"
 
+#include "reminders/paths.hpp"
+
 #include "reminders/model.hpp"
 
 #include <unistd.h>
@@ -61,12 +63,7 @@ Found find_key(const std::vector<std::string>& lines, const std::string& section
 
 }  // namespace
 
-fs::path settings_file() {
-    if (const char* xdg = std::getenv("XDG_CONFIG_HOME"); xdg && *xdg)
-        return fs::path(xdg) / "reminders" / "settings.ini";
-    const char* home = std::getenv("HOME");
-    return fs::path(home ? home : ".") / ".config" / "reminders" / "settings.ini";
-}
+fs::path settings_file() { return config_dir() / "settings.ini"; }
 
 std::string load_setting(const std::string& key) { return load_section_setting("general", key); }
 
