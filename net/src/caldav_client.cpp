@@ -1,191 +1,21 @@
 #include "reminders/caldav_client.hpp"
 
-#include <curl/curl.h>
-#include <libxml/parser.h>
-#include <libxml/tree.h>
-
 #include <algorithm>
-#include <cctype>
 #include <cstdio>
 #include <format>
 #include <fstream>
 #include <map>
 #include <random>
-#include <sys/wait.h>
 
+#include "dav.hpp"
 #include "reminders/paths.hpp"
+#include "reminders/server_sync.hpp"
 
 namespace rem {
 
 namespace {
 
-constexpr std::string_view kDav = "DAV:";
-
-std::string trim(std::string s) {
-    auto ws = [](char c) { return c == ' ' || c == '\t' || c == '\r' || c == '\n'; };
-    while (!s.empty() && ws(s.back())) s.pop_back();
-    std::size_t i = 0;
-    while (i < s.size() && ws(s[i])) ++i;
-    return s.substr(i);
-}
-
-std::string xml_escape(std::string_view s) {
-    std::string out;
-    for (char c : s) {
-        switch (c) {
-        case '&': out += "&amp;"; break;
-        case '<': out += "&lt;"; break;
-        case '>': out += "&gt;"; break;
-        case '"': out += "&quot;"; break;
-        default: out += c;
-        }
-    }
-    return out;
-}
-
-std::string lower(std::string s) {
-    for (auto& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    return s;
-}
-
-// ── HTTP ────────────────────────────────────────────────────────────────
-
-struct Response {
-    long status = 0;
-    std::string body;
-    std::string etag;
-};
-
-class Http {
-public:
-    Http(std::string user, std::string password) : user_(std::move(user)), password_(std::move(password)) {
-        static const bool initialised = [] { return curl_global_init(CURL_GLOBAL_DEFAULT) == 0; }();
-        (void)initialised;
-        curl_ = curl_easy_init();
-        if (!curl_) throw CaldavError("couldn't start libcurl");
-    }
-    ~Http() { curl_easy_cleanup(curl_); }
-    Http(const Http&) = delete;
-    Http& operator=(const Http&) = delete;
-
-    Response request(const std::string& method, const std::string& url, const std::string& body = "",
-                     std::vector<std::string> headers = {}) {
-        curl_easy_reset(curl_);
-        Response r;
-        curl_easy_setopt(curl_, CURLOPT_URL, url.c_str());
-        curl_easy_setopt(curl_, CURLOPT_CUSTOMREQUEST, method.c_str());
-        curl_easy_setopt(curl_, CURLOPT_FOLLOWLOCATION, 1L);
-        curl_easy_setopt(curl_, CURLOPT_MAXREDIRS, 5L);
-        curl_easy_setopt(curl_, CURLOPT_TIMEOUT, 60L);
-        curl_easy_setopt(curl_, CURLOPT_CONNECTTIMEOUT, 15L);
-        curl_easy_setopt(curl_, CURLOPT_USERAGENT, "Reminders (CalDAV)");
-        curl_easy_setopt(curl_, CURLOPT_NOSIGNAL, 1L);
-        if (!user_.empty()) {
-            curl_easy_setopt(curl_, CURLOPT_USERNAME, user_.c_str());
-            curl_easy_setopt(curl_, CURLOPT_PASSWORD, password_.c_str());
-            curl_easy_setopt(curl_, CURLOPT_HTTPAUTH, CURLAUTH_BASIC | CURLAUTH_DIGEST);
-        }
-        if (!body.empty()) {
-            curl_easy_setopt(curl_, CURLOPT_POSTFIELDS, body.data());
-            curl_easy_setopt(curl_, CURLOPT_POSTFIELDSIZE_LARGE, static_cast<curl_off_t>(body.size()));
-        }
-        headers.push_back("Expect:");
-        curl_slist* list = nullptr;
-        for (auto& h : headers) list = curl_slist_append(list, h.c_str());
-        curl_easy_setopt(curl_, CURLOPT_HTTPHEADER, list);
-        curl_easy_setopt(curl_, CURLOPT_WRITEFUNCTION, +[](char* p, size_t size, size_t n, void* out) -> size_t {
-            static_cast<std::string*>(out)->append(p, size * n);
-            return size * n;
-        });
-        curl_easy_setopt(curl_, CURLOPT_WRITEDATA, &r.body);
-        curl_easy_setopt(curl_, CURLOPT_HEADERFUNCTION, +[](char* p, size_t size, size_t n, void* out) -> size_t {
-            std::string_view line(p, size * n);
-            if (line.size() > 5 && lower(std::string(line.substr(0, 5))) == "etag:")
-                *static_cast<std::string*>(out) = trim(std::string(line.substr(5)));
-            return size * n;
-        });
-        curl_easy_setopt(curl_, CURLOPT_HEADERDATA, &r.etag);
-        auto rc = curl_easy_perform(curl_);
-        curl_slist_free_all(list);
-        if (rc != CURLE_OK) throw CaldavError(std::format("{}: {}", url, curl_easy_strerror(rc)));
-        curl_easy_getinfo(curl_, CURLINFO_RESPONSE_CODE, &r.status);
-        if (r.status == 401) throw CaldavError("the server didn't accept the username or password");
-        return r;
-    }
-
-private:
-    CURL* curl_ = nullptr;
-    std::string user_, password_;
-};
-
-// ── WebDAV multistatus ──────────────────────────────────────────────────
-
-struct DavResponse {
-    std::string href;
-    std::map<std::string, std::string> text;    // by property name (local name)
-    std::map<std::string, std::string> hrefs;   // current-user-principal etc.: the href inside
-    std::vector<std::string> resourcetype;      // child element names
-    std::vector<std::string> components;        // supported-calendar-component-set
-};
-
-bool is(const xmlNode* n, std::string_view name, std::string_view ns = kDav) {
-    return n && n->type == XML_ELEMENT_NODE && n->name && name == reinterpret_cast<const char*>(n->name) &&
-           (ns.empty() || (n->ns && n->ns->href && ns == reinterpret_cast<const char*>(n->ns->href)));
-}
-
-std::string content(const xmlNode* n) {
-    auto* c = xmlNodeGetContent(n);
-    std::string out = c ? reinterpret_cast<const char*>(c) : "";
-    xmlFree(c);
-    return out;
-}
-
-template <class F> void each_child(const xmlNode* n, F&& f) {
-    for (auto* c = n ? n->children : nullptr; c; c = c->next)
-        if (c->type == XML_ELEMENT_NODE) f(c);
-}
-
-std::vector<DavResponse> parse_multistatus(const std::string& body) {
-    std::vector<DavResponse> out;
-    auto* doc = xmlReadMemory(body.data(), static_cast<int>(body.size()), "response.xml", nullptr,
-                              XML_PARSE_NONET | XML_PARSE_NOERROR | XML_PARSE_NOWARNING);
-    if (!doc) throw CaldavError("the server sent XML that couldn't be read");
-    if (auto* root = xmlDocGetRootElement(doc); is(root, "multistatus")) {
-        each_child(root, [&](const xmlNode* resp) {
-            if (!is(resp, "response")) return;
-            DavResponse r;
-            each_child(resp, [&](const xmlNode* c) {
-                if (is(c, "href")) r.href = trim(content(c));
-                if (!is(c, "propstat")) return;
-                bool ok = false;
-                each_child(c, [&](const xmlNode* s) {
-                    if (is(s, "status")) ok = content(s).find(" 200") != std::string::npos;
-                });
-                if (!ok) return;
-                each_child(c, [&](const xmlNode* prop) {
-                    if (!is(prop, "prop")) return;
-                    each_child(prop, [&](const xmlNode* p) {
-                        std::string name = reinterpret_cast<const char*>(p->name);
-                        r.text[name] = name == "calendar-data" ? content(p) : trim(content(p));
-                        each_child(p, [&](const xmlNode* inner) {
-                            std::string iname = reinterpret_cast<const char*>(inner->name);
-                            if (name == "resourcetype") r.resourcetype.push_back(iname);
-                            if (iname == "href" && !r.hrefs.contains(name)) r.hrefs[name] = trim(content(inner));
-                            if (iname == "comp")
-                                if (auto* a = xmlGetProp(inner, reinterpret_cast<const xmlChar*>("name"))) {
-                                    r.components.push_back(reinterpret_cast<const char*>(a));
-                                    xmlFree(a);
-                                }
-                        });
-                    });
-                });
-            });
-            out.push_back(std::move(r));
-        });
-    }
-    xmlFreeDoc(doc);
-    return out;
-}
+using namespace net;
 
 // ── The Remote ──────────────────────────────────────────────────────────
 
@@ -200,10 +30,10 @@ std::string new_collection_name() {
 
 class CurlRemote : public Remote {
 public:
-    CurlRemote(const CaldavSettings& s, std::string password, fs::path cache_file)
+    CurlRemote(const DavSettings& s, std::string password, fs::path cache_file)
         : http_(s.username, std::move(password)), url_(s.url), username_(s.username), cache_file_(std::move(cache_file)) {
         auto scheme = url_.find("://");
-        if (scheme == std::string::npos) throw CaldavError("url= needs to start with https:// (or http://)");
+        if (scheme == std::string::npos) throw SyncError("url= needs to start with https:// (or http://)");
         auto path = url_.find('/', scheme + 3);
         origin_ = url_.substr(0, path);
         if (path == std::string::npos) url_ += "/";
@@ -212,7 +42,7 @@ public:
     std::vector<RemoteCalendar> calendars() override {
         try {
             return list_calendars();
-        } catch (const CaldavError&) {
+        } catch (const SyncError&) {
             if (!home_from_cache_) throw;
             // The remembered calendar home may be out of date: find it again.
             home_.clear();
@@ -338,16 +168,7 @@ private:
 
     static void check(const Response& r, std::string_view method, std::string_view href) {
         if (r.status < 200 || r.status >= 300)
-            throw CaldavError(std::format("{} {} failed: HTTP {}", method, href, r.status));
-    }
-
-    // A path on the server from an href (which may be a full URL).
-    std::string path_of(const std::string& href) const {
-        if (href.starts_with("http://") || href.starts_with("https://")) {
-            auto path = href.find('/', href.find("://") + 3);
-            return path == std::string::npos ? "/" : href.substr(path);
-        }
-        return href;
+            throw SyncError(std::format("{} {} failed: HTTP {}", method, href, r.status));
     }
 
     Response dav(const std::string& method, const std::string& path, const std::string& body, const std::string& depth) {
@@ -355,7 +176,7 @@ private:
         if (!depth.empty()) headers.push_back("Depth: " + depth);
         auto r = http_.request(method, origin_ + path, body, headers);
         if (r.status != 207 && (r.status < 200 || r.status >= 300))
-            throw CaldavError(std::format("{} {} failed: HTTP {}", method, path, r.status));
+            throw SyncError(std::format("{} {} failed: HTTP {}", method, path, r.status));
         return r;
     }
 
@@ -390,7 +211,7 @@ private:
         auto path = path_of(url_);
         auto home = home_from(path);
         if (!home) home = home_from("/.well-known/caldav");
-        if (!home) throw CaldavError(std::format("no CalDAV calendars found at {}", url_));
+        if (!home) throw SyncError(std::format("no CalDAV calendars found at {}", url_));
         home_ = *home;
         if (!home_.ends_with('/')) home_ += '/';
         if (!cache_file_.empty()) {
@@ -404,31 +225,16 @@ private:
 
 }  // namespace
 
-std::string run_password_command(const std::string& command) {
-    if (command.empty()) return "";
-    auto* pipe = popen(command.c_str(), "r");
-    if (!pipe) throw CaldavError("couldn't run password-command");
-    std::string out;
-    char buf[256];
-    while (auto n = std::fread(buf, 1, sizeof buf, pipe)) out.append(buf, n);
-    int status = pclose(pipe);
-    if (status == -1 || !WIFEXITED(status) || WEXITSTATUS(status) != 0)
-        throw CaldavError("password-command failed");
-    if (auto nl = out.find('\n'); nl != std::string::npos) out.resize(nl);
-    if (!out.empty() && out.back() == '\r') out.pop_back();
-    return out;
-}
-
-std::unique_ptr<Remote> make_caldav_remote(const CaldavSettings& settings, const fs::path& cache_file) {
-    if (settings.url.empty()) throw CaldavError("the source has no url=");
+std::unique_ptr<Remote> make_caldav_remote(const DavSettings& settings, const fs::path& cache_file) {
+    if (settings.url.empty()) throw SyncError("the source has no url=");
     return std::make_unique<CurlRemote>(settings, run_password_command(settings.password_command), cache_file);
 }
 
 SyncResult sync_caldav_source(Store& store, const SourceConfig& source) {
-    auto* backend = dynamic_cast<CaldavBackend*>(&store.backend_object());
-    if (!backend) throw CaldavError(std::format("{} isn't a CalDAV source", source.name));
+    auto* backend = dynamic_cast<ServerBackend*>(&store.backend_object());
+    if (!backend || backend->kind() != BackendKind::Caldav) throw SyncError(std::format("{} isn't a CalDAV source", source.name));
     auto cache = source.name.empty() ? fs::path{} : cache_dir() / "caldav" / (source.name + ".home");
-    auto remote = make_caldav_remote(source.caldav, cache);
+    auto remote = make_caldav_remote(source.dav, cache);
     return caldav_sync(store.folder(), store.state_dir(), *remote, backend->lock());
 }
 

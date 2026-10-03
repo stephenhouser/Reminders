@@ -2,12 +2,13 @@
 
 A to-do app modelled on Apple Reminders, whose data is a folder of plain
 Markdown files. No account, no server, no database: every list is a `.md` file you can read and edit in any text editor. You can of course use one of
-several synchronization back-ends including Syncthing and CalDAV to connect
+several synchronization back-ends including Syncthing, CalDAV and WebDAV to connect
 your reminders with all your devices.
 
 The app can show several *sources* at once, for example a Syncthing folder
 shared with your phone beside a local folder that stays on this computer, or
-the task lists of a CalDAV account (Nextcloud, Fastmail, …). Each source has
+the task lists of a CalDAV account (Nextcloud, Fastmail, …), or a folder on
+a WebDAV server. Each source has
 a *back end* that says how its lists are kept in sync.
 
 ```markdown
@@ -45,7 +46,7 @@ can reuse.
 
 ## Features (Linux client)
 
-- **Sources**: several open at once, each its own sidebar group, each with its own back end (Syncthing, a plain local folder, or a CalDAV account). Smart lists, tags and search cover them all, and reminders can be moved between them. Managed from ☰ → Sources….
+- **Sources**: several open at once, each its own sidebar group, each with its own back end (Syncthing, a plain local folder, a CalDAV account, or a WebDAV folder). Smart lists, tags and search cover them all, and reminders can be moved between them. Managed from ☰ → Sources….
 - **Lists**: colours, icons, sections, manual order (drag or Alt+↑/↓), and subtasks one level deep (indent with Ctrl+]).
 - **Reminders**: title, notes, URL, due date and time, repeat ("every 2 weeks", weekdays, …), flag, priority, tags.
 - **Smart lists**: Today, Scheduled, All, All Reminders (completed ones too), Flagged, Completed, plus one per tag. Search across everything, and a Ctrl+K "Go to" switcher.
@@ -63,7 +64,7 @@ can reuse.
 ## Sources and back ends
 
 Sources are set up in the app (☰ → Sources… → Add Source…: a name, a type
-and a folder, plus the server for CalDAV), with `reminders folder PATH` in a
+and a folder, plus the server for CalDAV and WebDAV), with `reminders folder PATH` in a
 terminal, or by hand in `settings.ini`:
 
 ```ini
@@ -81,6 +82,12 @@ backend=caldav
 url=https://caldav.fastmail.com/
 username=me@fastmail.com
 password-command=secret-tool lookup service reminders-caldav
+
+[source.cloud]
+backend=webdav
+url=https://cloud.example.com/remote.php/dav/files/me/Reminders/
+username=me
+password-command=secret-tool lookup service reminders-webdav
 ```
 
 | Back end | What it does |
@@ -88,9 +95,10 @@ password-command=secret-tool lookup service reminders-caldav
 | `syncthing` | The folder is synced by Syncthing; conflict copies are merged (below). Picked automatically for a folder inside a Syncthing folder (one with `.stfolder`). |
 | `local` | Just the folder: files are read and written as they are. Outside edits still show up live. |
 | `caldav` | Task lists on a CalDAV server, one calendar per list. A local copy (Markdown, like the others) is merged three-way with the server's tasks on start, every few minutes and after each change. Properties the app doesn't use are kept. See [CalDAV accounts](docs/USING.md#caldav-accounts). |
+| `webdav` | List files in a folder on a WebDAV server (Nextcloud, ownCloud, a NAS, …), as they are. A local copy is synced file by file: ETag-conditional writes, a three-way merge when both sides changed, renames sent as MOVE. See [WebDAV folders](docs/USING.md#webdav-folders). |
 
 Lists are named `source/name` where a name alone would be ambiguous (in
-settings, the CLI and the quick switcher). More back ends (WebDAV, git) are planned.
+settings, the CLI and the quick switcher). More back ends (git) are planned.
 
 ## How syncing works (Syncthing back end)
 
@@ -113,8 +121,8 @@ Details: [docs/FORMAT.md](docs/FORMAT.md).
 - GTK ≥ 4.20 and libadwaita ≥ 1.8, with development headers
 - `glib-compile-resources` (part of GLib's development tools)
 - ncurses with wide-character support (`ncursesw`), for the terminal client
-- libcurl and libxml2, with development headers, for CalDAV
-- Python 3, only to run the CalDAV tests (they start a small fake server)
+- libcurl and libxml2, with development headers, for CalDAV and WebDAV
+- Python 3, only to run the network tests (they start a small fake server)
 
 | Distribution | Packages |
 |---|---|
@@ -122,8 +130,8 @@ Details: [docs/FORMAT.md](docs/FORMAT.md).
 | Debian / Ubuntu (untested; needs a release with GTK 4.20 and libadwaita 1.8) | `sudo apt install g++ cmake ninja-build libgtk-4-dev libadwaita-1-dev libglib2.0-dev-bin libncurses-dev libcurl4-openssl-dev libxml2-dev` |
 
 Each client can be left out: `-DBUILD_GNOME_APP=OFF` builds without GTK, and
-`-DBUILD_TERMINAL_APP=OFF` without ncurses. `-DBUILD_CALDAV=OFF` leaves out
-CalDAV (and libcurl and libxml2). The core library alone needs only a
+`-DBUILD_TERMINAL_APP=OFF` without ncurses. `-DBUILD_NETWORK=OFF` leaves out
+CalDAV and WebDAV (and libcurl and libxml2). The core library alone needs only a
 C++23 compiler and CMake.
 
 ### Build, test, run
@@ -132,8 +140,8 @@ C++23 compiler and CMake.
 cmake -S . -B build -G Ninja
 cmake --build build
 ctest --test-dir build            # all the tests (or run them one by one:)
-./build/core/core_tests          # 100 tests for the core library (core_tests NAME runs the matching ones)
-./build/net/net_tests net/tests/fake_caldav.py   # CalDAV over HTTP, against a fake server
+./build/core/core_tests          # 117 tests for the core library (core_tests NAME runs the matching ones)
+./build/net/net_tests net/tests/fake_dav.py   # CalDAV and WebDAV over HTTP, against a fake server
 ./build/linux/Reminders          # the GNOME app (or: ./build/linux/Reminders ~/Sync/Reminders)
 ./build/cli/reminders --help     # the terminal client
 ```
@@ -171,11 +179,11 @@ docs/
   USING.md             User guide for the GNOME app
   TERMINAL.md          Guide to the terminal client (CLI and TUI)
 core/                  Platform-neutral C++23 library (standard library only)
-  include/reminders/   model, format, merge, recurrence, store, library, backend, sources, caldav, …
+  include/reminders/   model, format, merge, recurrence, store, library, backend, sources, caldav, webdav, …
   src/
   tests/               Unit tests with a tiny built-in harness (no dependencies)
-net/                   CalDAV over HTTP (libcurl, libxml2) and background syncing
-  tests/               Tests against fake_caldav.py, a small CalDAV server in Python
+net/                   CalDAV and WebDAV over HTTP (libcurl, libxml2) and background syncing
+  tests/               Tests against fake_dav.py, a small CalDAV and WebDAV server in Python
 linux/                 The GNOME client
   src/                 main, window, dialogs, support, gtk_util (RAII + signal helpers)
   data/                style.css, icons, .desktop file, GResource manifest
@@ -194,8 +202,9 @@ INSTRUCTIONS.md        The original brief, and how to recreate this project
 | `store.hpp` | One source's folder: loading, saving, conflict handling, list detection, smart-list queries |
 | `library.hpp` | Every source open at once: lists keyed `source/name`, smart lists, tags and search across sources, moves between them |
 | `sources.hpp` | The `[source.NAME]` sections of settings: loading, saving, the default source, opening one |
-| `backend.hpp` | Back ends (`syncthing`, `local`, `caldav`): what each adds to plain loading and saving |
+| `backend.hpp` | Back ends (`syncthing`, `local`, `caldav`, `webdav`): what each adds to plain loading and saving |
 | `caldav.hpp` | CalDAV syncing: pull, three-way merge with local edits, push; the server behind a `Remote` interface |
+| `webdav.hpp` | WebDAV syncing, file by file: ETag-conditional writes, three-way merges, renames and deletions; the server behind a `FileRemote` interface |
 | `ical.hpp` | iCalendar components and properties, kept close to the text so unknown properties survive |
 | `vtodo.hpp` | VTODO ↔ reminder, changing only the properties whose meaning changed |
 | `history.hpp` | Undo/redo as before/after snapshots of list files, merging around changes from other devices |
@@ -205,11 +214,13 @@ INSTRUCTIONS.md        The original brief, and how to recreate this project
 | `clipboard.hpp` | Copying and pasting reminders as text |
 | `dates.hpp` | Local date, typed dates (`tomorrow`, `fri`, `+3d`), relative labels (`Tomorrow`, `Oct 3`) |
 
-### CalDAV (`net/`)
+### CalDAV and WebDAV (`net/`)
 
 | Header | Purpose |
 |---|---|
-| `caldav_client.hpp` | The `Remote` over HTTP: finding the calendars, listing, fetching and storing tasks, making calendars; `password-command=` |
+| `caldav_client.hpp` | The `Remote` over HTTP: finding the calendars, listing, fetching and storing tasks, making calendars |
+| `webdav_client.hpp` | The `FileRemote` over HTTP: PROPFIND, GET, PUT, DELETE and MOVE on the folder's files, made if missing |
+| `server_sync.hpp` | `sync_source()` for either kind; `password-command=` |
 | `sync_runner.hpp` | Background syncing for the apps: on start, every `interval=` minutes, and shortly after a list file changes |
 
 ### The GNOME client

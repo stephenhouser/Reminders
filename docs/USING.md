@@ -284,15 +284,16 @@ its variable when that's set to an absolute path.
 | What | Where |
 |---|---|
 | Settings | `$XDG_CONFIG_HOME/reminders/settings.ini` (`~/.config/reminders/settings.ini`) |
-| CalDAV sources' lists | `$XDG_DATA_HOME/reminders/caldav/NAME/` (`~/.local/share/…`) |
+| CalDAV and WebDAV sources' lists (local copies) | `$XDG_DATA_HOME/reminders/caldav/NAME/` or `…/webdav/NAME/` (`~/.local/share/…`) |
 | This computer's records for a Syncthing source (merge bases) | `.reminders/DEVICE/` in its folder, kept out of the sync by `.stignore` |
-| … for other sources (CalDAV sync records) | `$XDG_STATE_HOME/reminders/DEVICE/NAME/` (`~/.local/state/…`) |
+| … for other sources (CalDAV and WebDAV sync records) | `$XDG_STATE_HOME/reminders/DEVICE/NAME/` (`~/.local/state/…`) |
 | Things found again if lost (CalDAV servers' calendar addresses) | `$XDG_CACHE_HOME/reminders/` (`~/.cache/…`) |
 
 `DEVICE` is the computer's name plus a short code, so computers sharing a
 home folder keep separate records. Deleting the state or cache folders is
 safe: merges after that keep everything rather than guess at deletions, and
-CalDAV sources fetch their lists again.
+CalDAV and WebDAV sources fetch their lists again (and merge them with
+the local copy).
 
 ## The settings file
 
@@ -455,20 +456,23 @@ folder as `~/…`, so the file works on another computer with a different home.
 | `syncthing` | The folder is synced by Syncthing. Conflict copies are merged; per-device records live in `<folder>/.reminders/`, which `.stignore` keeps out of the sync. |
 | `local` | Just the folder: list files are read and saved as they are, and changes made by other programs still show up. |
 | `caldav` | Task lists on a CalDAV server (see [CalDAV accounts](#caldav-accounts)). The folder is a local copy, kept in step with the server. |
+| `webdav` | List files in a folder on a WebDAV server (see [WebDAV folders](#webdav-folders)). The folder is a local copy, kept in step with the server's. |
 
 - **☰ → Sources… → Add Source…** asks for the source's **Name**, its
-  **Type** (Syncthing, Local Folder or CalDAV) and its **Folder**.
+  **Type** (Syncthing, Local Folder, CalDAV or WebDAV) and its **Folder**.
   Choosing a folder picks the type for you (Syncthing inside a Syncthing
   folder, one with `.stfolder`, else Local Folder); you can change it. For
-  CalDAV the folder is the **Local Copy**, which starts out in
-  `~/.local/share/reminders/caldav/NAME`, and a **Server** section asks for
-  the account (see [CalDAV accounts](#caldav-accounts)). The settings
+  CalDAV and WebDAV the folder is the **Local Copy**, which starts out in
+  `~/.local/share/reminders/caldav/NAME` (or `webdav/NAME`), and a
+  **Server** section asks for the account (see [CalDAV
+  accounts](#caldav-accounts) and [WebDAV folders](#webdav-folders)). The settings
   section is named after the Name (`[source.NAME]`, lower case), else the
   server or the folder.
 - **Choose a source in Sources…** for **Source Info…**: the same rows, its
   **Default Source** switch (where new lists go), and **Remove Source…**,
   which takes it out of the app and leaves its folder and files as they are
-  (a CalDAV source's local copy goes, since the server has the lists).
+  (a CalDAV or WebDAV source's local copy goes, since the server has the
+  lists).
 - **Right-click a source's group heading** for **New List…** in that source
   and its **Source Info…**.
 - **`reminders folder PATH`** (and the first-run Choose Folder…) sets the
@@ -538,6 +542,51 @@ title=Fastmail
   Deleting a list here deletes its task list on the server.
 - **Problems** (wrong password, server unreachable) show as a message at
   the bottom of the window; the next sync tries again.
+
+### WebDAV folders
+
+A WebDAV source keeps the list files themselves in a folder on a WebDAV
+server: Nextcloud or ownCloud (their Files), a NAS, Apache's mod_dav, and so
+on. Unlike CalDAV nothing is translated, since the files on the server are
+the same Markdown files. Sections, order and notes all come through, and
+every computer running Reminders can use the same folder. Add one with
+☰ → Sources… → **Add Source…**, Type **WebDAV**, or by hand:
+
+```ini
+[source.cloud]
+backend=webdav
+url=https://cloud.example.com/remote.php/dav/files/you/Reminders/
+username=you
+password-command=secret-tool lookup service reminders-webdav
+interval=15
+title=Cloud
+```
+
+- **`url=`** is the folder on the server. For Nextcloud, take the WebDAV
+  address from Files → Files settings (bottom left) and add a folder name.
+  The folder is made on the first sync if it isn't there, but the folder it
+  goes in must exist. Spaces can be written as they are.
+- **`password-command=`** and **`interval=`** work as for CalDAV (above).
+  On Nextcloud, use an app password (Settings → Security).
+- **What syncs:** the folder's `.md` files, not its subfolders. Every file
+  on the server is copied here, and one that isn't a list yet shows up to
+  review, as in any folder. A file made here goes to the server once it's a
+  list.
+- **Changes on both sides** of a list are merged reminder by reminder,
+  field by field, as for Syncthing conflicts. When both changed the same
+  field, this computer's change wins. Each write is conditional on the
+  server's version (its ETag): a change another device made meanwhile is
+  merged at the next sync, never overwritten. A file that isn't a list and
+  changed on both sides can't be merged, so the server's version wins and
+  this computer's is kept beside it as `NAME (this device).md`.
+- **Renaming a list** renames its file on the server. **Deleting a list**
+  deletes it there too, unless it changed there since; then it comes back.
+  A file deleted on the server goes here too, unless it changed here since;
+  then it's sent again.
+- **The local copy** is in `$XDG_DATA_HOME/reminders/webdav/NAME/`
+  (`~/.local/share/…`; `folder=` moves it).
+- **Problems** show as a message at the bottom of the window; the next sync
+  tries again.
 
 ## Troubleshooting
 

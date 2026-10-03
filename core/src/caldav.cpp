@@ -10,6 +10,7 @@
 #include <set>
 #include <sstream>
 
+#include "file_util.hpp"
 #include "reminders/format.hpp"
 #include "reminders/ical.hpp"
 #include "reminders/merge.hpp"
@@ -20,54 +21,9 @@ namespace rem {
 namespace {
 
 using namespace std::chrono;
+using namespace detail;
 
 constexpr std::string_view kEmptyList = "---\nreminders: 1\n---\n";
-
-std::optional<std::string> read_file(const fs::path& p) {
-    std::ifstream in(p, std::ios::binary);
-    if (!in) return std::nullopt;
-    std::ostringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
-
-void write_atomic(const fs::path& p, const std::string& text) {
-    fs::create_directories(p.parent_path());
-    auto tmp = p.parent_path() / ("." + p.filename().string() + ".tmp");
-    {
-        std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
-        out << text;
-        out.flush();
-        if (!out) throw fs::filesystem_error("write failed", tmp, std::make_error_code(std::errc::io_error));
-    }
-    fs::rename(tmp, p);
-}
-
-std::vector<std::string> split(std::string_view line, char sep) {
-    std::vector<std::string> out;
-    std::size_t start = 0;
-    for (std::size_t i = 0; i <= line.size(); ++i)
-        if (i == line.size() || line[i] == sep) {
-            out.emplace_back(line.substr(start, i - start));
-            start = i + 1;
-        }
-    return out;
-}
-
-std::string field(std::string s) {
-    std::ranges::replace(s, '\t', ' ');
-    std::ranges::replace(s, '\n', ' ');
-    std::ranges::replace(s, '\r', ' ');
-    return s;
-}
-
-std::vector<std::string> read_lines(const fs::path& p) {
-    std::vector<std::string> out;
-    std::ifstream in(p);
-    for (std::string line; std::getline(in, line);)
-        if (!line.empty()) out.push_back(line);
-    return out;
-}
 
 fs::path caldav_dir(const fs::path& state_dir) { return state_dir / "caldav"; }
 
@@ -121,14 +77,7 @@ void save_items(const fs::path& cdir, const Items& items) {
 }
 
 // A calendar's records folder, named by a fingerprint of its href.
-fs::path calendar_dir(const fs::path& dir, std::string_view href) {
-    std::uint64_t h = 0xcbf29ce484222325ULL;
-    for (unsigned char c : href) {
-        h ^= c;
-        h *= 0x100000001b3ULL;
-    }
-    return dir / std::format("{:016x}", h);
-}
+fs::path calendar_dir(const fs::path& dir, std::string_view href) { return dir / fingerprint(href); }
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 
@@ -547,18 +496,6 @@ std::string hex_from_color(std::string_view color) {
     return "";
 }
 
-void CaldavBackend::move_state(std::string_view from, std::string_view to) const {
-    // Called with the write lock held; caldav_sync applies it.
-    fs::create_directories(caldav_dir(state_dir_));
-    std::ofstream(caldav_dir(state_dir_) / "renamed.tsv", std::ios::app) << field(std::string(from)) << '\t'
-                                                                         << field(std::string(to)) << '\n';
-}
-
-void CaldavBackend::deleted_by_user(std::string_view name) const {
-    fs::create_directories(caldav_dir(state_dir_));
-    std::ofstream(caldav_dir(state_dir_) / "deleted.txt", std::ios::app) << field(std::string(name)) << '\n';
-}
-
 SyncResult caldav_sync(const fs::path& folder, const fs::path& state_dir, Remote& remote, std::mutex& lock,
                        const SyncOptions& options) {
     SyncResult result;
@@ -596,7 +533,7 @@ SyncResult caldav_sync(const fs::path& folder, const fs::path& state_dir, Remote
     auto run = [&](CalendarEntry& e, const RemoteCalendar& rc) {
         try {
             sync_calendar(cx, e, rc);
-        } catch (const CaldavError& err) {
+        } catch (const SyncError& err) {
             e.ctag.clear();
             result.errors.push_back(e.list + ": " + err.what());
         }
@@ -627,7 +564,7 @@ SyncResult caldav_sync(const fs::path& folder, const fs::path& state_dir, Remote
                     std::erase_if(remote_cals, [&](auto& c) { return c.href == e.href; });
                     fs::remove_all(cdir, ec);
                     continue;
-                } catch (const CaldavError& err) {
+                } catch (const SyncError& err) {
                     result.errors.push_back(e.list + ": " + err.what());
                     kept.push_back(e);
                     std::lock_guard guard(lock);
@@ -688,7 +625,7 @@ SyncResult caldav_sync(const fs::path& folder, const fs::path& state_dir, Remote
             CalendarEntry e{name, name, href, "", name, hex};
             run(e, RemoteCalendar{href, name, hex, ""});
             kept.push_back(e);
-        } catch (const CaldavError& err) {
+        } catch (const SyncError& err) {
             result.errors.push_back(name + ": " + err.what());
         }
     }

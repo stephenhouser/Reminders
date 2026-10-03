@@ -150,10 +150,10 @@ wrote), plus `declined.txt`.
   was removed), nothing breaks: each device writes only to its own subfolder.
 - Losing this state is harmless: the next conflict is merged two-way (no
   deletions).
-- Sources that aren't Syncthing folders (a plain local folder, a CalDAV
-  account) keep their state where the platform keeps app state; the Linux
-  client uses `$XDG_STATE_HOME/reminders/<device>/<source>/`
-  (`~/.local/state/…`), with a CalDAV source's sync records in `caldav/`.
+- Sources that aren't Syncthing folders (a plain local folder, a CalDAV or
+  WebDAV account) keep their state where the platform keeps app state; the
+  Linux client uses `$XDG_STATE_HOME/reminders/<device>/<source>/`
+  (`~/.local/state/…`), with sync records in `caldav/` or `webdav/`.
 
 ## CalDAV
 
@@ -189,6 +189,24 @@ above. Every client that does this maps the fields the same way:
 - Changes are merged three-way, as for conflicts (below): the base is the
   list as of the last sync, "main" is the local copy and the "conflict copy"
   is the server's version.
+
+## WebDAV
+
+A client can also keep a folder of list files on a WebDAV server, with a
+local copy in the format above. The files on the server are the list files
+themselves (`NAME.md`, at the folder's top level), so every client reads
+them as it would a synced folder. Clients that sync with such a folder:
+
+- write with `If-Match` (the ETag of the version they merged with), or with
+  `If-None-Match: *` for a new file. When the precondition fails, they merge
+  again at the next sync;
+- merge three-way as for conflicts (below): the base is the file as of the
+  last sync, "main" is the local copy and the "conflict copy" is the
+  server's version;
+- rename with `MOVE` and `Overwrite: F`, and delete with `DELETE` and
+  `If-Match`.
+
+No `.reminders/` folder or conflict copies are kept on the server.
 
 ## Conflicts
 

@@ -12,12 +12,15 @@
 //              nothing else.
 //   caldav     The folder is a local copy of task lists on a CalDAV server,
 //              kept in step by caldav_sync() (see caldav.hpp).
+//   webdav     The folder is a local copy of list files kept in a folder on a
+//              WebDAV server, kept in step by webdav_sync() (see webdav.hpp).
 #pragma once
 
 #include <filesystem>
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -26,11 +29,24 @@ namespace rem {
 
 namespace fs = std::filesystem;
 
-enum class BackendKind { Syncthing, Local, Caldav };
+enum class BackendKind { Syncthing, Local, Caldav, Webdav };
 
-// "syncthing" / "local" / "caldav"; parse_backend is case-insensitive.
+// "syncthing" / "local" / "caldav" / "webdav"; parse_backend is case-insensitive.
 std::string_view backend_name(BackendKind kind);
 std::optional<BackendKind> parse_backend(std::string_view name);
+// CalDAV and WebDAV: the folder is a local copy of what's on a server.
+bool has_server(BackendKind kind);
+
+// A network or server failure; the sync stops and is retried later.
+struct SyncError : std::runtime_error {
+    using std::runtime_error::runtime_error;
+};
+
+// What a sync with a server did.
+struct SyncResult {
+    std::vector<std::string> changed;  // lists whose file was written, created or deleted
+    std::vector<std::string> errors;   // per list; the rest still synced
+};
 
 class Backend {
 public:
@@ -62,6 +78,32 @@ public:
     // Held while the Store writes, renames or deletes a list file, when the
     // back end changes files from another thread (CalDAV sync).
     virtual std::mutex* write_lock() { return nullptr; }
+};
+
+// The back end of a source kept on a server (CalDAV, WebDAV): plain files,
+// like local, plus a note of each list renamed or deleted in the app, for
+// the next sync to apply on the server. The notes are in
+// <state_dir>/<backend name>/ (records_dir()), beside the sync's records:
+//   renamed.tsv  old name, new name
+//   deleted.txt  lists the user deleted
+// Syncing writes the folder from another thread, so the Store's writes and
+// the sync's take turns under write_lock().
+class ServerBackend : public Backend {
+public:
+    ServerBackend(BackendKind kind, fs::path state_dir) : kind_(kind), state_dir_(std::move(state_dir)) {}
+    BackendKind kind() const override { return kind_; }
+    std::mutex* write_lock() override { return &lock_; }
+    void move_state(std::string_view from, std::string_view to) const override;
+    void deleted_by_user(std::string_view name) const override;
+
+    std::mutex& lock() { return lock_; }
+    const fs::path& state_dir() const { return state_dir_; }
+    fs::path records_dir() const;
+
+private:
+    BackendKind kind_;
+    fs::path state_dir_;
+    mutable std::mutex lock_;
 };
 
 // `state_dir` is the per-device folder (Syncthing's records live there).

@@ -12,7 +12,7 @@
 #include <string>
 
 #include "gtk_util.hpp"
-#ifdef REMINDERS_CALDAV
+#ifdef REMINDERS_NETWORK
 #include "reminders/sync_runner.hpp"
 #endif
 #include "reminders/history.hpp"
@@ -181,14 +181,14 @@ private:
     GSimpleAction* show_completed_action_ = nullptr;
 
     std::unique_ptr<rem::Library> store_;  // every source
-#ifdef REMINDERS_CALDAV
-    std::unique_ptr<rem::SyncRunner> sync_;  // CalDAV sources, synced in the background; before store_ goes
+#ifdef REMINDERS_NETWORK
+    std::unique_ptr<rem::SyncRunner> sync_;  // CalDAV and WebDAV sources, synced in the background; before store_ goes
     guint sync_timer_ = 0;                   // shows its errors
     std::string last_sync_error_;
 #endif
     void start_sync();
     void stop_sync();
-    GSimpleAction* sync_action_ = nullptr;  // Sync Now (enabled with CalDAV sources)
+    GSimpleAction* sync_action_ = nullptr;  // Sync Now (enabled with CalDAV or WebDAV sources)
     struct FolderWatch {
         Obj<GFileMonitor> monitor;
         gulong handler = 0;

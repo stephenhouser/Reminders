@@ -2,8 +2,8 @@
 // people write them in settings.ini.
 //
 //   config  $XDG_CONFIG_HOME/reminders  (~/.config/reminders)       settings.ini
-//   data    $XDG_DATA_HOME/reminders    (~/.local/share/reminders)  CalDAV sources' lists
-//   state   $XDG_STATE_HOME/reminders   (~/.local/state/reminders)  per-device records: merge bases, CalDAV sync records
+//   data    $XDG_DATA_HOME/reminders    (~/.local/share/reminders)  CalDAV and WebDAV sources' local copies
+//   state   $XDG_STATE_HOME/reminders   (~/.local/state/reminders)  per-device records: merge bases, sync records
 //   cache   $XDG_CACHE_HOME/reminders   (~/.cache/reminders)        what can be found again (CalDAV calendar homes)
 //
 // An XDG variable that is unset, empty or not an absolute path is ignored,

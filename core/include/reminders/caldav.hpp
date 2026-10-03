@@ -11,7 +11,8 @@
 // Per-device records, in <state_dir>/caldav/:
 //   calendars.tsv         list name, list name at the last sync, calendar
 //                         href, its CTag, its display name and colour
-//   deleted.txt           lists the user deleted, whose calendars go next sync
+//   renamed.tsv,          lists renamed or deleted in the app (ServerBackend),
+//   deleted.txt           applied by the next sync
 //   <calendar>/base.md    the list as of the last sync (merge base)
 //   <calendar>/items.tsv  id, UID, href and ETag of every task
 //   <calendar>/<id>.ics   the task as the server last sent it (so properties
@@ -26,7 +27,6 @@
 #include <memory>
 #include <mutex>
 #include <optional>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -35,11 +35,6 @@
 namespace rem {
 
 namespace fs = std::filesystem;
-
-// A network or server failure; the sync stops and is retried later.
-struct CaldavError : std::runtime_error {
-    using std::runtime_error::runtime_error;
-};
 
 struct RemoteCalendar {
     std::string href;   // collection URL path, ending in '/'
@@ -80,40 +75,16 @@ public:
     virtual void delete_calendar(const std::string& href) = 0;
 };
 
-struct SyncResult {
-    std::vector<std::string> changed;  // lists whose file was written, created or deleted
-    std::vector<std::string> errors;   // per calendar; the rest still synced
-};
-
 struct SyncOptions {
     const std::chrono::time_zone* zone = nullptr;  // null: the local zone
     std::chrono::sys_seconds now{};                // zero: the current time
 };
 
 // Syncs `folder` with the server. `lock` is the back end's write lock (see
-// CaldavBackend), held while files are written so the app's own saves can't
-// interleave. Throws CaldavError if the server can't be reached at all.
+// ServerBackend), held while files are written so the app's own saves can't
+// interleave. Throws SyncError if the server can't be reached at all.
 SyncResult caldav_sync(const fs::path& folder, const fs::path& state_dir, Remote& remote, std::mutex& lock,
                        const SyncOptions& options = {});
-
-// The back end the Store uses for a CalDAV source's folder: plain files
-// (like local), plus the records above kept in step when a list is renamed
-// or deleted in the app.
-class CaldavBackend : public Backend {
-public:
-    explicit CaldavBackend(fs::path state_dir) : state_dir_(std::move(state_dir)) {}
-    BackendKind kind() const override { return BackendKind::Caldav; }
-    std::mutex* write_lock() override { return &lock_; }
-    void move_state(std::string_view from, std::string_view to) const override;
-    void deleted_by_user(std::string_view name) const override;
-
-    std::mutex& lock() { return lock_; }
-    const fs::path& state_dir() const { return state_dir_; }
-
-private:
-    fs::path state_dir_;
-    mutable std::mutex lock_;
-};
 
 // The nearest of the app's colours to "#RRGGBB", and a colour's "#RRGGBB".
 std::string color_from_hex(std::string_view hex);

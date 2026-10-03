@@ -72,7 +72,7 @@ TEST(sources_caldav) {
     std::ofstream(dir / "config" / "reminders" / "settings.ini") << "[general]\n";
 
     // Named after the server; the local copy goes in the data folder.
-    auto caldav = [](CaldavSettings c, std::string title) {
+    auto caldav = [](DavSettings c, std::string title) {
         return add_source(SourceConfig{"", BackendKind::Caldav, {}, std::move(title), std::move(c)});
     };
     CHECK_EQ(new_source_name(SourceConfig{"", BackendKind::Caldav, {}, "", {"https://caldav.fastmail.com/dav/", "", "", 15}}),
@@ -92,8 +92,8 @@ TEST(sources_caldav) {
     auto all = load_sources();
     CHECK_EQ(all.size(), 3u);
     CHECK(all[0].backend == BackendKind::Caldav);
-    CHECK(all[0].caldav == a.caldav);
-    CHECK_EQ(all[1].caldav.interval, 5);
+    CHECK(all[0].dav == a.dav);
+    CHECK_EQ(all[1].dav.interval, 5);
     CHECK(all[1].folder == dir / "data" / "reminders" / "caldav" / "fastmail-2");  // no folder= needed
 
     // `reminders folder PATH` doesn't turn the CalDAV default into a folder.
@@ -103,6 +103,33 @@ TEST(sources_caldav) {
     CHECK(f.backend == BackendKind::Local);
     CHECK_EQ(load_setting("default-source"), "notes");
     CHECK(load_sources()[0].backend == BackendKind::Caldav);
+    unsetenv("XDG_DATA_HOME");
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+}
+
+TEST(sources_webdav) {
+    auto dir = fs::temp_directory_path() / ("reminders-sources-" + new_id());
+    setenv("XDG_CONFIG_HOME", (dir / "config").c_str(), 1);
+    setenv("XDG_DATA_HOME", (dir / "data").c_str(), 1);
+    fs::create_directories(dir / "config" / "reminders");
+    std::ofstream(dir / "config" / "reminders" / "settings.ini") << "[general]\n";
+
+    DavSettings s{"https://cloud.example.com/remote.php/dav/files/me/Reminders/", "me", "pass show cloud", 10};
+    auto a = add_source(SourceConfig{"", BackendKind::Webdav, {}, "", s});
+    CHECK_EQ(a.name, "example");
+    CHECK(a.folder == dir / "data" / "reminders" / "webdav" / "example");
+    auto all = load_sources();
+    CHECK_EQ(all.size(), 1u);
+    CHECK(all[0].backend == BackendKind::Webdav);
+    CHECK(all[0].dav == s);
+    CHECK(all[0].folder == a.folder);
+    CHECK(has_server(BackendKind::Webdav) && has_server(BackendKind::Caldav) && !has_server(BackendKind::Local));
+
+    // Removing it removes the local copy in the default place, too.
+    fs::create_directories(a.folder);
+    remove_source(a.name);
+    CHECK(!fs::exists(a.folder));
     unsetenv("XDG_DATA_HOME");
     std::error_code ec;
     fs::remove_all(dir, ec);

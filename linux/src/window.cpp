@@ -186,8 +186,8 @@ GMenu* menu_section(GMenu* menu) {
     return section;
 }
 
-// What's wrong with a CalDAV account's settings, or "".
-std::string caldav_problem(const rem::CaldavSettings& c) {
+// What's wrong with a CalDAV or WebDAV account's settings, or "".
+std::string dav_problem(const rem::DavSettings& c) {
     if (c.url.empty()) return "Enter the server's address";
     if (!c.url.starts_with("https://") && !c.url.starts_with("http://")) return "The address starts with https://";
     if (c.url.find('.', c.url.find("://")) == std::string::npos && c.url.find("localhost") == std::string::npos &&
@@ -200,11 +200,11 @@ std::string caldav_problem(const rem::CaldavSettings& c) {
 // the source being edited ("" for a new one).
 std::string source_problem(const SourceEdit& e, const std::string& self) {
     std::error_code ec;
-    if (e.backend == rem::BackendKind::Caldav) {
-#ifndef REMINDERS_CALDAV
-        return "This copy of Reminders was built without CalDAV";
+    if (rem::has_server(e.backend)) {
+#ifndef REMINDERS_NETWORK
+        return "This copy of Reminders was built without CalDAV and WebDAV";
 #endif
-        if (auto p = caldav_problem(e.caldav); !p.empty()) return p;
+        if (auto p = dav_problem(e.dav); !p.empty()) return p;
     } else {
         if (e.folder.empty()) return "Choose a folder";
         if (!std::filesystem::is_directory(e.folder, ec)) return "That folder doesn't exist";
@@ -562,7 +562,7 @@ void Window::build() {
     g_menu_append(s1, "_New List…", "win.new-list");
     g_menu_append(s1, "S_ources…", "win.sources");
     auto* sync_item = g_menu_item_new("S_ync Now", "win.sync-now");
-    g_menu_item_set_attribute(sync_item, "hidden-when", "s", "action-disabled");  // no CalDAV sources
+    g_menu_item_set_attribute(sync_item, "hidden-when", "s", "action-disabled");  // no CalDAV or WebDAV sources
     g_menu_append_item(s1, sync_item);
     g_object_unref(sync_item);
     g_menu_append(menu_section(primary_menu), "Show _Hidden Lists", "win.show-hidden");
@@ -826,7 +826,7 @@ void Window::add_actions() {
     add_action(window_, "add-source", [this] { add_source(); });
     add_action(window_, "sources", [this] { show_sources(); });
     sync_action_ = add_action(window_, "sync-now", [this] {
-#ifdef REMINDERS_CALDAV
+#ifdef REMINDERS_NETWORK
         if (sync_) sync_->sync_now();
 #endif
     });
@@ -1000,12 +1000,12 @@ void Window::source_info(const std::string& name) {
     if (!config) return;
     SourceEdit edit{config->name, config->title, config->backend, config->folder,
                     rem::load_setting("default-source") == name || (store_ && store_->default_source() == name),
-                    config->caldav, false};
+                    config->dav, false};
     show_source_dialog(
         window_, edit, [name](const SourceEdit& e) { return source_problem(e, name); },
         [this](SourceEdit e) {
             try {
-                rem::save_source(rem::SourceConfig{e.name, e.backend, e.folder, e.title, e.caldav});
+                rem::save_source(rem::SourceConfig{e.name, e.backend, e.folder, e.title, e.dav});
                 if (e.title.empty()) rem::save_section_setting("source." + e.name, "title", "");
                 if (e.is_default) rem::save_setting("default-source", e.name);
             } catch (const std::exception& err) {
@@ -1021,7 +1021,8 @@ void Window::show_sources() {
     std::vector<SourceRow> rows;
     for (auto& s : rem::load_sources()) {
         auto folder = rem::contract_path(s.folder);  // ~/… for folders in the home folder
-        auto detail = s.backend == rem::BackendKind::Caldav ? std::format("CalDAV · {}", s.caldav.url)
+        auto detail = s.backend == rem::BackendKind::Caldav   ? std::format("CalDAV · {}", s.dav.url)
+                    : s.backend == rem::BackendKind::Webdav ? std::format("WebDAV · {}", s.dav.url)
                     : std::format("{} · {}", s.backend == rem::BackendKind::Local ? "Local folder" : "Syncthing", folder);
         rows.push_back({s.name, rem::source_title(s), detail});
     }
@@ -1038,10 +1039,10 @@ void Window::add_source() {
         window_, edit, [](const SourceEdit& e) { return source_problem(e, ""); },
         [this](SourceEdit e) {
             try {
-                if (e.backend != rem::BackendKind::Caldav) std::filesystem::create_directories(e.folder);
-                auto config = rem::add_source(rem::SourceConfig{"", e.backend, e.folder, e.title, e.caldav});
+                if (!rem::has_server(e.backend)) std::filesystem::create_directories(e.folder);
+                auto config = rem::add_source(rem::SourceConfig{"", e.backend, e.folder, e.title, e.dav});
                 if (e.is_default) rem::save_setting("default-source", config.name);
-                toast(e.backend == rem::BackendKind::Caldav
+                toast(rem::has_server(e.backend)
                           ? std::format("Added “{}”; its lists appear once it has synced", rem::source_title(config))
                           : std::format("Added “{}”", rem::source_title(config)));
             } catch (const std::exception& err) {
@@ -1054,7 +1055,7 @@ void Window::add_source() {
 }
 
 void Window::start_sync() {
-#ifdef REMINDERS_CALDAV
+#ifdef REMINDERS_NETWORK
     stop_sync();
     if (!store_) return;
     sync_ = std::make_unique<rem::SyncRunner>(*store_);
@@ -1074,7 +1075,7 @@ void Window::start_sync() {
 }
 
 void Window::stop_sync() {
-#ifdef REMINDERS_CALDAV
+#ifdef REMINDERS_NETWORK
     if (sync_timer_) g_source_remove(sync_timer_);
     sync_timer_ = 0;
     sync_.reset();  // waits for a sync under way

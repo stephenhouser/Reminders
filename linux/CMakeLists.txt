@@ -28,7 +28,7 @@ add_executable(reminders-gnome
 target_link_libraries(reminders-gnome PRIVATE reminders_core PkgConfig::ADW)
 if(TARGET reminders_net)
   target_link_libraries(reminders-gnome PRIVATE reminders_net)
-  target_compile_definitions(reminders-gnome PRIVATE REMINDERS_CALDAV)
+  target_compile_definitions(reminders-gnome PRIVATE REMINDERS_NETWORK)
 endif()
 # The generated resource C file isn't warning-clean under -Wpedantic.
 set_source_files_properties(${RES_C} PROPERTIES COMPILE_OPTIONS "-w")

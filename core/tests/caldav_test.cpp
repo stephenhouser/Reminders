@@ -76,7 +76,7 @@ struct FakeRemote : Remote {
     }
 
     std::vector<RemoteCalendar> calendars() override {
-        if (offline) throw CaldavError("offline");
+        if (offline) throw SyncError("offline");
         std::vector<RemoteCalendar> out;
         for (auto& [h, c] : cals) out.push_back({h, c.name, c.color, std::to_string(c.version)});
         return out;
@@ -129,7 +129,7 @@ struct Fixture {
     fs::path folder = dir / "lists";
     fs::path state = dir / "state";
     FakeRemote server;
-    CaldavBackend backend{state};
+    ServerBackend backend{BackendKind::Caldav, state};
 
     Fixture() { fs::create_directories(folder); }
     ~Fixture() {
@@ -328,7 +328,7 @@ TEST(caldav_offline) {
     bool threw = false;
     try {
         f.sync();
-    } catch (const CaldavError&) {
+    } catch (const SyncError&) {
         threw = true;
     }
     CHECK(threw);

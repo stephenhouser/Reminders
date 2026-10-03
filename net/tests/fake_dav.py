@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""A small in-memory CalDAV server for the network tests (standard library only).
+"""A small in-memory CalDAV and WebDAV server for the network tests (standard
+library only).
 
 Prints the port it listens on, then serves until GET /_quit or 120 s idle.
 User "alice", password "secret" (HTTP Basic). Layout:
@@ -8,6 +9,9 @@ User "alice", password "secret" (HTTP Basic). Layout:
     /dav/                      current-user-principal: /dav/principals/alice/
     /dav/principals/alice/     calendar-home-set: /dav/calendars/alice/
     /dav/calendars/alice/X/    calendars, holding X/<name>.ics objects
+    /files/alice/              WebDAV folders (MKCOL) and files: PROPFIND,
+                               GET, PUT, DELETE, MOVE, with If-Match /
+                               If-None-Match and Overwrite
 """
 
 import base64
@@ -15,6 +19,7 @@ import itertools
 import re
 import sys
 import threading
+import urllib.parse
 import xml.etree.ElementTree as ET
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -24,6 +29,7 @@ PRINCIPAL = "/dav/principals/alice/"
 AUTH = "Basic " + base64.b64encode(b"alice:secret").decode()
 
 calendars = {}  # href -> {"name", "color", "ctag", "objects": {href: (etag, data)}}
+folders = {"/files/": {}, "/files/alice/": {}}  # folder path (unescaped) -> {file name: (etag, data)}
 counter = itertools.count(1)
 lock = threading.Lock()
 idle = threading.Event()
@@ -89,6 +95,8 @@ class Handler(BaseHTTPRequestHandler):
         if not self.authorised():
             return
         with lock:
+            if path.startswith("/files/"):
+                return getattr(self, "files_" + self.command.lower())(urllib.parse.unquote(path))
             getattr(self, "do_" + self.command.lower() + "_")(path)
 
     def do_propfind_(self, path):
@@ -186,7 +194,92 @@ class Handler(BaseHTTPRequestHandler):
         bump(cal)
         self.send(207, multistatus([(path, [])]))
 
+    # ── WebDAV files ────────────────────────────────────────────────────
+
+    def split(self, path):
+        folder, _, name = path.rpartition("/")
+        return folder + "/", name
+
+    def precondition_fails(self, existing):
+        match, none_match = self.headers.get("If-Match"), self.headers.get("If-None-Match")
+        if none_match == "*" and existing:
+            return True
+        return bool(match) and (not existing or (match != "*" and existing[0] != match))
+
+    def files_propfind(self, path):
+        self.body()
+        if path not in folders:
+            return self.send(404)
+        q = urllib.parse.quote
+        out = [(q(path), ["<d:resourcetype><d:collection/></d:resourcetype>"])]
+        if self.headers.get("Depth") == "1":
+            for f in folders:
+                if f != path and f.startswith(path) and "/" not in f[len(path):-1]:
+                    out.append((q(f), ["<d:resourcetype><d:collection/></d:resourcetype>"]))
+            for name, (etag, _) in folders[path].items():
+                out.append((q(path + name), ["<d:resourcetype/>", f"<d:getetag>{esc(etag)}</d:getetag>"]))
+        self.send(207, multistatus(out))
+
+    def files_mkcol(self, path):
+        self.body()
+        if not path.endswith("/"):
+            path += "/"
+        if path in folders:
+            return self.send(405)
+        if path[: path[:-1].rfind("/") + 1] not in folders:
+            return self.send(409)
+        folders[path] = {}
+        self.send(201)
+
+    def files_get(self, path):
+        folder, name = self.split(path)
+        f = folders.get(folder, {}).get(name)
+        if f is None:
+            return self.send(404)
+        self.send(200, f[1], {"ETag": f[0], "Content-Type": "text/markdown"})
+
+    def files_put(self, path):
+        data = self.body()
+        folder, name = self.split(path)
+        if folder not in folders:
+            return self.send(409)
+        existing = folders[folder].get(name)
+        if self.precondition_fails(existing):
+            return self.send(412)
+        etag = f'"f{next(counter)}"'
+        folders[folder][name] = (etag, data)
+        self.send(204 if existing else 201, b"", {"ETag": etag})
+
+    def files_delete(self, path):
+        self.body()
+        folder, name = self.split(path)
+        existing = folders.get(folder, {}).get(name)
+        if existing is None:
+            return self.send(404)
+        if self.precondition_fails(existing):
+            return self.send(412)
+        del folders[folder][name]
+        self.send(204)
+
+    def files_move(self, path):
+        self.body()
+        folder, name = self.split(path)
+        existing = folders.get(folder, {}).get(name)
+        if existing is None:
+            return self.send(404)
+        to = urllib.parse.unquote(urllib.parse.urlparse(self.headers["Destination"]).path)
+        to_folder, to_name = self.split(to)
+        if to_folder not in folders:
+            return self.send(409)
+        if to_name in folders[to_folder]:
+            if self.headers.get("Overwrite") == "F":
+                return self.send(412)
+        del folders[folder][name]
+        folders[to_folder][to_name] = existing
+        self.send(201)
+
     do_GET = do_PROPFIND = do_REPORT = do_PUT = do_DELETE = do_MKCALENDAR = do_PROPPATCH = handle_one
+    do_MKCOL = do_MOVE = handle_one
 
 
 def main():

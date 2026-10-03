@@ -5,7 +5,7 @@
 //   default-source=personal
 //
 //   [source.personal]
-//   backend=syncthing        (or local or caldav; see backend.hpp)
+//   backend=syncthing        (or local, caldav or webdav; see backend.hpp)
 //   folder=~/Sync/Reminders  (~, $HOME and ${VAR} work; see expand_path)
 //
 //   [source.fastmail]
@@ -15,8 +15,13 @@
 //   password-command=secret-tool lookup service reminders-caldav
 //   interval=15              (minutes between syncs)
 //
-// A CalDAV source's folder is its local copy, by default
-// $XDG_DATA_HOME/reminders/caldav/NAME/. Each source's per-device records
+//   [source.cloud]
+//   backend=webdav
+//   url=https://cloud.example.com/remote.php/dav/files/you/Reminders/
+//   username=you             (password-command= and interval= as above)
+//
+// A CalDAV or WebDAV source's folder is its local copy, by default
+// $XDG_DATA_HOME/reminders/BACKEND/NAME/. Each source's per-device records
 // are in source_state_dir().
 #pragma once
 
@@ -33,14 +38,14 @@ namespace rem {
 
 namespace fs = std::filesystem;
 
-// A CalDAV source's server settings.
-struct CaldavSettings {
-    std::string url;               // the server, or its calendar home
+// A CalDAV or WebDAV source's server settings.
+struct DavSettings {
+    std::string url;               // CalDAV: the server, or its calendar home; WebDAV: the folder
     std::string username;
     std::string password_command;  // run by the shell; the first line it prints is the password
     int interval = 15;             // minutes between syncs
 
-    bool operator==(const CaldavSettings&) const = default;
+    bool operator==(const DavSettings&) const = default;
 };
 
 struct SourceConfig {
@@ -48,12 +53,12 @@ struct SourceConfig {
     BackendKind backend = BackendKind::Syncthing;
     fs::path folder;
     std::string title;  // title=, shown on its sidebar group; empty: from the name
-    CaldavSettings caldav = {};  // backend=caldav only
+    DavSettings dav = {};  // CalDAV and WebDAV only (has_server)
 };
 
-// Where a CalDAV source keeps its lists unless folder= says otherwise:
-// $XDG_DATA_HOME/reminders/caldav/NAME (~/.local/share/…).
-fs::path default_caldav_folder(const std::string& name);
+// Where a CalDAV or WebDAV source keeps its local copy unless folder= says
+// otherwise: $XDG_DATA_HOME/reminders/BACKEND/NAME (~/.local/share/…).
+fs::path default_copy_folder(BackendKind backend, const std::string& name);
 
 // A source's per-device records. Syncthing: <folder>/.reminders/DEVICE/
 // (merge bases; .stignore keeps it out of the sync). Others:
@@ -66,8 +71,8 @@ fs::path source_state_dir(const SourceConfig& source, const std::string& device)
 // "Personal"), else the folder's name.
 std::string source_title(const SourceConfig& source);
 
-// Every [source.NAME] with a folder (CalDAV ones: with a url), in file order. A missing or unknown
-// backend= is syncthing.
+// Every [source.NAME] with a folder (CalDAV and WebDAV ones: with a url), in
+// file order. A missing or unknown backend= is syncthing.
 std::vector<SourceConfig> load_sources();
 std::optional<SourceConfig> default_source();
 void save_source(const SourceConfig& source);
@@ -85,27 +90,27 @@ SourceConfig source_for_folder(const fs::path& folder);
 
 // Points the default source at `folder` (Change Folder…, `reminders folder
 // PATH`), with the back end it needs; creates the source, named after the
-// folder, if there is none. If the default is a CalDAV account, the folder
-// becomes a source of its own (the default) instead. Returns it.
+// folder, if there is none. If the default is on a server (CalDAV, WebDAV),
+// the folder becomes a source of its own (the default) instead. Returns it.
 SourceConfig set_default_folder(const fs::path& folder);
 
-// The [source.NAME] a new source would get: from its title, else (CalDAV)
-// the server ("https://caldav.fastmail.com/" → "fastmail"), else its
+// The [source.NAME] a new source would get: from its title, else (CalDAV,
+// WebDAV) the server ("https://caldav.fastmail.com/" → "fastmail"), else its
 // folder's name; lower case, made unique among the configured sources.
 std::string new_source_name(const SourceConfig& source);
 // Adds a source (Add Source…). With no name it gets new_source_name(); a
-// CalDAV one with no folder keeps its lists in default_caldav_folder(name).
+// CalDAV or WebDAV one with no folder gets default_copy_folder().
 // It becomes the default if there was none. Returns it as saved.
 SourceConfig add_source(SourceConfig source);
 // Adds a source for `folder`, with the back end it needs.
 SourceConfig add_source(const fs::path& folder);
 // Removes a source from settings.ini, and this device's records for it.
-// Its folder and files stay as they are, except a CalDAV source's local
-// copy in the default place, which is only a copy of the server's lists.
+// Its folder and files stay as they are, except a CalDAV or WebDAV source's
+// local copy in the default place, which is only a copy of the server's.
 void remove_source(const std::string& name);
 
 // Opens a source: its Store, with per-device state in source_state_dir()
-// (for a local or CalDAV source, moved there from <folder>/.reminders/,
+// (for a source other than Syncthing, moved there from <folder>/.reminders/,
 // where older versions kept it), and the back end set up (Syncthing:
 // .stignore). Doesn't load the lists.
 std::unique_ptr<Store> open_source(const SourceConfig& source, const std::string& device);

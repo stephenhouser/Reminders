@@ -465,9 +465,9 @@ settings in a `[source.NAME]` section; later the apps show several at once.
    `reminders folder` set the default source's folder).
 4. New back ends. `local` keeps watching the folder for outside edits
    (agreed). **CalDAV done** (2026-10-02, not yet tried against a real
-   server by the user); WebDAV and git to come. User's choices: libcurl
+   server by the user); **WebDAV done** (2026-10-03, see below); git to come. User's choices: libcurl
    (not libsoup), `password-command=` (keyring maybe later), tests against
-   a fake server (net/tests/fake_caldav.py, Python stdlib; nothing
+   a fake server (net/tests/fake_dav.py, Python stdlib; nothing
    installed), sync on open + `interval=` timer + shortly after edits.
    Design: a CalDAV source's folder is a local Markdown copy
    (`$XDG_DATA_HOME/reminders/caldav/NAME`), so Store/apps/undo are
@@ -483,7 +483,7 @@ settings in a `[source.NAME]` section; later the apps show several at once.
    changed. Store gained `Backend::write_lock()` (held while it writes,
    renames, deletes) and `deleted_by_user()` (only an app delete removes
    the server calendar; a file that merely vanished is fetched again).
-   net/ (reminders_net, optional `-DBUILD_CALDAV`): CurlRemote (discovery
+   net/ (reminders_net, optional `-DBUILD_NETWORK`): CurlRemote (discovery
    via url → current-user-principal → calendar-home-set, or
    /.well-known/caldav), `run_password_command`, `sync_caldav_source`,
    `SyncRunner` (worker thread; detects list-file changes by mtime/size).
@@ -493,15 +493,42 @@ settings in a `[source.NAME]` section; later the apps show several at once.
    its Server group has address, username, password command, interval. Known limits:
    moves/section changes made in other CalDAV clients aren't merged (local
    order wins); RRULEs beyond FORMAT.md's rules are kept, not shown.
+   **WebDAV** (2026-10-03): the server folder holds the list files as they
+   are; the local copy is `$XDG_DATA_HOME/reminders/webdav/NAME`. CalDAV and
+   WebDAV share `DavSettings` (url, username, password-command,
+   interval; `SourceConfig::dav`; named for DAV because OAuth back ends
+   would need their own), `has_server(kind)`,
+   `default_copy_folder(kind, name)`, `SyncError`/`SyncResult`, and
+   `ServerBackend` (write lock; renamed.tsv / deleted.txt notes in
+   `<state>/<backend>/`). core webdav.hpp `webdav_sync(folder, state,
+   FileRemote&, lock)`: PROPFIND the folder; apply app renames as MOVE
+   (Overwrite: F; rounds, a cycle goes through a temporary name; a taken
+   name → synced as a new file, merged without base); per file, records
+   `files.tsv` (list, name on server, ETag) and `base/<name>.md`; changed
+   on one side → copied; both → `merge(ours, theirs, base)` (local wins
+   same field) then PUT If-Match; 412 → base stays the server's, merged
+   next sync; non-lists changed on both sides → server's wins, ours kept
+   locally as "NAME (this device).md". All server files are pulled; local
+   files are pushed only when they're lists. Vanished-here files are
+   fetched again; app deletions DELETE If-Match (changed there → comes
+   back). net/: shared `dav.hpp` (Http, multistatus, URL escaping),
+   `webdav_client.hpp` (CurlFiles; makes a missing folder with MKCOL),
+   `server_sync.hpp` (`sync_source`, `run_password_command`); SyncRunner
+   and the CLI/TUI/GUI handle both kinds. Tests: core webdav_test.cpp (fake
+   FileRemote), net_test.cpp against net/tests/fake_dav.py (now CalDAV +
+   WebDAV under /files/). GUI Type list: Syncthing, Local Folder, CalDAV,
+   WebDAV; the Server group's description and Address hint follow the type.
 
 ## Future features (not started)
 
 - **Query language**, SQL-like, for the CLI (`reminders query "…"`) and for
   defining your own smart lists (saved queries in the sidebar). Wanted by the
   user 2026-10-02; design not started.
-- **WebDAV back end**: list files kept on a WebDAV server (Nextcloud,
-  Fastmail files, …) instead of a synced folder. The net/ HTTP code and
-  the CalDAV local-copy + three-way-merge design should carry over.
+- **git back end**: lists in a git repository, synced by commit, pull
+  (merging list files three-way, as for conflicts) and push. Wanted by the
+  user 2026-10-03, for later; design not started. A git remote over HTTPS
+  needs much what `DavSettings` holds (url, username, password-command,
+  interval): decide then whether to share or generalise it.
 
 ## Where things stand (2026-10-01)
 

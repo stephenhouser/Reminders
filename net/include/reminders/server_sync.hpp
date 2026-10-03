@@ -1,0 +1,23 @@
+// Syncing the sources kept on a server (CalDAV, WebDAV) over the network.
+#pragma once
+
+#include <string>
+
+#include "reminders/backend.hpp"
+#include "reminders/sources.hpp"
+#include "reminders/store.hpp"
+
+namespace rem {
+
+// The password from password-command= (the first line it prints). Throws
+// SyncError if the command fails.
+std::string run_password_command(const std::string& command);
+
+// Syncs a CalDAV or WebDAV source with its server (sync_caldav_source,
+// sync_webdav_source). Only reads the Store's folder, state folder and back
+// end, so it can run on another thread while the Store is in use: the lists
+// it writes come back to the app as outside changes. Throws SyncError when
+// the server can't be reached.
+SyncResult sync_source(Store& store, const SourceConfig& source);
+
+}  // namespace rem

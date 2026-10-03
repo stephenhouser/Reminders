@@ -14,8 +14,8 @@ add_compile_options(-Wall -Wextra -Wpedantic)
 enable_testing()
 add_subdirectory(core)
 
-option(BUILD_CALDAV "Build the CalDAV back end (needs libcurl and libxml2)" ON)
-if(BUILD_CALDAV)
+option(BUILD_NETWORK "Build the CalDAV and WebDAV back ends (needs libcurl and libxml2)" ON)
+if(BUILD_NETWORK)
   add_subdirectory(net)
 endif()
 

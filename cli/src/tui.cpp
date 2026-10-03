@@ -21,7 +21,7 @@
 #include "reminders/format.hpp"
 #include "reminders/history.hpp"
 #include "reminders/settings.hpp"
-#ifdef REMINDERS_CALDAV
+#ifdef REMINDERS_NETWORK
 #include "reminders/sync_runner.hpp"
 #endif
 #include "editfile.hpp"
@@ -187,8 +187,8 @@ public:
 
 private:
     rem::Library& store_;  // every source
-#ifdef REMINDERS_CALDAV
-    std::unique_ptr<rem::SyncRunner> sync_;  // CalDAV sources, in the background
+#ifdef REMINDERS_NETWORK
+    std::unique_ptr<rem::SyncRunner> sync_;  // CalDAV and WebDAV sources, in the background
 #endif
     void check_sync();
     bool remember_;
@@ -1125,9 +1125,9 @@ void Tui::move_selection(int delta) {
     item_sel_ = ids[static_cast<std::size_t>(i)];
 }
 
-// Shows what went wrong in the last CalDAV syncs, if anything.
+// Shows what went wrong in the last CalDAV and WebDAV syncs, if anything.
 void Tui::check_sync() {
-#ifdef REMINDERS_CALDAV
+#ifdef REMINDERS_NETWORK
     if (!sync_) return;
     auto status = sync_->take_status();
     if (!status.errors.empty()) message_ = "Sync: " + status.errors.back();
@@ -1523,7 +1523,7 @@ int Tui::run() {
     ctrl_page_up_ = code("kPRV5");
     setup_colors();
     check_folder();
-#ifdef REMINDERS_CALDAV
+#ifdef REMINDERS_NETWORK
     sync_ = std::make_unique<rem::SyncRunner>(store_);
 #endif
     restore_view();

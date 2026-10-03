@@ -2,7 +2,7 @@
 
 #include <format>
 
-#include "reminders/caldav_client.hpp"
+#include "reminders/server_sync.hpp"
 
 namespace rem {
 
@@ -18,7 +18,7 @@ constexpr auto kPoll = seconds{1};
 SyncRunner::SyncRunner(Library& library) {
     auto now = steady_clock::now();
     for (auto& s : library.sources())
-        if (s.config.backend == BackendKind::Caldav && s.store) jobs_.push_back({s.config, s.store.get(), {}, now});
+        if (has_server(s.config.backend) && s.store) jobs_.push_back({s.config, s.store.get(), {}, now});
     now_ = true;  // the first sync right away
     if (!jobs_.empty()) thread_ = std::thread([this] { run(); });
 }
@@ -82,7 +82,7 @@ void SyncRunner::run() {
             // other lists still count as changes.
             auto seen = snapshot(j.config.folder);
             try {
-                auto result = sync_caldav_source(*j.store, j.config);
+                auto result = sync_source(*j.store, j.config);
                 for (auto& e : result.errors) errors.push_back(std::format("{}: {}", source_title(j.config), e));
                 auto after = snapshot(j.config.folder);
                 for (auto& list : result.changed) {
@@ -99,7 +99,7 @@ void SyncRunner::run() {
             if (errors.empty()) status_.last_sync = system_clock::now();
             j.seen = std::move(seen);
             // Retry sooner after a failure, but not in a tight loop.
-            auto wait = errors.empty() ? minutes{j.config.caldav.interval} : minutes{std::min(j.config.caldav.interval, 2)};
+            auto wait = errors.empty() ? minutes{j.config.dav.interval} : minutes{std::min(j.config.dav.interval, 2)};
             j.next = steady_clock::now() + wait;
         }
     }

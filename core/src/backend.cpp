@@ -1,49 +1,18 @@
 #include "reminders/backend.hpp"
 
 #include <algorithm>
-#include <cstdint>
-#include <format>
 #include <fstream>
-#include <sstream>
 
-#include "reminders/caldav.hpp"
+#include "file_util.hpp"
 #include "reminders/syncthing.hpp"
 
 namespace rem {
 
 namespace {
 
+using namespace detail;
+
 constexpr std::string_view kConflictMarker = ".sync-conflict-";
-
-std::optional<std::string> read_file(const fs::path& p) {
-    std::ifstream in(p, std::ios::binary);
-    if (!in) return std::nullopt;
-    std::ostringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
-}
-
-void write_atomic(const fs::path& p, const std::string& text) {
-    auto tmp = p.parent_path() / ("." + p.filename().string() + ".tmp");
-    {
-        std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
-        out << text;
-        out.flush();
-        if (!out) throw fs::filesystem_error("write failed", tmp, std::make_error_code(std::errc::io_error));
-    }
-    fs::rename(tmp, p);
-}
-
-// 64-bit FNV-1a, as 16 hex digits: enough to recognise our own last write
-// without keeping a copy of it.
-std::string fingerprint(std::string_view text) {
-    std::uint64_t h = 0xcbf29ce484222325ULL;
-    for (unsigned char c : text) {
-        h ^= c;
-        h *= 0x100000001b3ULL;
-    }
-    return std::format("{:016x}", h);
-}
 
 class LocalBackend : public Backend {
 public:
@@ -120,6 +89,7 @@ std::string_view backend_name(BackendKind kind) {
     switch (kind) {
     case BackendKind::Local: return "local";
     case BackendKind::Caldav: return "caldav";
+    case BackendKind::Webdav: return "webdav";
     case BackendKind::Syncthing: break;
     }
     return "syncthing";
@@ -131,8 +101,11 @@ std::optional<BackendKind> parse_backend(std::string_view name) {
     if (n == "syncthing") return BackendKind::Syncthing;
     if (n == "local") return BackendKind::Local;
     if (n == "caldav") return BackendKind::Caldav;
+    if (n == "webdav") return BackendKind::Webdav;
     return std::nullopt;
 }
+
+bool has_server(BackendKind kind) { return kind == BackendKind::Caldav || kind == BackendKind::Webdav; }
 
 std::optional<std::string> Backend::list_name_for(const fs::path& file) const {
     auto fname = file.filename().string();
@@ -150,9 +123,23 @@ bool Backend::is_own_write(std::string_view, const std::string&) const { return 
 void Backend::move_state(std::string_view, std::string_view) const {}
 void Backend::drop_state(std::string_view) const {}
 
+fs::path ServerBackend::records_dir() const { return state_dir_ / std::string(backend_name(kind_)); }
+
+void ServerBackend::move_state(std::string_view from, std::string_view to) const {
+    // Called with the write lock held; the next sync applies it.
+    fs::create_directories(records_dir());
+    std::ofstream(records_dir() / "renamed.tsv", std::ios::app) << field(std::string(from)) << '\t'
+                                                                << field(std::string(to)) << '\n';
+}
+
+void ServerBackend::deleted_by_user(std::string_view name) const {
+    fs::create_directories(records_dir());
+    std::ofstream(records_dir() / "deleted.txt", std::ios::app) << field(std::string(name)) << '\n';
+}
+
 std::unique_ptr<Backend> make_backend(BackendKind kind, fs::path state_dir) {
     if (kind == BackendKind::Local) return std::make_unique<LocalBackend>();
-    if (kind == BackendKind::Caldav) return std::make_unique<CaldavBackend>(std::move(state_dir));
+    if (has_server(kind)) return std::make_unique<ServerBackend>(kind, std::move(state_dir));
     return std::make_unique<SyncthingBackend>(std::move(state_dir));
 }
 
