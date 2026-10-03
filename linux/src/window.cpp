@@ -2,12 +2,15 @@
 
 #include <algorithm>
 #include <format>
+#include <chrono>
 #include <fstream>
 #include <map>
+#include <sstream>
 
 #include "dialogs.hpp"
 #include "reminders/clipboard.hpp"
 #include "reminders/format.hpp"
+#include "reminders/ics_import.hpp"
 #include "reminders/paths.hpp"
 #include "reminders/settings.hpp"
 #include "reminders/sources.hpp"
@@ -560,6 +563,7 @@ void Window::build() {
     auto* primary_menu = g_menu_new();
     auto* s1 = menu_section(primary_menu);
     g_menu_append(s1, "_New List…", "win.new-list");
+    g_menu_append(s1, "_Import…", "win.import");
     g_menu_append(s1, "S_ources…", "win.sources");
     auto* sync_item = g_menu_item_new("S_ync Now", "win.sync-now");
     g_menu_item_set_attribute(sync_item, "hidden-when", "s", "action-disabled");  // no CalDAV or WebDAV sources
@@ -825,6 +829,9 @@ void Window::add_actions() {
     add_action(window_, "change-folder", [this] { choose_folder(); });
     add_action(window_, "add-source", [this] { add_source(); });
     add_action(window_, "sources", [this] { show_sources(); });
+    add_action(window_, "import", [this] {
+        if (store_) import_file();
+    });
     sync_action_ = add_action(window_, "sync-now", [this] {
 #ifdef REMINDERS_NETWORK
         if (sync_) sync_->sync_now();
@@ -2292,6 +2299,128 @@ void Window::new_list(std::string source) {
             select(View{View::List, rem::Library::key(source, e.name)});
             show_content();
         });
+}
+
+void Window::import_file() {
+    auto* dialog = gtk_file_dialog_new();
+    gtk_file_dialog_set_title(dialog, "Import Tasks");
+    auto* filter = gtk_file_filter_new();
+    gtk_file_filter_set_name(filter, "Calendar files (.ics)");
+    gtk_file_filter_add_suffix(filter, "ics");
+    gtk_file_filter_add_mime_type(filter, "text/calendar");
+    auto* filters = g_list_store_new(GTK_TYPE_FILE_FILTER);
+    g_list_store_append(filters, filter);
+    gtk_file_dialog_set_filters(dialog, G_LIST_MODEL(filters));
+    gtk_file_dialog_set_default_filter(dialog, filter);
+    g_object_unref(filter);
+    g_object_unref(filters);
+    gtk_file_dialog_open(
+        dialog, GTK_WINDOW(window_), nullptr,
+        [](GObject* source, GAsyncResult* res, gpointer) {
+            auto* self = static_cast<Window*>(g_object_get_data(G_OBJECT(source), "window"));
+            GError* error = nullptr;
+            auto file = Obj<GFile>::adopt(gtk_file_dialog_open_finish(GTK_FILE_DIALOG(source), res, &error));
+            if (error) {
+                g_error_free(error);  // cancelled
+                return;
+            }
+            auto path = std::filesystem::path(take_string(g_file_get_path(file.get())));
+            if (path.empty() || !self->store_) return;
+            std::ifstream in(path, std::ios::binary);
+            std::ostringstream text;
+            text << in.rdbuf();
+            try {
+                auto imp = rem::read_ics(text.str(), std::chrono::current_zone());
+                if (imp.items.empty()) {
+                    self->toast(std::format("There are no tasks in “{}”", path.filename().string()));
+                    return;
+                }
+                if (imp.name.empty()) imp.name = path.stem().string();
+                self->import_tasks(path.filename().string(), std::move(imp));
+            } catch (const std::exception& e) {
+                self->toast(std::format("Couldn't import “{}”: {}", path.filename().string(), e.what()));
+            }
+        },
+        nullptr);
+    g_object_set_data(G_OBJECT(dialog), "window", this);
+    g_object_unref(dialog);
+}
+
+// Asks which list the tasks go into: a new one named after the calendar
+// (first), or any list; one already called that is chosen to begin with.
+void Window::import_tasks(const std::string& file_name, rem::IcsImport imp) {
+    auto* in_view = view_.kind == View::List ? store_->list(view_.name) : nullptr;
+    auto source = in_view ? store_->source_of(*in_view)->config.name : store_->default_source();
+    auto name = imp.name;
+    for (auto& c : name)
+        if (std::string_view("/\\<>:\"|?*").find(c) != std::string_view::npos) c = '-';
+    if (!list_name_error(name).empty()) name = "Imported";
+
+    std::vector<std::string> keys{""};  // "": the new list
+    std::vector<std::string> labels{std::format("New List “{}”", name)};
+    guint selected = 0;
+    for (auto* l : store_->lists()) {
+        if (lower(l->name) == lower(name) && selected == 0) selected = static_cast<guint>(keys.size());
+        keys.push_back(store_->key_of(*l));
+        labels.push_back(store_->label(*l));
+    }
+
+    auto tasks = rem::reminder_count(imp);
+    auto body = std::format("{} {} from “{}”.", tasks, tasks == 1 ? "task" : "tasks", file_name);
+    if (imp.skipped > 0)
+        body += std::format(" {} {} left out: only tasks are imported.", imp.skipped,
+                            imp.skipped == 1 ? "event or other item is" : "events or other items are");
+    auto* dialog = adw_alert_dialog_new("Import Tasks", body.c_str());
+    adw_alert_dialog_add_responses(ADW_ALERT_DIALOG(dialog), "cancel", "_Cancel", "import", "_Import", nullptr);
+    adw_alert_dialog_set_response_appearance(ADW_ALERT_DIALOG(dialog), "import", ADW_RESPONSE_SUGGESTED);
+    adw_alert_dialog_set_default_response(ADW_ALERT_DIALOG(dialog), "import");
+    adw_alert_dialog_set_close_response(ADW_ALERT_DIALOG(dialog), "cancel");
+    auto* rows = boxed_list();
+    auto* into = adw_combo_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(into), "Into");
+    auto* model = gtk_string_list_new(nullptr);
+    for (auto& l : labels) gtk_string_list_append(model, l.c_str());
+    adw_combo_row_set_model(ADW_COMBO_ROW(into), G_LIST_MODEL(model));
+    g_object_unref(model);
+    adw_combo_row_set_selected(ADW_COMBO_ROW(into), selected);
+    gtk_list_box_append(GTK_LIST_BOX(rows), into);
+    adw_alert_dialog_set_extra_child(ADW_ALERT_DIALOG(dialog), rows);
+
+    connect<void(AdwAlertDialog*, const char*)>(
+        dialog, "response",
+        [this, into, keys, source, name, imp = std::move(imp)](AdwAlertDialog*, const char* response) {
+            if (std::string_view(response) != "import" || !store_) return;
+            auto key = keys.at(std::min<std::size_t>(adw_combo_row_get_selected(ADW_COMBO_ROW(into)), keys.size() - 1));
+            rem::ImportResult result;
+            undoable("Import", [&] {
+                try {
+                    rem::ListFile* list = key.empty() ? nullptr : store_->list(key);
+                    if (!list) {
+                        // A new list, its name made unique in the source.
+                        auto unique = name;
+                        auto clash = [&](const std::string& n) {
+                            return std::ranges::any_of(store_->lists(source),
+                                                       [&](auto* l) { return lower(l->name) == lower(n); });
+                        };
+                        for (int n = 2; clash(unique); ++n) unique = std::format("{} {}", name, n);
+                        list = &store_->create_list(source, unique, imp.color.empty() ? "blue" : imp.color, "list");
+                    }
+                    key = store_->key_of(*list);
+                    result = rem::import_into(*store_, *list, imp);
+                } catch (const std::exception& e) {
+                    toast(std::format("Couldn't import: {}", e.what()));
+                    key.clear();
+                }
+            });
+            if (key.empty()) return;
+            auto text = std::format("Imported {} {}", result.added, result.added == 1 ? "reminder" : "reminders");
+            if (result.already > 0)
+                text += std::format("; {} {} already here", result.already, result.already == 1 ? "was" : "were");
+            toast(text);
+            select(View{View::List, key});
+            show_content();
+        });
+    adw_dialog_present(ADW_DIALOG(dialog), window_);
 }
 
 // List Info… for the list with key `key` ("source/name").

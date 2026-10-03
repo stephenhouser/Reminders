@@ -136,6 +136,24 @@ Subtasks are one level deep, as in Apple Reminders.
 Press Delete, or **⋮ → Delete**. Undo from the message that appears, or with
 Ctrl+Z.
 
+## Importing tasks
+
+**☰ → Import…** reads the tasks in an iCalendar file (`.ics`), such as one
+exported from another reminders or calendar app.
+
+- **Where they go:** choose the list under **Into**. The first choice is a
+  new list named after the calendar (or the file); a list that already has
+  that name is chosen to begin with.
+- **What comes along:** each task's title, notes, completion, due date and
+  time, priority, repeat, tags, link and subtasks. Its section also comes
+  along if the file came from Reminders.
+- **Events** in the file are left out; only tasks are imported.
+- **Importing the same file again** adds only the tasks that weren't there
+  before, wherever the earlier ones have moved since.
+- **Undo** (Ctrl+Z) takes the whole import back.
+
+In a terminal: `reminders import FILE.ics [--list LIST]`.
+
 ## Sections
 
 A list can be divided into sections (they are `## Headings` in the file).

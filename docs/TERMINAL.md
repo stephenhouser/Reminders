@@ -52,6 +52,7 @@ reminders move NAME --to LIST [--section S]
 reminders delete NAME [--yes]
 reminders search TEXT
 reminders new-list NAME [--color C] [--icon I] [--source S]
+reminders import FILE.ics [--list LIST] [--source S]
 reminders folder [PATH]
 reminders sync [SOURCE]
 ```
@@ -103,6 +104,15 @@ then one containing it, then one containing all of NAME's words in any order
 The inline fields from the file format also work in the text you add:
 `reminders add "Call dentist #health 📅 2026-10-12"`.
 
+**`import`** reads the tasks (VTODOs) in an iCalendar file, such as one
+exported from another reminders app, into LIST. Without `--list` they go to
+a list named after the calendar, else after the file. The list is made
+(in `--source`, else the default source) if there's none. Events in the
+file are skipped. A task imported before is skipped too, even if it has
+since moved to another list, so importing a file twice doesn't double
+anything. With `--json`, the result is `{"list", "created", "added",
+"already", "skipped"}`.
+
 ### Examples
 
 ```sh
@@ -115,6 +125,7 @@ reminders edit pay rent --due tomorrow --tag bills --notes "by transfer"
 reminders move bread --to Work
 reminders list '#errands'
 reminders search dentist
+reminders import ~/Downloads/tasks.ics --list Work
 ```
 
 ### Scripting

@@ -6,7 +6,10 @@
 #include <charconv>
 #include <cstdio>
 #include <cstdlib>
+#include <chrono>
 #include <format>
+#include <fstream>
+#include <sstream>
 #include <iostream>
 #include <map>
 #include <optional>
@@ -16,6 +19,7 @@
 
 #include "reminders/dates.hpp"
 #include "reminders/format.hpp"
+#include "reminders/ics_import.hpp"
 #include "reminders/settings.hpp"
 #include "reminders/library.hpp"
 #include "reminders/paths.hpp"
@@ -57,6 +61,11 @@ Commands:
   delete NAME [--yes]           Delete
   search TEXT                   Search titles and notes
   new-list NAME [--color C] [--icon I]
+  import FILE.ics [--list LIST] [--source S]
+                                Import the tasks in an iCalendar file into
+                                LIST, made in S if missing (default: the
+                                calendar's name, else the file's). Tasks
+                                imported before are skipped
   folder [PATH]                 Show or set the folder (shared with the app)
   sync [SOURCE]                 Sync CalDAV and WebDAV sources with their servers now
                                 (other commands sync before and after, too)
@@ -328,6 +337,7 @@ private:
     int cmd_delete(const Args& a);
     int cmd_search(const Args& a);
     int cmd_new_list(const Args& a);
+    int cmd_import(const Args& a);
 };
 
 // A list by name ("Groceries", any case) or, when two sources have one of
@@ -799,6 +809,61 @@ int App::cmd_new_list(const Args& a) {
     return 0;
 }
 
+int App::cmd_import(const Args& a) {
+    if (a.positional.size() != 1) throw UsageError("usage: reminders import FILE.ics [--list LIST] [--source SOURCE]");
+    auto path = folder_arg(a.positional[0]);
+    std::ifstream in(path, std::ios::binary);
+    if (!in) throw std::runtime_error(std::format("can't read {}", path.string()));
+    std::ostringstream text;
+    text << in.rdbuf();
+    auto imp = rem::read_ics(text.str(), std::chrono::current_zone());
+
+    // The list: --list (a name, or source/name), else one named after the
+    // calendar (or the file); made in --source (or the default source) if
+    // there's none.
+    auto name = a.get("list").value_or("");
+    if (name.empty()) {
+        name = imp.name.empty() ? path.stem().string() : imp.name;
+        std::ranges::replace(name, '/', '-');
+    }
+    rem::ListFile* list = nullptr;
+    auto source = a.get("source");
+    if (source && !store_.store(*source)) throw std::runtime_error(std::format("no source called “{}”", *source));
+    std::vector<rem::ListFile*> found;
+    for (auto* l : source ? store_.lists(*source) : store_.lists())
+        if (term::lower(l->name) == term::lower(name) || term::lower(store_.key_of(*l)) == term::lower(name))
+            found.push_back(l);
+    if (found.size() == 1) list = found.front();
+    else if (found.size() > 1) list = &list_named(name);  // says which to choose
+    bool created = false;
+    if (!list) {
+        if (name.empty() || name.front() == '.' || name.find_first_of("\\<>:\"|?*") != std::string::npos)
+            throw UsageError(std::format("“{}” can't be a list name: choose one with --list", name));
+        auto& l = store_.create_list(source.value_or(store_.default_source()), name,
+                                     imp.color.empty() ? "blue" : imp.color, "list");
+        list = &l;
+        created = true;
+    }
+    auto r = rem::import_into(store_, *list, imp);
+    if (g_.json) {
+        std::cout << std::format(R"({{"list":{},"created":{},"added":{},"already":{},"skipped":{}}})", json_escape(store_.key_of(*list)),
+                                 created, r.added, r.already, imp.skipped)
+                  << "\n";
+        return 0;
+    }
+    auto plural = [](int n, std::string_view one, std::string_view many) {
+        return std::format("{} {}", n, n == 1 ? one : many);
+    };
+    std::cout << std::format("Imported {} into {}{}", plural(r.added, "reminder", "reminders"), store_.label(*list),
+                             created ? " (a new list)" : "");
+    std::vector<std::string> notes;
+    if (r.already) notes.push_back(plural(r.already, "was already there", "were already there"));
+    if (imp.skipped) notes.push_back(plural(imp.skipped, "event or other item skipped", "events or other items skipped"));
+    for (std::size_t i = 0; i < notes.size(); ++i) std::cout << (i ? ", " : "; ") << notes[i];
+    std::cout << "\n";
+    return 0;
+}
+
 int App::run(const std::string& cmd, const Args& a) {
     if (cmd == "lists") return cmd_lists();
     if (cmd == "list" || cmd == "ls") return cmd_list(a);
@@ -811,6 +876,7 @@ int App::run(const std::string& cmd, const Args& a) {
     if (cmd == "delete" || cmd == "rm") return cmd_delete(a);
     if (cmd == "search") return cmd_search(a);
     if (cmd == "new-list") return cmd_new_list(a);
+    if (cmd == "import") return cmd_import(a);
     throw UsageError(std::format("unknown command “{}” (see reminders --help)", cmd));
 }
 
@@ -910,7 +976,7 @@ int main(int argc, char** argv) {
             return run_tui(app.store(), own_folder, g.key_numbers);
         }
         auto status = app.run(cmd, parse_args(rest));
-        static constexpr std::string_view kEdits[] = {"add", "edit", "done", "undone", "move", "mv", "delete", "rm", "new-list"};
+        static constexpr std::string_view kEdits[] = {"add", "edit", "done", "undone", "move", "mv", "delete", "rm", "new-list", "import"};
         if (sync && std::ranges::find(kEdits, cmd) != std::end(kEdits)) sync_servers(*lib);
         return status;
     } catch (const UsageError& e) {

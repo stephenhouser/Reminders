@@ -521,6 +521,18 @@ settings in a `[source.NAME]` section; later the apps show several at once.
 
 ## Future features (not started)
 
+- **Other platforms**: iOS first, then Android, Windows and macOS, each
+  native (SwiftUI on iOS/macOS); iOS syncs with Syncthing's Go core built in
+  (gomobile). The iOS Reminders look is the reference for features, and
+  docs/FORMAT.md is the contract every client implements. iOS can't be built
+  on the Linux dev machine (no Swift or Xcode); nothing gets installed
+  without asking.
+- **KDE variant** (possible): a native Qt/Kirigami client for Plasma beside
+  the GNOME one, on the same core library. Not decided; added 2026-10-03.
+- **Drag and drop with other apps**: dropping text, `.md` or `.ics` files
+  onto the window or a sidebar list, and dragging reminders out as text.
+  Dragging within the app (reordering, onto sidebar lists) already works.
+  Added 2026-10-03.
 - **Query language**, SQL-like, for the CLI (`reminders query "…"`) and for
   defining your own smart lists (saved queries in the sidebar). Wanted by the
   user 2026-10-02; design not started.
@@ -530,22 +542,45 @@ settings in a `[source.NAME]` section; later the apps show several at once.
   needs much what `DavSettings` holds (url, username, password-command,
   interval): decide then whether to share or generalise it.
 
-## Where things stand (2026-10-01)
+## Where things stand (2026-10-03)
 
 - **Done:**
   - **Core library** (C++23): the file format with byte-for-byte round
-    trips, three-way merging of Syncthing conflict copies, undo/redo history
-    and settings. Unit tests pass.
+    trips, three-way merging of Syncthing conflict copies, undo/redo history,
+    settings, the XDG base directories, and sources: several open at once
+    (`Library`), each with its own back end (syncthing, local, caldav,
+    webdav). Unit tests pass (122).
+  - **CalDAV and WebDAV back ends** (net/, libcurl + libxml2): a local
+    Markdown copy kept in step with the server, merged three-way; synced on
+    open, every `interval=` minutes and shortly after edits. Tested against
+    a fake server in Python (10 network tests).
   - **GNOME app** (`Reminders`): the features in the brief, the keyboard
-    shortcuts, drag and drop, the quick switcher, configurable sidebar
-    groups (order, visible / collapsible / hidden, rearranged from the
-    sidebar).
+    shortcuts, drag and drop within the app, the quick switcher,
+    configurable sidebar groups (order, visible / collapsible / hidden,
+    rearranged from the sidebar), one sidebar group per source, ☰ →
+    Sources… with one Add Source… form for every type, Sync Now.
   - **Terminal client** (`reminders`): the CLI and the TUI, sharing settings
-    and the last view with the app.
+    and the last view with the app; `sync`, `--offline`, `new-list
+    --source`, `import`.
+  - **ICS import** (2026-10-03): core ics_import.hpp `read_ics` (VTODOs via
+    read_todo; RELATED-TO → subtasks under the top parent;
+    X-APPLE-SORT-ORDER order when every task has one; events and other
+    components counted as skipped; X-WR-CALNAME / X-APPLE-CALENDAR-COLOR
+    for a new list) and `import_into` (appends, one save; skips ids already
+    in the library). Ids come from UIDs (`id_for_uid`: a usable UID as is,
+    else 10 base-36 digits of its FNV-1a hash), so re-importing doesn't
+    duplicate. CLI `reminders import FILE.ics [--list L] [--source S]`
+    (list by name, made if missing). GUI ☰ → Import…: file chooser (.ics),
+    then an alert with "Into" (New List “calendar name” or any list), one
+    undo step. Events aren't imported (could become dated reminders later).
   - **Docs:** README, docs/FORMAT.md, docs/USING.md, docs/TERMINAL.md,
     docs/settings.example.ini.
 - **Known gaps:**
-  - No iOS, Android, Windows or macOS client yet. iOS can't be built on the
-    Linux dev machine (no Swift or Xcode); nothing gets installed without
-    asking.
-- **Next step:** not chosen yet; ask the user.
+  - CalDAV and WebDAV haven't been tried against a real server yet (only
+    the fake one).
+  - CalDAV: moves and section changes made in other CalDAV clients aren't
+    merged (local order wins); RRULEs beyond FORMAT.md's rules are kept but
+    not shown.
+  - Only the Linux clients exist (see Future features).
+- **Next step:** not chosen yet; ask the user. The Future features above
+  are the candidates.

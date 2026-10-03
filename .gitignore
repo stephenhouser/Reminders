@@ -3,7 +3,7 @@
 /build-*/
 
 # Personal reminder lists used while developing (your data, not the project)
-/Notes/
+/examples/
 
 # Files the app and Syncthing create next to lists
 .reminders/
