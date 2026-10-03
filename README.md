@@ -51,7 +51,7 @@ can reuse.
 - **Reminders**: title, notes, URL, due date and time, repeat ("every 2 weeks", weekdays, …), flag, priority, tags.
 - **Smart lists**: Today, Scheduled, All, All Reminders (completed ones too), Flagged, Completed, plus one per tag. Search across everything, and a Ctrl+K "Go to" switcher.
 - **Quick entry**: type `Pay rent #home 📅 2026-10-31 🚩` into "New Reminder" and the fields are filled in.
-- **Import and export** iCalendar (`.ics`) tasks, Markdown checklists, todo.txt, CSV or plain text (a line each), one list or all of them, from ☰ → Import… (or by dropping a file on the window) and ☰ → Export… (pick any lists), or `reminders import` / `export`. Importing again doesn't duplicate unless you ask; an export imports back as it was.
+- **Import and export** iCalendar (`.ics`) tasks, Markdown checklists, todo.txt, CSV or plain text (a line each), one list or all of them, from ☰ → Import… (or by dropping a file on the window) and ☰ → Export… (pick any lists; several can go into a `.zip`), or `reminders import` / `export`. Importing again doesn't duplicate unless you ask; an export imports back as it was.
 - **Undo and redo** (Ctrl+Z / Ctrl+Shift+Z) for every change, including moves and deleted lists.
 - **Keyboard-driven**: nearly everything has a shortcut; see the [user guide](docs/USING.md#keyboard-shortcuts).
 - **Live sync**: changes from other devices appear within half a second. Syncthing conflict copies are merged automatically, reminder by reminder.
@@ -124,6 +124,7 @@ Details: [docs/FORMAT.md](docs/FORMAT.md).
 - ncurses with wide-character support (`ncursesw`), for the terminal client
 - libcurl and libxml2, with development headers, for CalDAV and WebDAV
 - Python 3, only to run the network tests (they start a small fake server)
+- zlib, optional (found if installed): compresses exported `.zip` archives; without it they're written uncompressed
 
 | Distribution | Packages |
 |---|---|
@@ -141,7 +142,7 @@ C++23 compiler and CMake.
 cmake -S . -B build -G Ninja
 cmake --build build
 ctest --test-dir build            # all the tests (or run them one by one:)
-./build/core/core_tests          # 135 tests for the core library (core_tests NAME runs the matching ones)
+./build/core/core_tests          # 136 tests for the core library (core_tests NAME runs the matching ones)
 ./build/net/net_tests net/tests/fake_dav.py   # CalDAV and WebDAV over HTTP, against a fake server
 ./build/linux/Reminders          # the GNOME app (or: ./build/linux/Reminders ~/Sync/Reminders)
 ./build/cli/reminders --help     # the terminal client

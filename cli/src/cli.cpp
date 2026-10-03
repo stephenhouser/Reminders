@@ -77,7 +77,8 @@ Commands:
                                 Without --format, FILE's name says. To FILE
                                 (a folder: LIST.EXT in it), else to the
                                 terminal. Without LIST: every list, into
-                                the folder -o names
+                                the folder -o names, or one .zip archive
+                                if -o names a .zip file
   folder [PATH]                 Show or set the folder (shared with the app)
   sync [SOURCE]                 Sync CalDAV and WebDAV sources with their servers now
                                 (other commands sync before and after, too)
@@ -922,6 +923,20 @@ int App::cmd_export(const Args& a) {
         if (!out || *out == "-")
             throw UsageError("usage: reminders export [LIST] [--format F] [-o FILE]; without LIST, -o names a folder");
         auto folder = folder_arg(*out);
+        if (term::lower(folder.extension().string()) == ".zip") {
+            std::ofstream file(folder, std::ios::binary | std::ios::trunc);
+            file << rem::export_zip(store_, store_.lists(), fmt, options);
+            file.close();
+            if (!file) throw std::runtime_error(std::format("couldn't write {}", folder.string()));
+            auto n = store_.lists().size();
+            if (g_.json)
+                std::cout << std::format(R"({{"format":"{}","archive":{},"lists":{}}})", rem::export_extension(fmt),
+                                         json_escape(folder.string()), n)
+                          << "\n";
+            else
+                std::cout << std::format("Exported {} {} to {}\n", n, n == 1 ? "list" : "lists", folder.string());
+            return 0;
+        }
         if (std::filesystem::exists(folder) && !std::filesystem::is_directory(folder))
             throw std::runtime_error(std::format("{} isn't a folder", folder.string()));
         auto files = rem::export_all(store_, folder, fmt, options);

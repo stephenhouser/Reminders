@@ -127,7 +127,8 @@ default); `txt`, a line per open reminder (`-a` adds completed ones);
 of `-o FILE` says which (`todo.txt` and `*.todo.txt` are todo.txt). Without
 `-o` (or with `-o -`) the export goes to the terminal; with a folder, it's
 written there as `LIST.md` (or `.txt`, `.todo.txt`, `.csv`, `.ics`).
-Without LIST, every list is exported into the folder `-o` names. With
+Without LIST, every list is exported into the folder `-o` names, or
+into one `.zip` archive when `-o` names a `.zip` file. With
 `--json`, the result is `{"list", "format", "file"}`, or for every list
 `{"format", "files"}`.
 
@@ -148,6 +149,7 @@ reminders import packing.txt       # one reminder per line, into a new list "pac
 reminders export Groceries --format txt | wl-copy   # the open items, to paste elsewhere
 reminders export Work -o ~/Backup/                  # ~/Backup/Work.md
 reminders export -o ~/Backup/ --format csv          # every list, a .csv each
+reminders export -o ~/lists.zip                     # every list, in one archive
 reminders import ~/Downloads/todo.txt --list Inbox  # a todo.txt file
 ```
 

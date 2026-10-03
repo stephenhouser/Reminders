@@ -18,9 +18,16 @@ add_library(reminders_core
   src/webdav.cpp
   src/importer.cpp
   src/exporter.cpp
+  src/zip.cpp
   src/paths.cpp
 )
 target_include_directories(reminders_core PUBLIC include)
+# zlib compresses exported .zip archives; without it they're stored as is.
+find_package(ZLIB)
+if(ZLIB_FOUND)
+  target_link_libraries(reminders_core PRIVATE ZLIB::ZLIB)
+  target_compile_definitions(reminders_core PRIVATE REMINDERS_ZLIB)
+endif()
 
 add_executable(core_tests
   tests/main.cpp

@@ -69,7 +69,11 @@ std::string export_list(const ListFile& list, ExportFormat format, const ExportO
 // files are replaced. Returns the files written.
 std::vector<fs::path> export_lists(Library& library, const std::vector<ListFile*>& lists, const fs::path& folder,
                                    ExportFormat format, const ExportOptions& options = {});
-// Every list of the library, so.
+// The same lists as one .zip archive (the files as export_lists names
+// them, compressed when the library has zlib), to write where you like.
+std::string export_zip(Library& library, const std::vector<ListFile*>& lists, ExportFormat format,
+                       const ExportOptions& options = {});
+// Every list of the library, into a folder.
 std::vector<fs::path> export_all(Library& library, const fs::path& folder, ExportFormat format,
                                  const ExportOptions& options = {});
 

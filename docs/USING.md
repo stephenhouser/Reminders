@@ -194,7 +194,7 @@ In a terminal: `reminders import FILE [--list LIST] [--format F]`.
 **☰ → Export…** asks which lists to export, ticked in a list (**All
 Lists** ticks or clears them all), and in which format. One list is saved
 as a file you name; several are saved into a folder you choose, a file
-each. **⋮ → Export…** on a list (or right-click it in the sidebar) opens
+each, or with **Compressed Archive** into one `.zip` file. **⋮ → Export…** on a list (or right-click it in the sidebar) opens
 the same dialog with that list ticked. The formats are the ones Import
 reads:
 

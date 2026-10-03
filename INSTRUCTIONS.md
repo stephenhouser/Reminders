@@ -549,7 +549,7 @@ settings in a `[source.NAME]` section; later the apps show several at once.
     trips, three-way merging of Syncthing conflict copies, undo/redo history,
     settings, the XDG base directories, and sources: several open at once
     (`Library`), each with its own back end (syncthing, local, caldav,
-    webdav). Unit tests pass (135).
+    webdav). Unit tests pass (136).
   - **CalDAV and WebDAV back ends** (net/, libcurl + libxml2): a local
     Markdown copy kept in step with the server, merged three-way; synced on
     open, every `interval=` minutes and shortly after edits. Tested against
@@ -619,6 +619,15 @@ settings in a `[source.NAME]` section; later the apps show several at once.
     chooser + core `export_lists(library, lists, folder, …)` (export_all
     calls it). A list's ⋮ → Export… opens it with that list ticked; Export
     All Lists… is gone.
+  - **.zip archives** (2026-10-03): core src/zip.{hpp,cpp} `ZipWriter`
+    (local headers, central directory, end record; UTF-8 names; deflate
+    via zlib when found, `REMINDERS_ZLIB`, else stored; tiny files stored
+    anyway; own CRC-32 without zlib). zlib is optional in core/CMakeLists
+    (find_package(ZLIB)), so the core still needs only a compiler.
+    `export_zip(library, lists, format)` returns the archive (same file
+    names as export_lists). CLI: `export -o FILE.zip` without LIST. GUI:
+    Compressed Archive switch, shown when two or more lists are ticked →
+    save dialog for Reminders.zip. Checked with unzip -t.
   - **Dropping files imports them** (2026-10-03): `make_file_drop_target`
     (GDK_TYPE_FILE_LIST, COPY) on the window (into: the list in view) and
     on each sidebar list row (highlighted with drop-into; into: that

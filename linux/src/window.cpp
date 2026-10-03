@@ -2602,8 +2602,12 @@ void Window::export_lists(std::vector<std::string> chosen) {
     };
     describe();
     connect<void(GObject*, GParamSpec*)>(format, "notify::selected", [describe](GObject*, GParamSpec*) { describe(); });
+    auto* archive = adw_switch_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(archive), "Compressed Archive");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(archive), "One .zip file instead of a folder of files");
     gtk_list_box_append(GTK_LIST_BOX(rows), format);
     gtk_list_box_append(GTK_LIST_BOX(rows), completed);
+    gtk_list_box_append(GTK_LIST_BOX(rows), archive);
     gtk_box_append(GTK_BOX(box), rows);
 
     // The lists, with All Lists above them.
@@ -2642,8 +2646,9 @@ void Window::export_lists(std::vector<std::string> chosen) {
     // All Lists shows whether all, some or none are ticked; ticking it ticks
     // them all, unticking it none. Export needs at least one.
     auto syncing = std::make_shared<bool>(false);
-    auto update = [dialog, picks, all_check, syncing] {
+    auto update = [dialog, picks, all_check, syncing, archive] {
         auto n = std::ranges::count_if(*picks, [](auto& p) { return gtk_check_button_get_active(GTK_CHECK_BUTTON(p.check)); });
+        gtk_widget_set_visible(archive, n > 1);  // one list is one file anyway
         *syncing = true;
         gtk_check_button_set_active(GTK_CHECK_BUTTON(all_check), n > 0 && n == static_cast<long>(picks->size()));
         gtk_check_button_set_inconsistent(GTK_CHECK_BUTTON(all_check), n > 0 && n < static_cast<long>(picks->size()));
@@ -2660,7 +2665,7 @@ void Window::export_lists(std::vector<std::string> chosen) {
     update();
 
     connect<void(AdwAlertDialog*, const char*)>(
-        dialog, "response", [this, picks, format, completed](AdwAlertDialog*, const char* response) {
+        dialog, "response", [this, picks, format, completed, archive](AdwAlertDialog*, const char* response) {
             if (std::string_view(response) != "export" || !store_) return;
             auto fmt = kFormats[std::min<guint>(adw_combo_row_get_selected(ADW_COMBO_ROW(format)), std::size(kFormats) - 1)];
             rem::ExportOptions options;
@@ -2678,7 +2683,37 @@ void Window::export_lists(std::vector<std::string> chosen) {
             };
             auto* chooser = gtk_file_dialog_new();
             auto* job = new Job{this, keys, fmt, options};
-            if (keys.size() > 1) {
+            if (keys.size() > 1 && adw_switch_row_get_active(ADW_SWITCH_ROW(archive))) {
+                gtk_file_dialog_set_title(chooser, "Export Lists");
+                gtk_file_dialog_set_initial_name(chooser, "Reminders.zip");
+                gtk_file_dialog_save(
+                    chooser, GTK_WINDOW(window_), nullptr,
+                    [](GObject* source, GAsyncResult* res, gpointer data) {
+                        std::unique_ptr<Job> job(static_cast<Job*>(data));
+                        GError* error = nullptr;
+                        auto file = Obj<GFile>::adopt(gtk_file_dialog_save_finish(GTK_FILE_DIALOG(source), res, &error));
+                        if (error) {
+                            g_error_free(error);  // cancelled
+                            return;
+                        }
+                        auto* self = job->self;
+                        auto path = std::filesystem::path(take_string(g_file_get_path(file.get())));
+                        if (!self->store_ || path.empty()) return;
+                        std::vector<rem::ListFile*> lists;
+                        for (auto& k : job->keys)
+                            if (auto* l = self->store_->list(k)) lists.push_back(l);
+                        try {
+                            std::ofstream out(path, std::ios::binary | std::ios::trunc);
+                            out << rem::export_zip(*self->store_, lists, job->format, job->options);
+                            out.close();
+                            self->toast(out ? std::format("Exported {} lists to {}", lists.size(), rem::contract_path(path))
+                                            : std::format("Couldn't write {}", path.string()));
+                        } catch (const std::exception& e) {
+                            self->toast(std::format("Couldn't export: {}", e.what()));
+                        }
+                    },
+                    job);
+            } else if (keys.size() > 1) {
                 gtk_file_dialog_set_title(chooser, "Choose a Folder for the Lists");
                 gtk_file_dialog_select_folder(
                     chooser, GTK_WINDOW(window_), nullptr,

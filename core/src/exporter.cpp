@@ -6,6 +6,7 @@
 #include <fstream>
 
 #include "file_util.hpp"
+#include "zip.hpp"
 #include "reminders/caldav.hpp"
 #include "reminders/format.hpp"
 #include "reminders/ical.hpp"
@@ -247,19 +248,35 @@ std::vector<fs::path> export_all(Library& library, const fs::path& folder, Expor
     return export_lists(library, library.lists(), folder, format, options);
 }
 
+namespace {
+
+// A list's file name in an export of several: "Todo.md", or "work-Todo.md"
+// where two sources have a Todo.
+std::string file_name_of(Library& library, const ListFile& list, ExportFormat format) {
+    auto name = library.label(list);
+    std::ranges::replace(name, '/', '-');
+    return std::format("{}.{}", name, export_extension(format));
+}
+
+}  // namespace
+
 std::vector<fs::path> export_lists(Library& library, const std::vector<ListFile*>& lists, const fs::path& folder,
                                    ExportFormat format, const ExportOptions& options) {
     fs::create_directories(folder);
     std::vector<fs::path> out;
     for (auto* list : lists) {
-        // "work/Todo" where two sources have a Todo: "work-Todo".
-        auto name = library.label(*list);
-        std::ranges::replace(name, '/', '-');
-        auto path = folder / std::format("{}.{}", name, export_extension(format));
+        auto path = folder / file_name_of(library, *list, format);
         detail::write_atomic(path, export_list(*list, format, options));
         out.push_back(path);
     }
     return out;
+}
+
+std::string export_zip(Library& library, const std::vector<ListFile*>& lists, ExportFormat format,
+                       const ExportOptions& options) {
+    detail::ZipWriter zip;
+    for (auto* list : lists) zip.add(file_name_of(library, *list, format), export_list(*list, format, options));
+    return zip.finish();
 }
 
 }  // namespace rem

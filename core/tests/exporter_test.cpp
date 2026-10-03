@@ -206,3 +206,28 @@ TEST(export_all_lists) {
     CHECK(fs::exists(dir / "out" / "work-Todo.todo.txt"));
     fs::remove_all(dir);
 }
+
+TEST(export_zip_archive) {
+    auto dir = fs::temp_directory_path() / ("reminders-zip-" + new_id());
+    fs::create_directories(dir / "lists");
+    std::ofstream(dir / "lists" / "Garden.md") << "---\nreminders: 1\n---\n- [ ] Weed ^weed01\n";
+    std::ofstream(dir / "lists" / "Home.md") << "---\nreminders: 1\n---\n- [ ] Sweep ^swee01\n";
+    Library lib;
+    lib.add(SourceConfig{"home", BackendKind::Local, dir / "lists", {}},
+            std::make_unique<Store>(dir / "lists", dir / "state", BackendKind::Local));
+    lib.load_all();
+    auto zip = export_zip(lib, lib.lists(), ExportFormat::Csv);
+    auto u16 = [&](std::size_t at) { return static_cast<unsigned>(static_cast<unsigned char>(zip[at])) |
+                                            static_cast<unsigned>(static_cast<unsigned char>(zip[at + 1])) << 8; };
+    auto u32 = [&](std::size_t at) { return u16(at) | u16(at + 2) << 16; };
+    CHECK(zip.starts_with("PK\x03\x04"));
+    // The end record: two entries, and a central directory where it says.
+    auto end = zip.size() - 22;
+    CHECK_EQ(u32(end), 0x06054b50u);
+    CHECK_EQ(u16(end + 10), 2u);
+    auto cd = u32(end + 16);
+    CHECK_EQ(u32(cd), 0x02014b50u);
+    auto name_len = u16(cd + 28);
+    CHECK_EQ(zip.substr(cd + 46, name_len), std::string("Garden.csv"));
+    fs::remove_all(dir);
+}
