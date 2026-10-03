@@ -244,9 +244,14 @@ std::string export_list(const ListFile& list, ExportFormat format, const ExportO
 
 std::vector<fs::path> export_all(Library& library, const fs::path& folder, ExportFormat format,
                                  const ExportOptions& options) {
+    return export_lists(library, library.lists(), folder, format, options);
+}
+
+std::vector<fs::path> export_lists(Library& library, const std::vector<ListFile*>& lists, const fs::path& folder,
+                                   ExportFormat format, const ExportOptions& options) {
     fs::create_directories(folder);
     std::vector<fs::path> out;
-    for (auto* list : library.lists()) {
+    for (auto* list : lists) {
         // "work/Todo" where two sources have a Todo: "work-Todo".
         auto name = library.label(*list);
         std::ranges::replace(name, '/', '-');

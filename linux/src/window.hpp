@@ -146,10 +146,16 @@ private:
     void new_list(std::string source = {});
     // ☰ → Import…: a file of reminders (.ics, Markdown, text), into a new or existing list.
     void import_file();
-    void import_tasks(const std::filesystem::path& file, std::string text);
-    // ⋮ → Export… (a list) and ☰ → Export All Lists… (an empty key): as
-    // Markdown, plain text, todo.txt, CSV or iCalendar.
-    void export_list(const std::string& key);
+    // Files dropped on the window (into: the list in view) or on a list in
+    // the sidebar (into: that list): an import dialog each, in turn.
+    void import_files(std::vector<std::filesystem::path> files, std::string into);
+    // The import dialog for a file's text; `into` (a list key) is chosen
+    // under Into to begin with. `then` runs once the dialog is answered.
+    void import_tasks(const std::filesystem::path& file, std::string text, std::string into = {},
+                      std::function<void()> then = {});
+    // ☰ → Export… and a list's ⋮ → Export…: lists (`chosen` ticked to
+    // begin with) as Markdown, plain text, todo.txt, CSV or iCalendar.
+    void export_lists(std::vector<std::string> chosen);
     void edit_list(const std::string& name);
     void delete_list(const std::string& name);
     void add_section(const std::string& list);

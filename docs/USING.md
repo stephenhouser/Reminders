@@ -109,6 +109,8 @@ Subtasks are one level deep, as in Apple Reminders.
   or below a reminder, or at the end of a section when you drop on its "New
   Reminder" row.
 - **Drag onto a list in the sidebar** to move it to that list.
+- **Drop a file** from another app to import its reminders (see [Importing
+  reminders](#importing-reminders)).
 - **Alt+↑ / Alt+↓** moves the selected reminder up or down, across section
   boundaries.
 - **The List field** in the details dialog moves it to another list.
@@ -138,7 +140,12 @@ Ctrl+Z.
 
 ## Importing reminders
 
-**☰ → Import…** reads reminders from a file. Five kinds work. Reminders
+**☰ → Import…** reads reminders from a file, and so does **dropping a
+file** on the window, from Files or any other app. Dropped on a list in the
+sidebar, it goes into that list; dropped anywhere else, into the list
+you're viewing. You can still change the list before importing, and
+several files dropped at once are imported one after another. Five kinds
+work. Reminders
 works out which one a file is from its name and content and shows it under
 **Read As**, where you can change it.
 
@@ -175,15 +182,21 @@ Then:
   recognised wherever they have moved since. Others are recognised by their
   titles: one is skipped when the list already has an open reminder of that
   name. If nothing is new, no new list is made.
+- **Import Duplicates** turns that off: reminders that are already here are
+  added again as copies, with ids of their own. Use it to copy a list, or
+  to bring back an export as a second set.
 - **Undo** (Ctrl+Z) takes the whole import back.
 
 In a terminal: `reminders import FILE [--list LIST] [--format F]`.
 
 ## Exporting lists
 
-**⋮ → Export…** (or right-click the list in the sidebar) saves one list as
-a file; **☰ → Export All Lists…** saves every list, a file each, into a
-folder you choose. The formats are the ones Import reads:
+**☰ → Export…** asks which lists to export, ticked in a list (**All
+Lists** ticks or clears them all), and in which format. One list is saved
+as a file you name; several are saved into a folder you choose, a file
+each. **⋮ → Export…** on a list (or right-click it in the sidebar) opens
+the same dialog with that list ticked. The formats are the ones Import
+reads:
 
 - **Markdown:** the list file itself, with everything. Import it into
   another Reminders folder, or keep it as a copy.
@@ -205,8 +218,8 @@ folder you choose. The formats are the ones Import reads:
 
 An exported list imports back as it was, less what its format can't hold.
 Every format but plain text keeps the reminders' ids, so importing an
-export where the list still is adds nothing twice. Export All names each
-file after its list, as `source-List` where two sources have a list of the
+export where the list still is adds nothing twice (unless you ask for
+duplicates). Exporting several lists names each file after its list, as `source-List` where two sources have a list of the
 same name, and replaces files of the same name in that folder.
 
 In a terminal: `reminders export LIST [--format F] [-o FILE]`, or without

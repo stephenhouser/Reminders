@@ -529,10 +529,10 @@ settings in a `[source.NAME]` section; later the apps show several at once.
   without asking.
 - **KDE variant** (possible): a native Qt/Kirigami client for Plasma beside
   the GNOME one, on the same core library. Not decided; added 2026-10-03.
-- **Drag and drop with other apps**: dropping text, `.md` or `.ics` files
-  onto the window or a sidebar list, and dragging reminders out as text.
-  Dragging within the app (reordering, onto sidebar lists) already works.
-  Added 2026-10-03.
+- **Drag and drop with other apps**: dropping text onto the window or a
+  sidebar list, and dragging reminders out as text. Dropping files is done
+  (they're imported); dragging within the app already works. Added
+  2026-10-03.
 - **Query language**, SQL-like, for the CLI (`reminders query "…"`) and for
   defining your own smart lists (saved queries in the sidebar). Wanted by the
   user 2026-10-02; design not started.
@@ -609,7 +609,23 @@ settings in a `[source.NAME]` section; later the apps show several at once.
     list and added nothing deletes it again. CLI: `import --format`,
     `export` without LIST → every list into `-o FOLDER`. GUI: Import's
     alert has Read As (re-reads; Import disabled when it can't), ☰ →
-    Export All Lists… (same alert, then a folder chooser).
+    Export All Lists… (same alert, then a folder chooser); replaced below.
+  - **Import Duplicates, one Export dialog** (2026-10-03): `import_into(…,
+    duplicates)` skips nothing (taken ids get new ones); GUI switch Import
+    Duplicates, CLI `import --duplicates`. ☰ → Export… (`Window::
+    export_lists(chosen)`): alert with Format, Include Completed (text) and
+    a scrolling check list of every list under an All Lists check
+    (inconsistent when some); one ticked → save dialog, several → folder
+    chooser + core `export_lists(library, lists, folder, …)` (export_all
+    calls it). A list's ⋮ → Export… opens it with that list ticked; Export
+    All Lists… is gone.
+  - **Dropping files imports them** (2026-10-03): `make_file_drop_target`
+    (GDK_TYPE_FILE_LIST, COPY) on the window (into: the list in view) and
+    on each sidebar list row (highlighted with drop-into; into: that
+    list), separate from the reminder drop targets. `Window::import_files`
+    opens the import alert for each file in turn (`then` chains them),
+    with `into` chosen under Into; folders and unreadable files get a
+    toast.
   - **Docs:** README, docs/FORMAT.md, docs/USING.md, docs/TERMINAL.md,
     docs/settings.example.ini.
 - **Known gaps:**

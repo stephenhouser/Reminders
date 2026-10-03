@@ -94,7 +94,8 @@ struct ImportResult {
 
 // Adds the reminders to the end of `list` (in their sections), skipping
 // ones already there (see above), and saves it once. Reminders without an
-// id get a new one.
-ImportResult import_into(Library& library, ListFile& list, const Import& import);
+// id get a new one. With `duplicates`, none are skipped: ones already here
+// are added again as copies, with new ids.
+ImportResult import_into(Library& library, ListFile& list, const Import& import, bool duplicates = false);
 
 }  // namespace rem

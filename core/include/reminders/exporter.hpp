@@ -1,5 +1,5 @@
-// Exporting lists to files: ⋮ → Export… (one list) and ☰ → Export All
-// Lists… in the app, and `reminders export`. The kinds the importer reads
+// Exporting lists to files: ☰ → Export… (any lists) and a list's ⋮ →
+// Export… in the app, and `reminders export`. The kinds the importer reads
 // (importer.hpp), so an exported list imports again as it was (less what a
 // format can't hold):
 //
@@ -64,9 +64,12 @@ std::string export_csv(const Document& doc, std::string_view list_name);
 // A list in the given format.
 std::string export_list(const ListFile& list, ExportFormat format, const ExportOptions& options = {});
 
-// Every list of the library into `folder` (made if missing), a file each:
-// NAME.EXT, or SOURCE-NAME.EXT where two sources have a list of that name.
-// Existing files are replaced. Returns the files written.
+// Lists into `folder` (made if missing), a file each: NAME.EXT, or
+// SOURCE-NAME.EXT where two sources have a list of that name. Existing
+// files are replaced. Returns the files written.
+std::vector<fs::path> export_lists(Library& library, const std::vector<ListFile*>& lists, const fs::path& folder,
+                                   ExportFormat format, const ExportOptions& options = {});
+// Every list of the library, so.
 std::vector<fs::path> export_all(Library& library, const fs::path& folder, ExportFormat format,
                                  const ExportOptions& options = {});
 

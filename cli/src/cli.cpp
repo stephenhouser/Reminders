@@ -62,13 +62,14 @@ Commands:
   delete NAME [--yes]           Delete
   search TEXT                   Search titles and notes
   new-list NAME [--color C] [--icon I]
-  import FILE [--list LIST] [--source S] [--format F]
+  import FILE [--list LIST] [--source S] [--format F] [--duplicates]
                                 Import reminders from a file into LIST,
                                 made in S if missing (default: the
                                 calendar's name, else the file's). F, found
                                 from the file if not given: md, txt (a line
-                                each), todo.txt, csv or ics. Ones imported
-                                before are skipped
+                                each), todo.txt, csv or ics. Ones already
+                                here are skipped, or with --duplicates
+                                added again as copies
   export [LIST] [--format F] [-o FILE] [-a]
                                 Write LIST as F: md (the list file, the
                                 default), txt (a line per open reminder; -a
@@ -268,7 +269,7 @@ struct Args {
 const std::vector<std::string> kValued = {"title", "list",  "section", "parent", "due",   "time", "priority", "tag",
                                           "untag", "repeat", "notes",  "url",    "color", "icon", "in",       "to",
                                           "source", "format", "output"};
-const std::vector<std::string> kFlags = {"no-due", "flag", "unflag", "no-repeat", "yes", "all"};
+const std::vector<std::string> kFlags = {"no-due", "flag", "unflag", "no-repeat", "yes", "all", "duplicates"};
 
 Args parse_args(std::span<const std::string> in) {
     Args a;
@@ -825,7 +826,7 @@ int App::cmd_new_list(const Args& a) {
 }
 
 int App::cmd_import(const Args& a) {
-    if (a.positional.size() != 1) throw UsageError("usage: reminders import FILE [--list LIST] [--source SOURCE] [--format F]");
+    if (a.positional.size() != 1) throw UsageError("usage: reminders import FILE [--list LIST] [--source SOURCE] [--format F] [--duplicates]");
     auto path = folder_arg(a.positional[0]);
     std::ifstream in(path, std::ios::binary);
     if (!in) throw std::runtime_error(std::format("can't read {}", path.string()));
@@ -871,7 +872,7 @@ int App::cmd_import(const Args& a) {
         list = &l;
         created = true;
     }
-    auto r = rem::import_into(store_, *list, imp);
+    auto r = rem::import_into(store_, *list, imp, a.has("duplicates"));
     if (created && r.added == 0) {  // nothing new: no empty list either
         store_.delete_list(store_.key_of(*list));
         if (g_.json) {

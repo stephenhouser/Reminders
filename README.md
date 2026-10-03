@@ -51,7 +51,7 @@ can reuse.
 - **Reminders**: title, notes, URL, due date and time, repeat ("every 2 weeks", weekdays, …), flag, priority, tags.
 - **Smart lists**: Today, Scheduled, All, All Reminders (completed ones too), Flagged, Completed, plus one per tag. Search across everything, and a Ctrl+K "Go to" switcher.
 - **Quick entry**: type `Pay rent #home 📅 2026-10-31 🚩` into "New Reminder" and the fields are filled in.
-- **Import and export** iCalendar (`.ics`) tasks, Markdown checklists, todo.txt, CSV or plain text (a line each), one list or all of them, from ☰ → Import… / Export All Lists… and a list's ⋮ → Export…, or `reminders import` / `export`. Importing again doesn't duplicate; an export imports back as it was.
+- **Import and export** iCalendar (`.ics`) tasks, Markdown checklists, todo.txt, CSV or plain text (a line each), one list or all of them, from ☰ → Import… (or by dropping a file on the window) and ☰ → Export… (pick any lists), or `reminders import` / `export`. Importing again doesn't duplicate unless you ask; an export imports back as it was.
 - **Undo and redo** (Ctrl+Z / Ctrl+Shift+Z) for every change, including moves and deleted lists.
 - **Keyboard-driven**: nearly everything has a shortcut; see the [user guide](docs/USING.md#keyboard-shortcuts).
 - **Live sync**: changes from other devices appear within half a second. Syncthing conflict copies are merged automatically, reminder by reminder.

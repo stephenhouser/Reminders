@@ -323,6 +323,44 @@ void make_drop_target(GtkWidget* row, DropStyle style, std::string self,
     gtk_widget_add_controller(row, GTK_EVENT_CONTROLLER(target));
 }
 
+// The local files in a drop, if it holds files.
+std::vector<std::filesystem::path> dropped_files(const GValue* value) {
+    std::vector<std::filesystem::path> out;
+    if (!value || !G_VALUE_HOLDS(value, GDK_TYPE_FILE_LIST)) return out;
+    auto* list = static_cast<GdkFileList*>(g_value_get_boxed(value));
+    auto* files = gdk_file_list_get_files(list);
+    for (auto* f = files; f; f = f->next)
+        if (auto path = take_string(g_file_get_path(G_FILE(f->data))); !path.empty()) out.emplace_back(path);
+    g_slist_free(files);
+    return out;
+}
+
+// Accepts files dropped on `widget`; with `highlight`, the widget shows it
+// while they're over it (a sidebar list).
+void make_file_drop_target(GtkWidget* widget, bool highlight,
+                           std::function<void(std::vector<std::filesystem::path>)> on_drop) {
+    auto* target = gtk_drop_target_new(GDK_TYPE_FILE_LIST, GDK_ACTION_COPY);
+    if (highlight) {
+        connect<GdkDragAction(GtkDropTarget*, double, double)>(target, "motion", [](GtkDropTarget* t, double, double) {
+            if (auto* w = owner(t)) gtk_widget_add_css_class(w, "drop-into");
+            return GDK_ACTION_COPY;
+        });
+        connect<void(GtkDropTarget*)>(target, "leave", [](GtkDropTarget* t) {
+            if (auto* w = owner(t)) gtk_widget_remove_css_class(w, "drop-into");
+        });
+    }
+    connect<gboolean(GtkDropTarget*, const GValue*, double, double)>(
+        target, "drop", [on_drop](GtkDropTarget* t, const GValue* value, double, double) -> gboolean {
+            if (auto* w = owner(t)) gtk_widget_remove_css_class(w, "drop-into");
+            auto files = dropped_files(value);
+            if (files.empty()) return FALSE;
+            // The dialog opens after the drop has finished.
+            idle([on_drop, files = std::move(files)] { on_drop(files); });
+            return TRUE;
+        });
+    gtk_widget_add_controller(widget, GTK_EVENT_CONTROLLER(target));
+}
+
 constexpr std::pair<View::Kind, std::string_view> kViewNames[] = {
     {View::Today, "today"}, {View::Scheduled, "scheduled"}, {View::All, "all"},
     {View::Flagged, "flagged"}, {View::Completed, "completed"}, {View::AllReminders, "all-reminders"},
@@ -511,6 +549,11 @@ Window::Window(AdwApplication* app, std::optional<std::filesystem::path> folder)
       smart_(rem::load_smart_lists_layout()), tags_(rem::load_tags_layout()), hidden_(rem::load_hidden()) {
     build();
     add_actions();
+    // A file dropped anywhere else is imported, into the list in view.
+    make_file_drop_target(window_, false, [this](std::vector<std::filesystem::path> files) {
+        if (!store_) return;
+        import_files(std::move(files), view_.kind == View::List ? view_.name : std::string());
+    });
     {
         std::ifstream in(rem::settings_file());  // as read at start-up
         settings_text_.assign(std::istreambuf_iterator<char>(in), {});
@@ -565,7 +608,7 @@ void Window::build() {
     auto* s1 = menu_section(primary_menu);
     g_menu_append(s1, "_New List…", "win.new-list");
     g_menu_append(s1, "_Import…", "win.import");
-    g_menu_append(s1, "_Export All Lists…", "win.export-all");
+    g_menu_append(s1, "_Export…", "win.export");
     g_menu_append(s1, "S_ources…", "win.sources");
     auto* sync_item = g_menu_item_new("S_ync Now", "win.sync-now");
     g_menu_item_set_attribute(sync_item, "hidden-when", "s", "action-disabled");  // no CalDAV or WebDAV sources
@@ -928,11 +971,11 @@ void Window::add_actions() {
     add_action(window_, "delete-list", [this] {
         if (view_.kind == View::List) delete_list(view_.name);
     });
-    add_action(window_, "export-all", [this] {
-        if (store_) export_list("");
+    add_action(window_, "export", [this] {  // ☰: the list in view ticked, if any
+        if (store_) export_lists(view_.kind == View::List ? std::vector{view_.name} : std::vector<std::string>{});
     });
     add_action(window_, "export-list", [this] {
-        if (view_.kind == View::List) export_list(view_.name);
+        if (view_.kind == View::List) export_lists({view_.name});
     });
     show_completed_action_ = add_toggle(window_, "show-completed", false, [this](bool on) {
         show_completed_ = on;
@@ -1290,6 +1333,9 @@ void Window::rebuild_sidebar() {
                     if (hidden_.list_hidden(key)) gtk_widget_add_css_class(row, "hidden-entry");
                     make_drop_target(row, DropStyle::Into, "", [this, key](std::string dropped, rem::Document::Place) {
                         move_to_list(dropped, key);
+                    });
+                    make_file_drop_target(row, true, [this, key](std::vector<std::filesystem::path> files) {
+                        import_files(std::move(files), key);
                     });
                     add(row);
                 }
@@ -2340,25 +2386,39 @@ void Window::import_file() {
             }
             auto path = std::filesystem::path(take_string(g_file_get_path(file.get())));
             if (path.empty() || !self->store_) return;
-            std::ifstream in(path, std::ios::binary);
-            std::ostringstream text;
-            text << in.rdbuf();
-            if (!in && !in.eof()) {
-                self->toast(std::format("Couldn't read “{}”", path.filename().string()));
-                return;
-            }
-            self->import_tasks(path, text.str());
+            self->import_files({path}, {});
         },
         nullptr);
     g_object_set_data(G_OBJECT(dialog), "window", this);
     g_object_unref(dialog);
 }
 
+void Window::import_files(std::vector<std::filesystem::path> files, std::string into) {
+    if (files.empty() || !store_) return;
+    auto path = files.front();
+    files.erase(files.begin());
+    auto next = [this, files, into] { idle([this, files, into] { import_files(files, into); }); };
+    std::error_code ec;
+    if (std::filesystem::is_directory(path, ec)) {
+        toast(std::format("“{}” is a folder: drop the files in it", path.filename().string()));
+        return next();
+    }
+    std::ifstream in(path, std::ios::binary);
+    std::ostringstream text;
+    text << in.rdbuf();
+    if (!in.good() && !in.eof()) {
+        toast(std::format("Couldn't read “{}”", path.filename().string()));
+        return next();
+    }
+    import_tasks(path, text.str(), into, next);
+}
+
 // Asks which list the reminders go into: a new one named after the
 // calendar or file (first), or any list; one already called that is
 // chosen to begin with. "Read As" shows the kind of file found, and
 // reads it again as another.
-void Window::import_tasks(const std::filesystem::path& file, std::string text) {
+void Window::import_tasks(const std::filesystem::path& file, std::string text, std::string into,
+                          std::function<void()> then) {
     static constexpr rem::Import::Kind kKinds[] = {rem::Import::Kind::Markdown, rem::Import::Kind::Text,
                                                    rem::Import::Kind::Todotxt, rem::Import::Kind::Csv,
                                                    rem::Import::Kind::Ics};
@@ -2393,7 +2453,9 @@ void Window::import_tasks(const std::filesystem::path& file, std::string text) {
     std::vector<std::string> labels{std::format("New List “{}”", name)};
     guint selected = 0;
     for (auto* l : store_->lists()) {
-        if (lower(l->name) == lower(name) && selected == 0) selected = static_cast<guint>(keys.size());
+        auto key = store_->key_of(*l);
+        if (key == into || (into.empty() && lower(l->name) == lower(name) && selected == 0))
+            selected = static_cast<guint>(keys.size());
         keys.push_back(store_->key_of(*l));
         labels.push_back(store_->label(*l));
     }
@@ -2412,15 +2474,19 @@ void Window::import_tasks(const std::filesystem::path& file, std::string text) {
     g_object_unref(kinds);
     adw_combo_row_set_selected(ADW_COMBO_ROW(read_as),
                                static_cast<guint>(std::ranges::find(kKinds, detected) - std::begin(kKinds)));
-    auto* into = adw_combo_row_new();
-    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(into), "Into");
+    auto* into_row = adw_combo_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(into_row), "Into");
     auto* model = gtk_string_list_new(nullptr);
     for (auto& l : labels) gtk_string_list_append(model, l.c_str());
-    adw_combo_row_set_model(ADW_COMBO_ROW(into), G_LIST_MODEL(model));
+    adw_combo_row_set_model(ADW_COMBO_ROW(into_row), G_LIST_MODEL(model));
     g_object_unref(model);
-    adw_combo_row_set_selected(ADW_COMBO_ROW(into), selected);
+    adw_combo_row_set_selected(ADW_COMBO_ROW(into_row), selected);
+    auto* duplicates = adw_switch_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(duplicates), "Import Duplicates");
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(duplicates), "Add reminders that are already here again, as copies");
     gtk_list_box_append(GTK_LIST_BOX(rows), read_as);
-    gtk_list_box_append(GTK_LIST_BOX(rows), into);
+    gtk_list_box_append(GTK_LIST_BOX(rows), into_row);
+    gtk_list_box_append(GTK_LIST_BOX(rows), duplicates);
     adw_alert_dialog_set_extra_child(ADW_ALERT_DIALOG(dialog), rows);
 
     // Reads the file as the kind chosen, and says what it found.
@@ -2450,10 +2516,11 @@ void Window::import_tasks(const std::filesystem::path& file, std::string text) {
     connect<void(GObject*, GParamSpec*)>(read_as, "notify::selected", [reread](GObject*, GParamSpec*) { reread(); });
 
     connect<void(AdwAlertDialog*, const char*)>(
-        dialog, "response", [this, into, keys, source, name, state](AdwAlertDialog*, const char* response) {
+        dialog, "response", [this, into_row, duplicates, keys, source, name, state, then](AdwAlertDialog*, const char* response) {
+            if (then) then();
             if (std::string_view(response) != "import" || !store_ || !state->imp) return;
             auto& imp = *state->imp;
-            auto key = keys.at(std::min<std::size_t>(adw_combo_row_get_selected(ADW_COMBO_ROW(into)), keys.size() - 1));
+            auto key = keys.at(std::min<std::size_t>(adw_combo_row_get_selected(ADW_COMBO_ROW(into_row)), keys.size() - 1));
             rem::ImportResult result;
             undoable("Import", [&] {
                 try {
@@ -2470,7 +2537,8 @@ void Window::import_tasks(const std::filesystem::path& file, std::string text) {
                         list = &store_->create_list(source, unique, imp.color.empty() ? "blue" : imp.color, "list");
                     }
                     key = store_->key_of(*list);
-                    result = rem::import_into(*store_, *list, imp);
+                    result = rem::import_into(*store_, *list, imp,
+                                              adw_switch_row_get_active(ADW_SWITCH_ROW(duplicates)));
                     if (result.added == 0 && created) {  // nothing new: no empty list either
                         store_->delete_list(key);
                         key = "-";
@@ -2497,16 +2565,12 @@ void Window::import_tasks(const std::filesystem::path& file, std::string text) {
     adw_dialog_present(ADW_DIALOG(dialog), window_);
 }
 
-// A list ("source/name"), or with an empty key every list, into a folder.
-void Window::export_list(const std::string& key) {
-    auto* l = store_ && !key.empty() ? store_->list(key) : nullptr;
-    if (!store_ || (!key.empty() && !l)) return;
-    bool all = key.empty();
-    auto* dialog = adw_alert_dialog_new(
-        all ? "Export All Lists" : std::format("Export “{}”", l->name).c_str(),
-        all ? "Each list is saved as a file of its own, in a folder you choose. They can be imported again, here or "
-              "on another computer."
-            : "Exported lists can be imported again, here or on another computer.");
+// The lists to export (`chosen`: keys ticked to begin with) and the format.
+// One list is saved as a file; several, a file each, into a folder.
+void Window::export_lists(std::vector<std::string> chosen) {
+    if (!store_) return;
+    auto* dialog = adw_alert_dialog_new("Export Lists",
+                                        "Exported lists can be imported again, here or on another computer.");
     adw_alert_dialog_add_responses(ADW_ALERT_DIALOG(dialog), "cancel", "_Cancel", "export", "_Export…", nullptr);
     adw_alert_dialog_set_response_appearance(ADW_ALERT_DIALOG(dialog), "export", ADW_RESPONSE_SUGGESTED);
     adw_alert_dialog_set_default_response(ADW_ALERT_DIALOG(dialog), "export");
@@ -2515,6 +2579,7 @@ void Window::export_list(const std::string& key) {
     static constexpr rem::ExportFormat kFormats[] = {rem::ExportFormat::Markdown, rem::ExportFormat::Text,
                                                      rem::ExportFormat::Todotxt, rem::ExportFormat::Csv,
                                                      rem::ExportFormat::Ics};
+    auto* box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
     auto* rows = boxed_list();
     auto* format = adw_combo_row_new();
     adw_preferences_row_set_title(ADW_PREFERENCES_ROW(format), "Format");
@@ -2539,26 +2604,81 @@ void Window::export_list(const std::string& key) {
     connect<void(GObject*, GParamSpec*)>(format, "notify::selected", [describe](GObject*, GParamSpec*) { describe(); });
     gtk_list_box_append(GTK_LIST_BOX(rows), format);
     gtk_list_box_append(GTK_LIST_BOX(rows), completed);
-    adw_alert_dialog_set_extra_child(ADW_ALERT_DIALOG(dialog), rows);
+    gtk_box_append(GTK_BOX(box), rows);
+
+    // The lists, with All Lists above them.
+    struct Pick {
+        std::string key;
+        GtkWidget* check;
+    };
+    auto picks = std::make_shared<std::vector<Pick>>();
+    auto* lists = boxed_list();
+    auto* all_check = gtk_check_button_new();
+    auto* all_row = adw_action_row_new();
+    adw_preferences_row_set_title(ADW_PREFERENCES_ROW(all_row), "All Lists");
+    adw_action_row_add_prefix(ADW_ACTION_ROW(all_row), all_check);
+    adw_action_row_set_activatable_widget(ADW_ACTION_ROW(all_row), all_check);
+    gtk_list_box_append(GTK_LIST_BOX(lists), all_row);
+    for (auto* l : store_->lists()) {
+        auto key = store_->key_of(*l);
+        auto* check = gtk_check_button_new();
+        gtk_check_button_set_active(GTK_CHECK_BUTTON(check), std::ranges::find(chosen, key) != chosen.end());
+        auto* row = adw_action_row_new();
+        adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), store_->label(*l).c_str());
+        adw_preferences_row_set_use_markup(ADW_PREFERENCES_ROW(row), FALSE);
+        adw_action_row_add_prefix(ADW_ACTION_ROW(row), check);
+        adw_action_row_set_activatable_widget(ADW_ACTION_ROW(row), check);
+        gtk_list_box_append(GTK_LIST_BOX(lists), row);
+        picks->push_back({key, check});
+    }
+    auto* scroller = gtk_scrolled_window_new();
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroller), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+    gtk_scrolled_window_set_propagate_natural_height(GTK_SCROLLED_WINDOW(scroller), TRUE);
+    gtk_scrolled_window_set_max_content_height(GTK_SCROLLED_WINDOW(scroller), 280);
+    gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scroller), lists);
+    gtk_box_append(GTK_BOX(box), scroller);
+    adw_alert_dialog_set_extra_child(ADW_ALERT_DIALOG(dialog), box);
+
+    // All Lists shows whether all, some or none are ticked; ticking it ticks
+    // them all, unticking it none. Export needs at least one.
+    auto syncing = std::make_shared<bool>(false);
+    auto update = [dialog, picks, all_check, syncing] {
+        auto n = std::ranges::count_if(*picks, [](auto& p) { return gtk_check_button_get_active(GTK_CHECK_BUTTON(p.check)); });
+        *syncing = true;
+        gtk_check_button_set_active(GTK_CHECK_BUTTON(all_check), n > 0 && n == static_cast<long>(picks->size()));
+        gtk_check_button_set_inconsistent(GTK_CHECK_BUTTON(all_check), n > 0 && n < static_cast<long>(picks->size()));
+        *syncing = false;
+        adw_alert_dialog_set_response_enabled(ADW_ALERT_DIALOG(dialog), "export", n > 0);
+    };
+    for (auto& p : *picks) connect<void(GtkCheckButton*)>(p.check, "toggled", [update](GtkCheckButton*) { update(); });
+    connect<void(GtkCheckButton*)>(all_check, "toggled", [picks, syncing, update](GtkCheckButton* b) {
+        if (*syncing) return;
+        bool on = gtk_check_button_get_active(b);
+        for (auto& p : *picks) gtk_check_button_set_active(GTK_CHECK_BUTTON(p.check), on);
+        update();
+    });
+    update();
 
     connect<void(AdwAlertDialog*, const char*)>(
-        dialog, "response", [this, key, all, format, completed](AdwAlertDialog*, const char* response) {
+        dialog, "response", [this, picks, format, completed](AdwAlertDialog*, const char* response) {
             if (std::string_view(response) != "export" || !store_) return;
             auto fmt = kFormats[std::min<guint>(adw_combo_row_get_selected(ADW_COMBO_ROW(format)), std::size(kFormats) - 1)];
             rem::ExportOptions options;
             options.completed = adw_switch_row_get_active(ADW_SWITCH_ROW(completed));
-            auto* list = all ? nullptr : store_->list(key);
-            if (!all && !list) return;
+            std::vector<std::string> keys;
+            for (auto& p : *picks)
+                if (gtk_check_button_get_active(GTK_CHECK_BUTTON(p.check))) keys.push_back(p.key);
+            if (keys.empty()) return;
 
             struct Job {
                 Window* self;
-                std::string key;
+                std::vector<std::string> keys;
                 rem::ExportFormat format;
                 rem::ExportOptions options;
             };
             auto* chooser = gtk_file_dialog_new();
-            auto* job = new Job{this, key, fmt, options};
-            if (all) {
+            auto* job = new Job{this, keys, fmt, options};
+            if (keys.size() > 1) {
                 gtk_file_dialog_set_title(chooser, "Choose a Folder for the Lists");
                 gtk_file_dialog_select_folder(
                     chooser, GTK_WINDOW(window_), nullptr,
@@ -2574,8 +2694,11 @@ void Window::export_list(const std::string& key) {
                         auto* self = job->self;
                         auto folder = std::filesystem::path(take_string(g_file_get_path(file.get())));
                         if (!self->store_ || folder.empty()) return;
+                        std::vector<rem::ListFile*> lists;
+                        for (auto& k : job->keys)
+                            if (auto* l = self->store_->list(k)) lists.push_back(l);
                         try {
-                            auto files = rem::export_all(*self->store_, folder, job->format, job->options);
+                            auto files = rem::export_lists(*self->store_, lists, folder, job->format, job->options);
                             self->toast(std::format("Exported {} {} to {}", files.size(),
                                                     files.size() == 1 ? "list" : "lists", rem::contract_path(folder)));
                         } catch (const std::exception& e) {
@@ -2584,6 +2707,12 @@ void Window::export_list(const std::string& key) {
                     },
                     job);
             } else {
+                auto* list = store_->list(keys.front());
+                if (!list) {
+                    delete job;
+                    g_object_unref(chooser);
+                    return;
+                }
                 gtk_file_dialog_set_title(chooser, "Export List");
                 gtk_file_dialog_set_initial_name(chooser,
                                                  std::format("{}.{}", list->name, rem::export_extension(fmt)).c_str());
@@ -2598,7 +2727,7 @@ void Window::export_list(const std::string& key) {
                             return;
                         }
                         auto* self = job->self;
-                        auto* list = self->store_ ? self->store_->list(job->key) : nullptr;
+                        auto* list = self->store_ ? self->store_->list(job->keys.front()) : nullptr;
                         auto path = std::filesystem::path(take_string(g_file_get_path(file.get())));
                         if (!list || path.empty()) return;
                         std::ofstream out(path, std::ios::binary | std::ios::trunc);
@@ -3118,7 +3247,7 @@ void Window::sidebar_menu(GtkListBoxRow* row, double x, double y) {
         add_action(actions, "add-section", [this, name] { idle([this, name] { add_section(name); }); });
         add_action(actions, "list-info", [this, name] { idle([this, name] { edit_list(name); }); });
         add_action(actions, "delete-list", [this, name] { idle([this, name] { delete_list(name); }); });
-        add_action(actions, "export-list", [this, name] { idle([this, name] { export_list(name); }); });
+        add_action(actions, "export-list", [this, name] { idle([this, name] { export_lists({name}); }); });
         add_action(actions, "tag-info", [this, name] { idle([this, name] { edit_tag(name); }); });
         auto* up = add_action(actions, "move-up", [this, view] { idle([this, view] { move_entry(view, -1); }); });
         auto* down = add_action(actions, "move-down", [this, view] { idle([this, view] { move_entry(view, 1); }); });

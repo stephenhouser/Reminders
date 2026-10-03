@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <fstream>
 #include <sstream>
 
@@ -106,6 +107,16 @@ TEST(ics_imports_into_a_list_once) {
     CHECK_EQ(r.added, 0);
     CHECK_EQ(r.already, 3);
     CHECK_EQ(f.text(), before);
+    // Unless copies are asked for: added again, with new ids.
+    r = import_into(f.lib, *f.lib.list("Trip"), imp, true);
+    CHECK_EQ(r.added, 3);
+    CHECK_EQ(r.already, 0);
+    auto doc = parse(f.text());
+    std::vector<std::string> ids;
+    doc.walk([&](Reminder& x, Reminder*) { ids.push_back(x.id); });
+    CHECK_EQ(ids.size(), std::size_t{7});
+    std::ranges::sort(ids);
+    CHECK(std::ranges::adjacent_find(ids) == ids.end());  // all different
 }
 
 TEST(ics_tasks_without_order_keep_the_files) {

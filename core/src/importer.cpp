@@ -610,7 +610,7 @@ int reminder_count(const Import& import) {
     return n;
 }
 
-ImportResult import_into(Library& library, ListFile& list, const Import& import) {
+ImportResult import_into(Library& library, ListFile& list, const Import& import, bool duplicates) {
     ImportResult result;
     std::set<std::string> used;  // ids given out by this import
     auto taken = [&](const std::string& id) { return used.contains(id) || library.find(id).has_value(); };
@@ -631,8 +631,9 @@ ImportResult import_into(Library& library, ListFile& list, const Import& import)
     };
     for (auto& item : import.items) {
         auto count = 1 + static_cast<int>(item.reminder.subtasks.size());
-        if (item.reminder.id.empty() ? !item.reminder.done && open_titles.contains(key(item.reminder.title))
-                                     : taken(item.reminder.id)) {
+        if (!duplicates && (item.reminder.id.empty()
+                                ? !item.reminder.done && open_titles.contains(key(item.reminder.title))
+                                : taken(item.reminder.id))) {
             result.already += count;
             continue;
         }

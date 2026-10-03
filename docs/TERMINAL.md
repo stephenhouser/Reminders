@@ -52,7 +52,7 @@ reminders move NAME --to LIST [--section S]
 reminders delete NAME [--yes]
 reminders search TEXT
 reminders new-list NAME [--color C] [--icon I] [--source S]
-reminders import FILE [--list LIST] [--source S] [--format F]
+reminders import FILE [--list LIST] [--source S] [--format F] [--duplicates]
 reminders export [LIST] [--format F] [-o FILE] [-a]
 reminders folder [PATH]
 reminders sync [SOURCE]
@@ -116,7 +116,8 @@ list named after the calendar, else after the file. The list is made (in
 twice doesn't double anything: reminders with ids (from a calendar, a
 Reminders list or an export) are skipped if they're anywhere already,
 others if the list has an open reminder of that title. If nothing is new,
-no list is made. With `--json`, the result is
+no list is made. `--duplicates` adds them all the same, as copies with new
+ids. With `--json`, the result is
 `{"list", "created", "added", "already", "skipped"}`.
 
 **`export`** writes a list in the same formats (see [Exporting
