@@ -12,7 +12,8 @@ namespace rem {
 
 namespace fs = std::filesystem;
 
-// $XDG_CONFIG_HOME/reminders/settings.ini, or ~/.config/reminders/settings.ini.
+// $XDG_CONFIG_HOME/reminders/settings.ini (config_dir(): ~/.config when
+// XDG_CONFIG_HOME isn't set).
 fs::path settings_file();
 
 // A value from the [general] section, or "" if unset.

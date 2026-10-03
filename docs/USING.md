@@ -555,7 +555,7 @@ folder as `~/…`, so the file works on another computer with a different home.
   else Local Folder); you can change it. For Git, a **Repository**
   section has the rest (see [Git repositories](#git-repositories)). For
   CalDAV and WebDAV the folder is the **Local Copy**, which starts out in
-  `~/.local/share/reminders/caldav/NAME` (or `webdav/NAME`), and a
+  `$XDG_DATA_HOME/reminders/caldav/NAME` (or `webdav/NAME`), and a
   **Server** section asks for the account (see [CalDAV
   accounts](#caldav-accounts) and [WebDAV folders](#webdav-folders)). The settings
   section is named after the Name (`[source.NAME]`, lower case), else the
@@ -621,7 +621,7 @@ title=Fastmail
   syncs straight away. Offline changes wait in the local copy until the
   next sync.
 - **The local copy** is in `$XDG_DATA_HOME/reminders/caldav/NAME/`
-  (`~/.local/share/…`; `folder=` moves it): one Markdown file per task list, like any other
+  (`~/.local/share/…` when `$XDG_DATA_HOME` isn't set; `folder=` moves it): one Markdown file per task list, like any other
   source, which you can open in an editor.
 - **Changes on both sides** are merged reminder by reminder, field by field,
   as for Syncthing conflicts; when both sides changed the same field, this
@@ -676,7 +676,7 @@ title=Cloud
   A file deleted on the server goes here too, unless it changed here since;
   then it's sent again.
 - **The local copy** is in `$XDG_DATA_HOME/reminders/webdav/NAME/`
-  (`~/.local/share/…`; `folder=` moves it).
+  (`~/.local/share/…` when `$XDG_DATA_HOME` isn't set; `folder=` moves it).
 - **Problems** show as a message at the bottom of the window; the next sync
   tries again.
 
@@ -703,7 +703,8 @@ title=Notes
   the folders under it, are left alone.
 - **`url=`** (Clone From) is optional. When the folder isn't in a
   repository yet, it's cloned from there on the first sync; without
-  `folder=` the clone goes in `~/.local/share/reminders/git/NAME`.
+  `folder=` the clone goes in `$XDG_DATA_HOME/reminders/git/NAME`
+  (`~/.local/share/…` when `$XDG_DATA_HOME` isn't set).
 - **`remote=`** and **`branch=`** are optional: by default `origin` and
   the branch checked out.
 - **Signing in** is git's own business. SSH keys and credential helpers

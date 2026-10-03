@@ -3,7 +3,7 @@
 // Markdown file per list, in the format the folder sources use.
 //
 // The lists live in a local folder like any other source's (by default
-// ~/.local/share/reminders/webdav/<source>/), so the apps, undo and hand
+// $XDG_DATA_HOME/reminders/webdav/<source>/, see paths.hpp), so the apps, undo and hand
 // editing work as usual. webdav_sync() brings that folder and the server's
 // in step, file by file: a file changed on one side is copied to the other;
 // changed on both, the two are merged three-way (the base being the version

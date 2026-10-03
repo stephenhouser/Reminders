@@ -2,7 +2,7 @@
 // Radicale, …), one calendar per list.
 //
 // The lists live in a local folder like any other source's (by default
-// ~/.local/share/reminders/caldav/<source>/), so the apps, undo and hand
+// $XDG_DATA_HOME/reminders/caldav/<source>/, see paths.hpp), so the apps, undo and hand
 // editing work as usual. caldav_sync() brings that folder and the server in
 // step: it pulls changed tasks, merges them three-way with local edits (the
 // base being the last synced version), writes the merged list, and pushes

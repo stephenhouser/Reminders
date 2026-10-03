@@ -153,7 +153,8 @@ wrote), plus `declined.txt`.
 - Sources that aren't Syncthing folders (a plain local folder, a CalDAV or
   WebDAV account) keep their state where the platform keeps app state; the
   Linux client uses `$XDG_STATE_HOME/reminders/<device>/<source>/`
-  (`~/.local/state/…`), with sync records in `caldav/` or `webdav/`.
+  (`~/.local/state/…` when `$XDG_STATE_HOME` isn't set), with sync records
+  in `caldav/` or `webdav/`.
 
 ## CalDAV
 

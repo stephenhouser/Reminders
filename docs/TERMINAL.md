@@ -63,7 +63,7 @@ reminders sync [SOURCE]
 includes completed reminders.
 
 **The last list you had open** is shared by the GNOME app, the TUI and the CLI
-(the `view` line in `~/.config/reminders/settings.ini`):
+(the `view` line in `$XDG_CONFIG_HOME/reminders/settings.ini`):
 
 - **The TUI** opens on it and updates it as you move around. Searches don't
   count.
@@ -339,7 +339,7 @@ subtasks:
 
 ## Showing the number keys
 
-Add `show-key-numbers=true` to `~/.config/reminders/settings.ini` to label the
+Add `show-key-numbers=true` to `$XDG_CONFIG_HOME/reminders/settings.ini` to label the
 first ten sidebar entries with their key: `(1)Today` … `(0)…` in the TUI, and
 `Ctrl+1` … `Ctrl+0` after the names in the GNOME app. See [the settings file](USING.md#the-settings-file).
 

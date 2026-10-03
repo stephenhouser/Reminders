@@ -7,7 +7,13 @@
 //   cache   $XDG_CACHE_HOME/reminders   (~/.cache/reminders)        what can be found again (CalDAV calendar homes)
 //
 // An XDG variable that is unset, empty or not an absolute path is ignored,
-// as the specification says.
+// as the specification says, and the default in brackets used instead.
+//
+// Project rule: every one of these locations is found through these
+// functions, never by writing ~/.config, ~/.local/share, ~/.local/state or
+// ~/.cache into code; docs and comments name the variable
+// ($XDG_DATA_HOME/…) and give the default only as what applies when it's
+// unset.
 #pragma once
 
 #include <filesystem>

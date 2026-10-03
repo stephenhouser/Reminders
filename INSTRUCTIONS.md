@@ -47,8 +47,9 @@ from them rather than reopen them.
 | Sync | The app only reads and writes files; Syncthing does the syncing. Conflict copies are merged three-way | No server, no account |
 | Per-device state | Syncthing sources: `<folder>/.reminders/<device>/`, excluded via `(?d).reminders` in the Syncthing root's `.stignore` (user's choice, kept 2026-10-03). Local and CalDAV sources: `$XDG_STATE_HOME/reminders/<device>/<source>/` | A Syncthing list's state stays with its folder; device in the path because folders (and home, over NFS) are shared |
 | Paths | XDG config / data / state / cache dirs (core paths.hpp); `folder=` accepts `~`, `$HOME`, `${VAR}`, home-relative; saved as `~/…` | User's request 2026-10-03 |
+| XDG locations (mandate) | Always resolve them through `$XDG_CONFIG_HOME`, `$XDG_DATA_HOME`, `$XDG_STATE_HOME`, `$XDG_CACHE_HOME` (core `config_dir()` / `data_dir()` / `state_dir()` / `cache_dir()`), never a hard-coded `~/.config`, `~/.local/share`, `~/.local/state` or `~/.cache`. Docs and comments name the variable and give the default only as "when it isn't set" | User's mandate 2026-10-03 |
 | iOS sync (later) | Syncthing embedded via gomobile, not the Möbius Sync app | Self-contained app |
-| Names | GNOME app `Reminders`, terminal client `reminders` (CLI + TUI in one binary; not `rem`, too close to DOS `rem`), app ID `com.stephenhouser.Reminders`, config `~/.config/reminders/` | Case-sensitive file names on Linux let both live in one `bin` |
+| Names | GNOME app `Reminders`, terminal client `reminders` (CLI + TUI in one binary; not `rem`, too close to DOS `rem`), app ID `com.stephenhouser.Reminders`, config `$XDG_CONFIG_HOME/reminders/` | Case-sensitive file names on Linux let both live in one `bin` |
 | Terminal client | Separate binary from the GUI, no GTK dependency; ncurses for the TUI | Works over SSH and on headless Syncthing machines |
 | Look | GNOME HIG: navigation sidebar, boxed lists, list colour as accent, round checkboxes | Native on GNOME |
 | Migrations | None. This is the first version | |
@@ -191,7 +192,7 @@ Ground rules
 - Command line: `reminders [FOLDER]` opens FOLDER for this session only
   (resolve relative paths against the caller's directory, even when handed
   to a running instance); --version; errors exit 1.
-- Remember the folder and the last view in ~/.config/reminders/settings.ini.
+- Remember the folder and the last view in $XDG_CONFIG_HOME/reminders/settings.ini.
   A session-only folder doesn't overwrite the saved view.
 - Keyboard: Ctrl+N new reminder; Ctrl+Shift+N new list; Space complete;
   Enter/F2 edit title; Ctrl+S save / Esc cancel while editing (dialogs too;
@@ -211,7 +212,7 @@ Ground rules
 
 4. The terminal client: `reminders` (separate binary, no GTK; ncursesw)
 - Settings and the device name live in the core library (shared with the
-  GUI): ~/.config/reminders/settings.ini, keeping other lines intact. The
+  GUI): $XDG_CONFIG_HOME/reminders/settings.ini, keeping other lines intact. The
   "view" setting (the list that last had focus: today | … | list:NAME |
   tag:NAME) is shared by all three: the GUI and TUI open on it and save it as
   it changes (not for searches); `reminders list` with no VIEW shows it and
