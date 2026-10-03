@@ -2,7 +2,7 @@
 #include <sstream>
 
 #include "reminders/format.hpp"
-#include "reminders/ics_import.hpp"
+#include "reminders/importer.hpp"
 #include "test.hpp"
 
 using namespace rem;
@@ -117,4 +117,78 @@ TEST(ics_tasks_without_order_keep_the_files) {
     CHECK_EQ(imp.items.size(), std::size_t{2});
     CHECK_EQ(imp.items[0].reminder.title, std::string("First"));
     CHECK(imp.name.empty());
+}
+
+TEST(import_reads_markdown) {
+    auto imp = read_import("---\nreminders: 1\ncolor: orange\n---\n- [ ] Milk 🚩 ^milk01\n  2%\n  - [ ] Skim ^skim01\n"
+                                "## Later\n- [x] Bread ✅ 2026-09-30\nSome notes about the list.\n",
+                           utc());
+    CHECK(imp.kind == Import::Kind::Markdown);
+    CHECK_EQ(imp.color, std::string("orange"));
+    CHECK_EQ(imp.items.size(), std::size_t{2});
+    auto& milk = imp.items[0].reminder;
+    CHECK_EQ(milk.id, std::string("milk01"));
+    CHECK(milk.flagged);
+    CHECK_EQ(milk.notes, std::string("2%"));
+    CHECK_EQ(milk.subtasks.size(), std::size_t{1});
+    CHECK(!imp.items[0].section.has_value());
+    CHECK_EQ(imp.items[1].section.value_or(""), std::string("Later"));
+    CHECK(imp.items[1].reminder.done);
+    CHECK(imp.items[1].reminder.id.empty());
+    // Any checklist will do, front matter or not.
+    auto plain_md = read_import("Shopping:\n\n- [ ] Eggs\n- [x] Flour\n", utc());
+    CHECK(plain_md.kind == Import::Kind::Markdown);
+    CHECK_EQ(plain_md.items.size(), std::size_t{2});
+}
+
+TEST(import_reads_plain_text) {
+    auto imp = read_import("\xEF\xBB\xBFPack bags\n"
+                           "  socks\n"
+                           "\tcharger\n"
+                           "\n"
+                           "# At the airport\n"
+                           "- Check in #travel\n"
+                           "2. Pay rent 📅 2026-10-31\n"
+                           "• Call home\n"
+                           "#notaheading stays a reminder\n",
+                           utc());
+    CHECK(imp.kind == Import::Kind::Text);
+    CHECK_EQ(imp.items.size(), std::size_t{5});
+    CHECK_EQ(imp.items[0].reminder.title, std::string("Pack bags"));
+    CHECK_EQ(imp.items[0].reminder.subtasks.size(), std::size_t{2});
+    CHECK_EQ(imp.items[0].reminder.subtasks[1].title, std::string("charger"));
+    CHECK(!imp.items[0].section.has_value());
+    CHECK_EQ(imp.items[1].reminder.title, std::string("Check in"));
+    CHECK_EQ(imp.items[1].reminder.tags.size(), std::size_t{1});
+    CHECK_EQ(imp.items[1].section.value_or(""), std::string("At the airport"));
+    CHECK_EQ(imp.items[2].reminder.title, std::string("Pay rent"));
+    CHECK(imp.items[2].reminder.due_date.has_value());
+    CHECK_EQ(imp.items[3].reminder.title, std::string("Call home"));
+    CHECK(!imp.items[4].reminder.title.empty());
+    // Front matter isn't read as reminders.
+    auto fm = read_plain_text("---\ntitle: x\n---\nOne\n");
+    CHECK_EQ(fm.items.size(), std::size_t{1});
+    CHECK_EQ(fm.items[0].reminder.title, std::string("One"));
+    // iCalendar is recognised whatever the file's called.
+    CHECK(read_import(std::string("\r\n") + std::string(kCalendar), utc()).kind == Import::Kind::Ics);
+}
+
+TEST(import_text_gets_ids_and_isnt_doubled) {
+    Folder f;
+    auto* list = f.lib.list("Trip");
+    auto text = read_import("Tickets\n  Seats\nVisa ^visa01\nvisa\n", utc());
+    auto r = import_into(f.lib, *list, text);
+    CHECK_EQ(r.added, 2);    // Tickets and its subtask
+    CHECK_EQ(r.already, 2);  // Visa by id, "visa" by title
+    r = import_into(f.lib, *f.lib.list("Trip"), text);
+    CHECK_EQ(r.added, 0);  // matched by title this time
+    auto doc = parse(f.text());
+    int with_ids = 0;
+    doc.walk([&](Reminder& x, Reminder*) { with_ids += !x.id.empty(); });
+    CHECK_EQ(with_ids, 3);  // every one has an id
+    // A completed one doesn't count: the line is a new to-do.
+    std::ofstream(f.dir / "lists" / "Trip.md") << MARK "- [x] Tickets ✅ 2026-09-30\n";
+    f.lib.load_all();
+    r = import_into(f.lib, *f.lib.list("Trip"), read_import("Tickets\n", utc()));
+    CHECK_EQ(r.added, 1);
 }

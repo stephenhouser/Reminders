@@ -51,7 +51,7 @@ can reuse.
 - **Reminders**: title, notes, URL, due date and time, repeat ("every 2 weeks", weekdays, …), flag, priority, tags.
 - **Smart lists**: Today, Scheduled, All, All Reminders (completed ones too), Flagged, Completed, plus one per tag. Search across everything, and a Ctrl+K "Go to" switcher.
 - **Quick entry**: type `Pay rent #home 📅 2026-10-31 🚩` into "New Reminder" and the fields are filled in.
-- **Import** tasks from iCalendar (`.ics`) files, from ☰ → Import… or `reminders import`; importing again doesn't duplicate.
+- **Import and export** iCalendar (`.ics`) tasks, Markdown checklists or plain text (a line each), from ☰ → Import… and a list's ⋮ → Export…, or `reminders import` / `export`. Importing again doesn't duplicate; an export imports back as it was.
 - **Undo and redo** (Ctrl+Z / Ctrl+Shift+Z) for every change, including moves and deleted lists.
 - **Keyboard-driven**: nearly everything has a shortcut; see the [user guide](docs/USING.md#keyboard-shortcuts).
 - **Live sync**: changes from other devices appear within half a second. Syncthing conflict copies are merged automatically, reminder by reminder.
@@ -141,7 +141,7 @@ C++23 compiler and CMake.
 cmake -S . -B build -G Ninja
 cmake --build build
 ctest --test-dir build            # all the tests (or run them one by one:)
-./build/core/core_tests          # 122 tests for the core library (core_tests NAME runs the matching ones)
+./build/core/core_tests          # 130 tests for the core library (core_tests NAME runs the matching ones)
 ./build/net/net_tests net/tests/fake_dav.py   # CalDAV and WebDAV over HTTP, against a fake server
 ./build/linux/Reminders          # the GNOME app (or: ./build/linux/Reminders ~/Sync/Reminders)
 ./build/cli/reminders --help     # the terminal client
@@ -208,7 +208,8 @@ INSTRUCTIONS.md        The original brief, and how to recreate this project
 | `webdav.hpp` | WebDAV syncing, file by file: ETag-conditional writes, three-way merges, renames and deletions; the server behind a `FileRemote` interface |
 | `ical.hpp` | iCalendar components and properties, kept close to the text so unknown properties survive |
 | `vtodo.hpp` | VTODO ↔ reminder, changing only the properties whose meaning changed |
-| `ics_import.hpp` | Reading an `.ics` file's tasks into reminders (ids from UIDs, so importing again skips what's there) |
+| `importer.hpp` | Importing reminders from `.ics`, Markdown or plain text files (ids kept, so importing again skips what's there) |
+| `exporter.hpp` | Exporting a list as Markdown, plain text or `.ics`, in forms the importer reads back |
 | `history.hpp` | Undo/redo as before/after snapshots of list files, merging around changes from other devices |
 | `syncthing.hpp` | Syncthing sources' per-device state location and the `.stignore` entry |
 | `paths.hpp` | The XDG base directories (config, data, state, cache), and `~` / `$VAR` in paths from settings |

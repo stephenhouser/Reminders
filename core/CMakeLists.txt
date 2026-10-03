@@ -16,7 +16,8 @@ add_library(reminders_core
   src/vtodo.cpp
   src/caldav.cpp
   src/webdav.cpp
-  src/ics_import.cpp
+  src/importer.cpp
+  src/exporter.cpp
   src/paths.cpp
 )
 target_include_directories(reminders_core PUBLIC include)
@@ -36,7 +37,8 @@ add_executable(core_tests
   tests/vtodo_test.cpp
   tests/caldav_test.cpp
   tests/webdav_test.cpp
-  tests/ics_import_test.cpp
+  tests/importer_test.cpp
+  tests/exporter_test.cpp
   tests/paths_test.cpp
 )
 target_link_libraries(core_tests PRIVATE reminders_core)

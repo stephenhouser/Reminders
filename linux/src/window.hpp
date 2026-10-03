@@ -17,7 +17,7 @@
 #endif
 #include "reminders/history.hpp"
 #include "reminders/settings.hpp"
-#include "reminders/ics_import.hpp"
+#include "reminders/importer.hpp"
 #include "reminders/library.hpp"
 
 namespace ui {
@@ -144,9 +144,11 @@ private:
     void add_pasted(const std::string& text);
     void show_details(const std::string& id);
     void new_list(std::string source = {});
-    // ☰ → Import…: an .ics file's tasks, into a new or existing list.
+    // ☰ → Import…: a file of reminders (.ics, Markdown, text), into a new or existing list.
     void import_file();
-    void import_tasks(const std::string& file_name, rem::IcsImport imp);
+    void import_tasks(const std::string& file_name, rem::Import imp);
+    // ⋮ → Export…: a list as Markdown, plain text or iCalendar.
+    void export_list(const std::string& key);
     void edit_list(const std::string& name);
     void delete_list(const std::string& name);
     void add_section(const std::string& list);

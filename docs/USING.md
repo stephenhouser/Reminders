@@ -136,23 +136,57 @@ Subtasks are one level deep, as in Apple Reminders.
 Press Delete, or **⋮ → Delete**. Undo from the message that appears, or with
 Ctrl+Z.
 
-## Importing tasks
+## Importing reminders
 
-**☰ → Import…** reads the tasks in an iCalendar file (`.ics`), such as one
-exported from another reminders or calendar app.
+**☰ → Import…** reads reminders from a file. Three kinds work, whatever
+the file is called:
+
+- **An iCalendar file** (`.ics`), such as tasks exported from another
+  reminders or calendar app. Each task's title, notes, completion, due date
+  and time, priority, repeat, tags, link and subtasks come along. Its
+  section comes too if the file came from Reminders. Events are left out;
+  only tasks are imported.
+- **A Markdown checklist** (`- [ ] …` lines), such as a list file from
+  another Reminders folder or notes from another app. Everything comes
+  along: fields, notes, subtasks, sections and the list's colour.
+- **A plain text file**, one reminder per line. Bullets (`-`, `*`, `•`) and
+  numbering (`1.`) are dropped. A `# Heading` line starts a section, and an
+  indented line becomes a subtask of the line above. Inline fields work as
+  in New Reminder: `Pay rent #home 📅 2026-10-31`.
+
+Then:
 
 - **Where they go:** choose the list under **Into**. The first choice is a
   new list named after the calendar (or the file); a list that already has
   that name is chosen to begin with.
-- **What comes along:** each task's title, notes, completion, due date and
-  time, priority, repeat, tags, link and subtasks. Its section also comes
-  along if the file came from Reminders.
-- **Events** in the file are left out; only tasks are imported.
-- **Importing the same file again** adds only the tasks that weren't there
-  before, wherever the earlier ones have moved since.
+- **Importing the same file again** doesn't double anything. Reminders from
+  a calendar or a Reminders list are recognised by their ids, wherever they
+  have moved since. Lines of plain text are recognised by their titles: a
+  line is skipped when the list already has an open reminder of that name.
 - **Undo** (Ctrl+Z) takes the whole import back.
 
-In a terminal: `reminders import FILE.ics [--list LIST]`.
+In a terminal: `reminders import FILE [--list LIST]`.
+
+## Exporting a list
+
+**⋮ → Export…** (or right-click the list in the sidebar) saves a list as a
+file, in the same three formats Import reads:
+
+- **Markdown:** the list file itself, with everything. Import it into
+  another Reminders folder, or keep it as a copy.
+- **Plain Text:** a line per open reminder, written as you'd type it in New
+  Reminder (`Pay rent #home 📅 2026-10-31`), with subtasks indented and
+  sections as `# Headings`. **Include Completed** adds the completed ones.
+  Notes are left out.
+- **iCalendar** (`.ics`): the list as tasks for other calendar and
+  reminders apps, named after the list and in its colour. Notes, subtasks,
+  repeats, flags and sections all come along.
+
+An exported list imports back as it was. A Markdown or iCalendar file keeps
+the reminders' ids, so importing it where the list still is adds nothing
+twice.
+
+In a terminal: `reminders export LIST [--format md|txt|ics] [-o FILE]`.
 
 ## Sections
 

@@ -549,7 +549,7 @@ settings in a `[source.NAME]` section; later the apps show several at once.
     trips, three-way merging of Syncthing conflict copies, undo/redo history,
     settings, the XDG base directories, and sources: several open at once
     (`Library`), each with its own back end (syncthing, local, caldav,
-    webdav). Unit tests pass (122).
+    webdav). Unit tests pass (130).
   - **CalDAV and WebDAV back ends** (net/, libcurl + libxml2): a local
     Markdown copy kept in step with the server, merged three-way; synced on
     open, every `interval=` minutes and shortly after edits. Tested against
@@ -562,17 +562,34 @@ settings in a `[source.NAME]` section; later the apps show several at once.
   - **Terminal client** (`reminders`): the CLI and the TUI, sharing settings
     and the last view with the app; `sync`, `--offline`, `new-list
     --source`, `import`.
-  - **ICS import** (2026-10-03): core ics_import.hpp `read_ics` (VTODOs via
+  - **Import** (2026-10-03): core importer.hpp. `read_import` tells the
+    kinds apart by content: BEGIN:VCALENDAR → `read_ics`; checklist lines
+    → `read_markdown` (Document's reminders with sections, ids, colour);
+    else `read_plain_text` (a line each; bullets/numbering dropped, "#
+    Heading" → section, indented → subtask, inline fields via
+    parse_fields, front matter skipped). `read_ics` (VTODOs via
     read_todo; RELATED-TO → subtasks under the top parent;
     X-APPLE-SORT-ORDER order when every task has one; events and other
     components counted as skipped; X-WR-CALNAME / X-APPLE-CALENDAR-COLOR
     for a new list) and `import_into` (appends, one save; skips ids already
-    in the library). Ids come from UIDs (`id_for_uid`: a usable UID as is,
+    in the library; id-less ones get new ids, and are skipped when the list
+    has an open reminder of that title). Ids come from UIDs (`id_for_uid`: a usable UID as is,
     else 10 base-36 digits of its FNV-1a hash), so re-importing doesn't
-    duplicate. CLI `reminders import FILE.ics [--list L] [--source S]`
-    (list by name, made if missing). GUI ☰ → Import…: file chooser (.ics),
+    duplicate. CLI `reminders import FILE [--list L] [--source S]`
+    (list by name, made if missing). GUI ☰ → Import…: file chooser (.ics,
+    .md, .txt, or all files),
     then an alert with "Into" (New List “calendar name” or any list), one
     undo step. Events aren't imported (could become dated reminders later).
+  - **Export** (2026-10-03): core exporter.hpp `export_list(list, format)`:
+    Markdown = serialize(doc); text = open reminders (all with
+    `completed`) via format_fields without id/created, subtasks indented
+    2, sections "# Name"; ics = VCALENDAR (X-WR-CALNAME, X-APPLE-CALENDAR-
+    COLOR) of new_todo_calendar VTODOs, UID = reminder id (ensure_ids
+    first), RELATED-TO parents, X-APPLE-SORT-ORDER steps of 1024. Each
+    round-trips through the importer (tests). CLI `reminders export LIST
+    [--format md|txt|ics] [-o FILE|DIR|-] [-a]` (format from -o's
+    extension). GUI ⋮ → Export… (header and sidebar menus): alert with
+    Format (+ Include Completed for text), then a save dialog.
   - **Docs:** README, docs/FORMAT.md, docs/USING.md, docs/TERMINAL.md,
     docs/settings.example.ini.
 - **Known gaps:**

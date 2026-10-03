@@ -19,7 +19,8 @@
 
 #include "reminders/dates.hpp"
 #include "reminders/format.hpp"
-#include "reminders/ics_import.hpp"
+#include "reminders/exporter.hpp"
+#include "reminders/importer.hpp"
 #include "reminders/settings.hpp"
 #include "reminders/library.hpp"
 #include "reminders/paths.hpp"
@@ -61,11 +62,19 @@ Commands:
   delete NAME [--yes]           Delete
   search TEXT                   Search titles and notes
   new-list NAME [--color C] [--icon I]
-  import FILE.ics [--list LIST] [--source S]
-                                Import the tasks in an iCalendar file into
-                                LIST, made in S if missing (default: the
-                                calendar's name, else the file's). Tasks
-                                imported before are skipped
+  import FILE [--list LIST] [--source S]
+                                Import reminders from an iCalendar (.ics),
+                                Markdown or plain text file (a line each)
+                                into LIST, made in S if missing (default:
+                                the calendar's name, else the file's).
+                                Ones imported before are skipped
+  export LIST [--format F] [-o FILE] [-a]
+                                Write LIST as F: md (the list file, the
+                                default), txt (a line per open reminder; -a
+                                adds completed ones) or ics (iCalendar).
+                                Without --format, FILE's extension says.
+                                To FILE (a folder: LIST.EXT in it), else
+                                to the terminal
   folder [PATH]                 Show or set the folder (shared with the app)
   sync [SOURCE]                 Sync CalDAV and WebDAV sources with their servers now
                                 (other commands sync before and after, too)
@@ -256,7 +265,7 @@ struct Args {
 // Options that take a value; anything else starting with "--" is a flag.
 const std::vector<std::string> kValued = {"title", "list",  "section", "parent", "due",   "time", "priority", "tag",
                                           "untag", "repeat", "notes",  "url",    "color", "icon", "in",       "to",
-                                          "source"};
+                                          "source", "format", "output"};
 const std::vector<std::string> kFlags = {"no-due", "flag", "unflag", "no-repeat", "yes", "all"};
 
 Args parse_args(std::span<const std::string> in) {
@@ -269,6 +278,9 @@ Args parse_args(std::span<const std::string> in) {
         }
         if (s == "-a" || s == "-y") {
             a.options.emplace(s == "-a" ? "all" : "yes", "");
+        } else if (s == "-o") {
+            if (i + 1 >= in.size()) throw UsageError("-o needs a file name");
+            a.options.emplace("output", in[++i]);
         } else if (s.starts_with("--")) {
             auto name = s.substr(2);
             std::string value;
@@ -338,6 +350,7 @@ private:
     int cmd_search(const Args& a);
     int cmd_new_list(const Args& a);
     int cmd_import(const Args& a);
+    int cmd_export(const Args& a);
 };
 
 // A list by name ("Groceries", any case) or, when two sources have one of
@@ -810,13 +823,15 @@ int App::cmd_new_list(const Args& a) {
 }
 
 int App::cmd_import(const Args& a) {
-    if (a.positional.size() != 1) throw UsageError("usage: reminders import FILE.ics [--list LIST] [--source SOURCE]");
+    if (a.positional.size() != 1) throw UsageError("usage: reminders import FILE [--list LIST] [--source SOURCE]");
     auto path = folder_arg(a.positional[0]);
     std::ifstream in(path, std::ios::binary);
     if (!in) throw std::runtime_error(std::format("can't read {}", path.string()));
     std::ostringstream text;
     text << in.rdbuf();
-    auto imp = rem::read_ics(text.str(), std::chrono::current_zone());
+    auto imp = rem::read_import(text.str(), std::chrono::current_zone());
+    if (imp.items.empty())
+        throw std::runtime_error(std::format("there are no reminders to import in {}", path.filename().string()));
 
     // The list: --list (a name, or source/name), else one named after the
     // calendar (or the file); made in --source (or the default source) if
@@ -864,6 +879,41 @@ int App::cmd_import(const Args& a) {
     return 0;
 }
 
+int App::cmd_export(const Args& a) {
+    if (a.positional.empty()) throw UsageError("usage: reminders export LIST [--format md|txt|ics] [-o FILE] [-a]");
+    auto& list = list_named(join(a.positional));
+    auto out = a.get("output");
+    std::optional<rem::ExportFormat> format;
+    if (auto f = a.get("format")) {
+        format = rem::export_format(*f);
+        if (!format) throw UsageError("--format is md, txt or ics");
+    } else if (out) {
+        format = rem::export_format_for(*out);
+    }
+    auto fmt = format.value_or(rem::ExportFormat::Markdown);
+    rem::ExportOptions options;
+    options.completed = a.has("all");
+    auto text = rem::export_list(list, fmt, options);
+    if (!out || *out == "-") {
+        std::cout << text;
+        return 0;
+    }
+    auto path = folder_arg(*out);
+    if (std::filesystem::is_directory(path))
+        path /= std::format("{}.{}", list.name, rem::export_extension(fmt));
+    std::ofstream file(path, std::ios::binary | std::ios::trunc);
+    file << text;
+    file.close();
+    if (!file) throw std::runtime_error(std::format("couldn't write {}", path.string()));
+    if (g_.json)
+        std::cout << std::format(R"({{"list":{},"format":"{}","file":{}}})", json_escape(store_.key_of(list)),
+                                 rem::export_extension(fmt), json_escape(path.string()))
+                  << "\n";
+    else
+        std::cout << std::format("Exported {} to {}\n", store_.label(list), path.string());
+    return 0;
+}
+
 int App::run(const std::string& cmd, const Args& a) {
     if (cmd == "lists") return cmd_lists();
     if (cmd == "list" || cmd == "ls") return cmd_list(a);
@@ -877,6 +927,7 @@ int App::run(const std::string& cmd, const Args& a) {
     if (cmd == "search") return cmd_search(a);
     if (cmd == "new-list") return cmd_new_list(a);
     if (cmd == "import") return cmd_import(a);
+    if (cmd == "export") return cmd_export(a);
     throw UsageError(std::format("unknown command “{}” (see reminders --help)", cmd));
 }
 
