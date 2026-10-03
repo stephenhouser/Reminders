@@ -1,4 +1,4 @@
-// Syncing the sources kept on a server (CalDAV, WebDAV) over the network.
+// Syncing the sources the app syncs itself (CalDAV, WebDAV, git).
 #pragma once
 
 #include <string>
@@ -13,8 +13,8 @@ namespace rem {
 // SyncError if the command fails.
 std::string run_password_command(const std::string& command);
 
-// Syncs a CalDAV or WebDAV source with its server (sync_caldav_source,
-// sync_webdav_source). Only reads the Store's folder, state folder and back
+// Syncs a CalDAV, WebDAV or git source with its server (sync_caldav_source,
+// sync_webdav_source, sync_git_source). Only reads the Store's folder, state folder and back
 // end, so it can run on another thread while the Store is in use: the lists
 // it writes come back to the app as outside changes. Throws SyncError when
 // the server can't be reached.

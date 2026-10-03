@@ -6,6 +6,7 @@ add_library(reminders_net
   src/caldav_client.cpp
   src/webdav_client.cpp
   src/server_sync.cpp
+  src/git_sync.cpp
   src/sync_runner.cpp
 )
 target_include_directories(reminders_net PUBLIC include)

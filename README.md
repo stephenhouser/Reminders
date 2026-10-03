@@ -2,13 +2,13 @@
 
 A to-do app modelled on Apple Reminders, whose data is a folder of plain
 Markdown files. No account, no server, no database: every list is a `.md` file you can read and edit in any text editor. You can of course use one of
-several synchronization back-ends including Syncthing, CalDAV and WebDAV to connect
+several synchronization back-ends including Syncthing, CalDAV, WebDAV and git to connect
 your reminders with all your devices.
 
 The app can show several *sources* at once, for example a Syncthing folder
 shared with your phone beside a local folder that stays on this computer, or
 the task lists of a CalDAV account (Nextcloud, Fastmail, …), or a folder on
-a WebDAV server. Each source has
+a WebDAV server, or a git repository. Each source has
 a *back end* that says how its lists are kept in sync.
 
 ```markdown
@@ -46,7 +46,7 @@ can reuse.
 
 ## Features (Linux client)
 
-- **Sources**: several open at once, each its own sidebar group, each with its own back end (Syncthing, a plain local folder, a CalDAV account, or a WebDAV folder). Smart lists, tags and search cover them all, and reminders can be moved between them. Managed from ☰ → Sources….
+- **Sources**: several open at once, each its own sidebar group, each with its own back end (Syncthing, a plain local folder, a CalDAV account, a WebDAV folder, or a git repository). Smart lists, tags and search cover them all, and reminders can be moved between them. Managed from ☰ → Sources….
 - **Lists**: colours, icons, sections, manual order (drag or Alt+↑/↓), and subtasks one level deep (indent with Ctrl+]).
 - **Reminders**: title, notes, URL, due date and time, repeat ("every 2 weeks", weekdays, …), flag, priority, tags.
 - **Smart lists**: Today, Scheduled, All, All Reminders (completed ones too), Flagged, Completed, plus one per tag. Search across everything, and a Ctrl+K "Go to" switcher.
@@ -89,6 +89,11 @@ backend=webdav
 url=https://cloud.example.com/remote.php/dav/files/me/Reminders/
 username=me
 password-command=secret-tool lookup service reminders-webdav
+
+[source.notes]
+backend=git
+folder=~/notes/todo
+url=git@github.com:me/notes.git
 ```
 
 | Back end | What it does |
@@ -97,9 +102,10 @@ password-command=secret-tool lookup service reminders-webdav
 | `local` | Just the folder: files are read and written as they are. Outside edits still show up live. |
 | `caldav` | Task lists on a CalDAV server, one calendar per list. A local copy (Markdown, like the others) is merged three-way with the server's tasks on start, every few minutes and after each change. Properties the app doesn't use are kept. See [CalDAV accounts](docs/USING.md#caldav-accounts). |
 | `webdav` | List files in a folder on a WebDAV server (Nextcloud, ownCloud, a NAS, …), as they are. A local copy is synced file by file: ETag-conditional writes, a three-way merge when both sides changed, renames sent as MOVE. See [WebDAV folders](docs/USING.md#webdav-folders). |
+| `git` | A folder in a git repository: changed lists are committed, then pulled and pushed with the remote by running `git` (so SSH keys and credential helpers work). A list changed on both sides is merged reminder by reminder, not line by line. See [Git repositories](docs/USING.md#git-repositories). |
 
 Lists are named `source/name` where a name alone would be ambiguous (in
-settings, the CLI and the quick switcher). More back ends (git) are planned.
+settings, the CLI and the quick switcher).
 
 ## How syncing works (Syncthing back end)
 
@@ -123,6 +129,7 @@ Details: [docs/FORMAT.md](docs/FORMAT.md).
 - `glib-compile-resources` (part of GLib's development tools)
 - ncurses with wide-character support (`ncursesw`), for the terminal client
 - libcurl and libxml2, with development headers, for CalDAV and WebDAV
+- git (the command), at run time, for git sources
 - Python 3, only to run the network tests (they start a small fake server)
 - zlib, optional (found if installed): compresses exported `.zip` archives; without it they're written uncompressed
 
@@ -143,7 +150,7 @@ cmake -S . -B build -G Ninja
 cmake --build build
 ctest --test-dir build            # all the tests (or run them one by one:)
 ./build/core/core_tests          # 136 tests for the core library (core_tests NAME runs the matching ones)
-./build/net/net_tests net/tests/fake_dav.py   # CalDAV and WebDAV over HTTP, against a fake server
+./build/net/net_tests net/tests/fake_dav.py   # CalDAV and WebDAV against a fake server; git against local repositories
 ./build/linux/Reminders          # the GNOME app (or: ./build/linux/Reminders ~/Sync/Reminders)
 ./build/cli/reminders --help     # the terminal client
 ```
@@ -218,13 +225,14 @@ INSTRUCTIONS.md        The original brief, and how to recreate this project
 | `clipboard.hpp` | Copying and pasting reminders as text |
 | `dates.hpp` | Local date, typed dates (`tomorrow`, `fri`, `+3d`), relative labels (`Tomorrow`, `Oct 3`) |
 
-### CalDAV and WebDAV (`net/`)
+### CalDAV, WebDAV and git (`net/`)
 
 | Header | Purpose |
 |---|---|
 | `caldav_client.hpp` | The `Remote` over HTTP: finding the calendars, listing, fetching and storing tasks, making calendars |
 | `webdav_client.hpp` | The `FileRemote` over HTTP: PROPFIND, GET, PUT, DELETE and MOVE on the folder's files, made if missing |
-| `server_sync.hpp` | `sync_source()` for either kind; `password-command=` |
+| `git_sync.hpp` | Git sources: commit, fetch, merge (list files by the app's merge), push, by running `git` |
+| `server_sync.hpp` | `sync_source()` for any of the three; `password-command=` |
 | `sync_runner.hpp` | Background syncing for the apps: on start, every `interval=` minutes, and shortly after a list file changes |
 
 ### The GNOME client

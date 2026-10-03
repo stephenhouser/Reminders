@@ -1,4 +1,4 @@
-// Keeps a Library's CalDAV and WebDAV sources in sync in the background: each one when
+// Keeps a Library's CalDAV, WebDAV and git sources in sync in the background: each one when
 // the runner starts, every `interval=` minutes, and two seconds after one of
 // its list files changes (an edit in the app, or by hand). The lists it
 // writes reach the app the usual way, as changed files.
@@ -19,8 +19,8 @@ namespace rem {
 
 class SyncRunner {
 public:
-    // Picks up the library's CalDAV and WebDAV sources; does nothing if
-    // there are none.
+    // Picks up the library's CalDAV, WebDAV and git sources; does nothing
+    // if there are none.
     // The library's stores must outlive the runner.
     explicit SyncRunner(Library& library);
     ~SyncRunner();

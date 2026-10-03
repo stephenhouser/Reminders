@@ -80,7 +80,7 @@ Commands:
                                 the folder -o names, or one .zip archive
                                 if -o names a .zip file
   folder [PATH]                 Show or set the folder (shared with the app)
-  sync [SOURCE]                 Sync CalDAV and WebDAV sources with their servers now
+  sync [SOURCE]                 Sync CalDAV, WebDAV and git sources now
                                 (other commands sync before and after, too)
   tui                           Open the interactive interface
 
@@ -104,7 +104,7 @@ Options:
   -f, --folder PATH  Use PATH instead of the saved folder
   --json             Machine-readable output
   --no-color         No colours (also when NO_COLOR is set or not a terminal)
-  --offline          Don't sync CalDAV or WebDAV sources (use their local copy)
+  --offline          Don't sync CalDAV, WebDAV or git sources
   --show-key-numbers Label sidebar entries with their number key, e.g.
                      "(1)Today" (interactive interface; overrides the
                      show-key-numbers setting)
@@ -131,7 +131,7 @@ bool sync_servers(rem::Library& library, const std::string& only = "", bool verb
     bool ok = true;
 #ifdef REMINDERS_NETWORK
     for (auto& s : library.sources()) {
-        if (!rem::has_server(s.config.backend) || !s.store) continue;
+        if (!rem::syncs(s.config.backend) || !s.store) continue;
         if (!only.empty() && s.config.name != only) continue;
         try {
             auto r = rem::sync_source(*s.store, s.config);
@@ -159,7 +159,7 @@ rem::fs::path folder_arg(const std::string& arg) {
 }
 
 bool has_servers(const rem::Library& library) {
-    return std::ranges::any_of(library.sources(), [](auto& s) { return rem::has_server(s.config.backend); });
+    return std::ranges::any_of(library.sources(), [](auto& s) { return rem::syncs(s.config.backend); });
 }
 
 // --- output ---------------------------------------------------------------
@@ -1067,9 +1067,9 @@ int main(int argc, char** argv) {
         bool own_folder = !g.folder || !library->sources().front().config.name.empty();
 
         if (cmd == "sync") {
-            if (!has_servers(*library)) throw std::runtime_error("no CalDAV or WebDAV sources to sync");
+            if (!has_servers(*library)) throw std::runtime_error("no CalDAV, WebDAV or git sources to sync");
 #ifndef REMINDERS_NETWORK
-            throw std::runtime_error("this build has no CalDAV or WebDAV support");
+            throw std::runtime_error("this build has no CalDAV, WebDAV or git support");
 #endif
             return sync_servers(*library, rest.empty() ? "" : rest[0], !g.json) ? 0 : 1;
         }

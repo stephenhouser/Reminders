@@ -209,6 +209,13 @@ std::string source_problem(const SourceEdit& e, const std::string& self) {
         return "This copy of Reminders was built without CalDAV and WebDAV";
 #endif
         if (auto p = dav_problem(e.dav); !p.empty()) return p;
+    } else if (e.backend == rem::BackendKind::Git) {
+#ifndef REMINDERS_NETWORK
+        return "This copy of Reminders was built without git support";
+#endif
+        if (e.folder.empty()) return "Choose the repository's folder, or give an address to clone from";
+        if (e.git.url.empty() && !rem::in_git_repo(e.folder))
+            return "That folder isn't in a git repository: give an address to clone it from";
     } else {
         if (e.folder.empty()) return "Choose a folder";
         if (!std::filesystem::is_directory(e.folder, ec)) return "That folder doesn't exist";
@@ -611,7 +618,7 @@ void Window::build() {
     g_menu_append(s1, "_Export…", "win.export");
     g_menu_append(s1, "S_ources…", "win.sources");
     auto* sync_item = g_menu_item_new("S_ync Now", "win.sync-now");
-    g_menu_item_set_attribute(sync_item, "hidden-when", "s", "action-disabled");  // no CalDAV or WebDAV sources
+    g_menu_item_set_attribute(sync_item, "hidden-when", "s", "action-disabled");  // no CalDAV, WebDAV or git sources
     g_menu_append_item(s1, sync_item);
     g_object_unref(sync_item);
     g_menu_append(menu_section(primary_menu), "Show _Hidden Lists", "win.show-hidden");
@@ -1059,12 +1066,12 @@ void Window::source_info(const std::string& name) {
     if (!config) return;
     SourceEdit edit{config->name, config->title, config->backend, config->folder,
                     rem::load_setting("default-source") == name || (store_ && store_->default_source() == name),
-                    config->dav, false};
+                    config->dav, config->git, false};
     show_source_dialog(
         window_, edit, [name](const SourceEdit& e) { return source_problem(e, name); },
         [this](SourceEdit e) {
             try {
-                rem::save_source(rem::SourceConfig{e.name, e.backend, e.folder, e.title, e.dav});
+                rem::save_source(rem::SourceConfig{e.name, e.backend, e.folder, e.title, e.dav, e.git});
                 if (e.title.empty()) rem::save_section_setting("source." + e.name, "title", "");
                 if (e.is_default) rem::save_setting("default-source", e.name);
             } catch (const std::exception& err) {
@@ -1082,6 +1089,7 @@ void Window::show_sources() {
         auto folder = rem::contract_path(s.folder);  // ~/… for folders in the home folder
         auto detail = s.backend == rem::BackendKind::Caldav   ? std::format("CalDAV · {}", s.dav.url)
                     : s.backend == rem::BackendKind::Webdav ? std::format("WebDAV · {}", s.dav.url)
+                    : s.backend == rem::BackendKind::Git    ? std::format("Git · {}", folder)
                     : std::format("{} · {}", s.backend == rem::BackendKind::Local ? "Local folder" : "Syncthing", folder);
         rows.push_back({s.name, rem::source_title(s), detail});
     }
@@ -1099,9 +1107,9 @@ void Window::add_source() {
         [this](SourceEdit e) {
             try {
                 if (!rem::has_server(e.backend)) std::filesystem::create_directories(e.folder);
-                auto config = rem::add_source(rem::SourceConfig{"", e.backend, e.folder, e.title, e.dav});
+                auto config = rem::add_source(rem::SourceConfig{"", e.backend, e.folder, e.title, e.dav, e.git});
                 if (e.is_default) rem::save_setting("default-source", config.name);
-                toast(rem::has_server(e.backend)
+                toast(rem::syncs(e.backend)
                           ? std::format("Added “{}”; its lists appear once it has synced", rem::source_title(config))
                           : std::format("Added “{}”", rem::source_title(config)));
             } catch (const std::exception& err) {

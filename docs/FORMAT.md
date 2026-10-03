@@ -208,6 +208,15 @@ them as it would a synced folder. Clients that sync with such a folder:
 
 No `.reminders/` folder or conflict copies are kept on the server.
 
+## Git
+
+A client can also keep a folder of list files in a git repository. The
+list files are committed as they are (only the folder's top-level `*.md`).
+When a merge leaves a list file in conflict, clients merge it as for
+conflicts (below), with git's merge base as the base, the local version as
+"main" and the incoming one as the "conflict copy", and commit the result.
+They don't leave git's conflict markers in a list file.
+
 ## Conflicts
 
 When two devices edit the same list before syncing, Syncthing keeps one version

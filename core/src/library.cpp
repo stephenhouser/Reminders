@@ -315,7 +315,9 @@ std::unique_ptr<Library> open_library(const std::string& device) {
     for (auto& source : load_sources()) {
         std::error_code ec;
         // A CalDAV or WebDAV source's local copy is made on first use.
-        if (has_server(source.backend) || fs::is_directory(source.folder, ec)) library->add(source, device);
+        if (has_server(source.backend) || (source.backend == BackendKind::Git && !source.git.url.empty()) ||
+            fs::is_directory(source.folder, ec))
+            library->add(source, device);
     }
     return library;
 }

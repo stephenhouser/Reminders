@@ -5,6 +5,7 @@
 #include <sys/wait.h>
 
 #include "reminders/caldav_client.hpp"
+#include "reminders/git_sync.hpp"
 #include "reminders/webdav_client.hpp"
 
 namespace rem {
@@ -28,7 +29,8 @@ SyncResult sync_source(Store& store, const SourceConfig& source) {
     switch (source.backend) {
     case BackendKind::Caldav: return sync_caldav_source(store, source);
     case BackendKind::Webdav: return sync_webdav_source(store, source);
-    default: throw SyncError(std::format("{} isn't kept on a server", source.name));
+    case BackendKind::Git: return sync_git_source(store, source);
+    default: throw SyncError(std::format("{} isn't synced by the app", source.name));
     }
 }
 

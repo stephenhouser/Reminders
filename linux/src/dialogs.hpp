@@ -48,7 +48,8 @@ void show_tag_dialog(GtkWidget* parent, const std::string& tag, ListEdit style,
                      std::function<void(ListEdit)> on_done);
 
 // "Source Info": a source's title, type (back end), folder and, for CalDAV
-// and WebDAV, its server; and whether new lists go into it. Its name
+// and WebDAV, its server (for git, its repository); and whether new lists
+// go into it. Its name
 // ([source.NAME]) is fixed: settings refer to it. With `is_new` it's "Add
 // Source": the name comes from the title, and a CalDAV or WebDAV source's
 // local copy defaults to its place in $XDG_DATA_HOME. The rows change with
@@ -60,6 +61,7 @@ struct SourceEdit {
     std::filesystem::path folder;
     bool is_default = false;
     rem::DavSettings dav = {};
+    rem::GitSettings git = {};
     bool is_new = false;
 };
 // `validate` returns an error to show, or "". `on_remove` runs when Remove

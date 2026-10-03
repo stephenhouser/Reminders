@@ -29,8 +29,8 @@ interactive interface use all of them:
   `--source`, in the default source. In the interactive interface, `N`
   creates it in the source whose group is selected.
 
-[CalDAV](USING.md#caldav-accounts) and [WebDAV](USING.md#webdav-folders)
-sources are synced with their servers
+[CalDAV](USING.md#caldav-accounts), [WebDAV](USING.md#webdav-folders) and
+[git](USING.md#git-repositories) sources are synced with their servers
 around each command: before it runs, and after one that changes something.
 `--offline` skips that and works on the local copy. `reminders sync [SOURCE]`
 syncs now and says what changed. The interactive interface syncs in the

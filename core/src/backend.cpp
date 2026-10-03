@@ -90,6 +90,7 @@ std::string_view backend_name(BackendKind kind) {
     case BackendKind::Local: return "local";
     case BackendKind::Caldav: return "caldav";
     case BackendKind::Webdav: return "webdav";
+    case BackendKind::Git: return "git";
     case BackendKind::Syncthing: break;
     }
     return "syncthing";
@@ -102,10 +103,12 @@ std::optional<BackendKind> parse_backend(std::string_view name) {
     if (n == "local") return BackendKind::Local;
     if (n == "caldav") return BackendKind::Caldav;
     if (n == "webdav") return BackendKind::Webdav;
+    if (n == "git") return BackendKind::Git;
     return std::nullopt;
 }
 
 bool has_server(BackendKind kind) { return kind == BackendKind::Caldav || kind == BackendKind::Webdav; }
+bool syncs(BackendKind kind) { return has_server(kind) || kind == BackendKind::Git; }
 
 std::optional<std::string> Backend::list_name_for(const fs::path& file) const {
     auto fname = file.filename().string();
@@ -139,7 +142,7 @@ void ServerBackend::deleted_by_user(std::string_view name) const {
 
 std::unique_ptr<Backend> make_backend(BackendKind kind, fs::path state_dir) {
     if (kind == BackendKind::Local) return std::make_unique<LocalBackend>();
-    if (has_server(kind)) return std::make_unique<ServerBackend>(kind, std::move(state_dir));
+    if (syncs(kind)) return std::make_unique<ServerBackend>(kind, std::move(state_dir));
     return std::make_unique<SyncthingBackend>(std::move(state_dir));
 }
 

@@ -14,6 +14,9 @@
 //              kept in step by caldav_sync() (see caldav.hpp).
 //   webdav     The folder is a local copy of list files kept in a folder on a
 //              WebDAV server, kept in step by webdav_sync() (see webdav.hpp).
+//   git        The folder is in a git working tree: changed lists are
+//              committed, and pulled and pushed with its remote, by
+//              git_sync() (net/, git_sync.hpp).
 #pragma once
 
 #include <filesystem>
@@ -29,13 +32,16 @@ namespace rem {
 
 namespace fs = std::filesystem;
 
-enum class BackendKind { Syncthing, Local, Caldav, Webdav };
+enum class BackendKind { Syncthing, Local, Caldav, Webdav, Git };
 
-// "syncthing" / "local" / "caldav" / "webdav"; parse_backend is case-insensitive.
+// "syncthing" / "local" / "caldav" / "webdav" / "git"; parse_backend is case-insensitive.
 std::string_view backend_name(BackendKind kind);
 std::optional<BackendKind> parse_backend(std::string_view name);
 // CalDAV and WebDAV: the folder is a local copy of what's on a server.
 bool has_server(BackendKind kind);
+// The back ends the app syncs itself (SyncRunner, `reminders sync`):
+// CalDAV, WebDAV and git.
+bool syncs(BackendKind kind);
 
 // A network or server failure; the sync stops and is retried later.
 struct SyncError : std::runtime_error {
@@ -80,7 +86,7 @@ public:
     virtual std::mutex* write_lock() { return nullptr; }
 };
 
-// The back end of a source kept on a server (CalDAV, WebDAV): plain files,
+// The back end of a source the app syncs (CalDAV, WebDAV, git): plain files,
 // like local, plus a note of each list renamed or deleted in the app, for
 // the next sync to apply on the server. The notes are in
 // <state_dir>/<backend name>/ (records_dir()), beside the sync's records:

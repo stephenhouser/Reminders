@@ -36,6 +36,17 @@ SourceConfig read_source(const std::string& name) {
         if (ec == std::errc{} && p == interval.data() + interval.size() && n > 0) s.dav.interval = n;
         if (s.folder.empty() && !s.dav.url.empty()) s.folder = default_copy_folder(s.backend, name);
     }
+    if (s.backend == BackendKind::Git) {
+        auto section = section_of(name);
+        s.git.url = load_section_setting(section, "url");
+        s.git.remote = load_section_setting(section, "remote");
+        s.git.branch = load_section_setting(section, "branch");
+        auto interval = load_section_setting(section, "interval");
+        int n = 0;
+        auto [p, ec] = std::from_chars(interval.data(), interval.data() + interval.size(), n);
+        if (ec == std::errc{} && p == interval.data() + interval.size() && n > 0) s.git.interval = n;
+        if (s.folder.empty() && !s.git.url.empty()) s.folder = default_copy_folder(s.backend, name);
+    }
     return s;
 }
 
@@ -152,6 +163,25 @@ void save_source(const SourceConfig& source) {
         save_section_setting(section, "password-command", source.dav.password_command);
         save_section_setting(section, "interval", std::to_string(source.dav.interval));
     }
+    if (source.backend == BackendKind::Git) {
+        save_section_setting(section, "url", source.git.url);
+        save_section_setting(section, "remote", source.git.remote);
+        save_section_setting(section, "branch", source.git.branch);
+        save_section_setting(section, "interval", std::to_string(source.git.interval));
+    }
+}
+
+int sync_interval(const SourceConfig& source) {
+    return source.backend == BackendKind::Git ? source.git.interval : source.dav.interval;
+}
+
+bool in_git_repo(const fs::path& folder) {
+    std::error_code ec;
+    for (auto p = fs::weakly_canonical(folder, ec); !p.empty(); p = p.parent_path()) {
+        if (fs::exists(p / ".git", ec)) return true;
+        if (p == p.parent_path()) break;
+    }
+    return false;
 }
 
 BackendKind detect_backend(const fs::path& folder) {
@@ -207,6 +237,14 @@ std::string new_source_name(const SourceConfig& source) {
         }
         base = host;
     }
+    if (base.empty() && source.backend == BackendKind::Git && !source.git.url.empty()) {
+        // The repository's name: …/notes.git or …:you/notes → notes.
+        auto url = source.git.url;
+        while (!url.empty() && url.back() == '/') url.pop_back();
+        auto name = url.substr(url.find_last_of("/:") == std::string::npos ? 0 : url.find_last_of("/:") + 1);
+        if (name.ends_with(".git")) name.resize(name.size() - 4);
+        base = name;
+    }
     if (base.empty() && !source.folder.empty()) base = source.folder.filename().string();
     if (base.empty()) base = has_server(source.backend) ? std::string(backend_name(source.backend)) : "reminders";
     return unique_source_name(name_for(fs::path(base)), load_sources());
@@ -215,7 +253,8 @@ std::string new_source_name(const SourceConfig& source) {
 SourceConfig add_source(SourceConfig source) {
     bool first = load_sources().empty();
     if (source.name.empty()) source.name = new_source_name(source);
-    if (source.folder.empty() && has_server(source.backend)) source.folder = default_copy_folder(source.backend, source.name);
+    if (source.folder.empty() && (has_server(source.backend) || source.backend == BackendKind::Git))
+        source.folder = default_copy_folder(source.backend, source.name);
     save_source(source);
     if (first) save_setting("default-source", source.name);
     return source;
@@ -238,7 +277,9 @@ void remove_source(const std::string& name) {
 }
 
 std::unique_ptr<Store> open_source(const SourceConfig& source, const std::string& device) {
-    if (has_server(source.backend)) fs::create_directories(source.folder);
+    // A local copy, or a clone to be: made now, filled by the first sync.
+    if (has_server(source.backend) || (source.backend == BackendKind::Git && !source.git.url.empty()))
+        fs::create_directories(source.folder);
     auto state = source_state_dir(source, device);
     move_misplaced_state(source, device, state);
     auto store = std::make_unique<Store>(source.folder, state, source.backend);

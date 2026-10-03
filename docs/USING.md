@@ -546,11 +546,14 @@ folder as `~/…`, so the file works on another computer with a different home.
 | `local` | Just the folder: list files are read and saved as they are, and changes made by other programs still show up. |
 | `caldav` | Task lists on a CalDAV server (see [CalDAV accounts](#caldav-accounts)). The folder is a local copy, kept in step with the server. |
 | `webdav` | List files in a folder on a WebDAV server (see [WebDAV folders](#webdav-folders)). The folder is a local copy, kept in step with the server's. |
+| `git` | A folder in a git repository (see [Git repositories](#git-repositories)). Changed lists are committed, and pulled and pushed with the remote. |
 
 - **☰ → Sources… → Add Source…** asks for the source's **Name**, its
-  **Type** (Syncthing, Local Folder, CalDAV or WebDAV) and its **Folder**.
-  Choosing a folder picks the type for you (Syncthing inside a Syncthing
-  folder, one with `.stfolder`, else Local Folder); you can change it. For
+  **Type** (Syncthing, Local Folder, CalDAV, WebDAV or Git) and its
+  **Folder**. Choosing a folder picks the type for you (Syncthing inside a
+  Syncthing folder, one with `.stfolder`; Git inside a git repository;
+  else Local Folder); you can change it. For Git, a **Repository**
+  section has the rest (see [Git repositories](#git-repositories)). For
   CalDAV and WebDAV the folder is the **Local Copy**, which starts out in
   `~/.local/share/reminders/caldav/NAME` (or `webdav/NAME`), and a
   **Server** section asks for the account (see [CalDAV
@@ -676,6 +679,50 @@ title=Cloud
   (`~/.local/share/…`; `folder=` moves it).
 - **Problems** show as a message at the bottom of the window; the next sync
   tries again.
+
+### Git repositories
+
+A git source keeps its lists in a folder of a git repository, such as a
+notes repository you already have, or one made for the purpose on GitHub,
+GitLab, Gitea or your own server. Each list is a file in the repository,
+as in any folder, so the history of every list is in git. Add one with
+☰ → Sources… → **Add Source…**, Type **Git**, or by hand:
+
+```ini
+[source.notes]
+backend=git
+folder=~/notes/todo
+url=git@github.com:you/notes.git
+interval=15
+title=Notes
+```
+
+- **`folder=`** is the folder in a working tree (a clone) that holds the
+  lists: the repository's top, or a folder in it. Only the list files
+  directly in it (`*.md`) are committed. Other files in the repository, and
+  the folders under it, are left alone.
+- **`url=`** (Clone From) is optional. When the folder isn't in a
+  repository yet, it's cloned from there on the first sync; without
+  `folder=` the clone goes in `~/.local/share/reminders/git/NAME`.
+- **`remote=`** and **`branch=`** are optional: by default `origin` and
+  the branch checked out.
+- **Signing in** is git's own business. SSH keys and credential helpers
+  work as they do on the command line. Reminders never asks for a password:
+  a sync that needs one fails with git's message. On a server that wants
+  one, set up a key or a credential helper first.
+- **When it syncs:** when the app opens, every `interval=` minutes (default
+  15), and a couple of seconds after you change something; **☰ → Sync
+  Now** syncs straight away. Each sync commits the lists that changed, as
+  "Reminders (this computer): Groceries, Home", then pulls and pushes.
+- **Changes on both sides** of a list are merged by Reminders, reminder by
+  reminder, field by field, as for Syncthing conflicts, not line by line
+  as git would. When both changed the same field, this computer's change
+  wins. A conflict in a file that isn't a list stops the merge (it's
+  undone) and the message names the file: merge it with git.
+- **A repository without a remote** works too: every change is committed,
+  so you get a history of your lists and nothing else.
+- **Removing the source** leaves the folder as it is, even a clone in the
+  default place, since it may hold commits that haven't been pushed.
 
 ## Troubleshooting
 

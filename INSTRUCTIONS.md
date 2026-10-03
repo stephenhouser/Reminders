@@ -536,11 +536,6 @@ settings in a `[source.NAME]` section; later the apps show several at once.
 - **Query language**, SQL-like, for the CLI (`reminders query "…"`) and for
   defining your own smart lists (saved queries in the sidebar). Wanted by the
   user 2026-10-02; design not started.
-- **git back end**: lists in a git repository, synced by commit, pull
-  (merging list files three-way, as for conflicts) and push. Wanted by the
-  user 2026-10-03, for later; design not started. A git remote over HTTPS
-  needs much what `DavSettings` holds (url, username, password-command,
-  interval): decide then whether to share or generalise it.
 
 ## Where things stand (2026-10-03)
 
@@ -549,11 +544,13 @@ settings in a `[source.NAME]` section; later the apps show several at once.
     trips, three-way merging of Syncthing conflict copies, undo/redo history,
     settings, the XDG base directories, and sources: several open at once
     (`Library`), each with its own back end (syncthing, local, caldav,
-    webdav). Unit tests pass (136).
-  - **CalDAV and WebDAV back ends** (net/, libcurl + libxml2): a local
-    Markdown copy kept in step with the server, merged three-way; synced on
-    open, every `interval=` minutes and shortly after edits. Tested against
-    a fake server in Python (10 network tests).
+    webdav, git). Unit tests pass (136).
+  - **CalDAV, WebDAV and git back ends** (net/): CalDAV and WebDAV (libcurl
+    + libxml2) keep a local Markdown copy in step with the server, merged
+    three-way; git commits, pulls (list conflicts merged by the app) and
+    pushes. Synced on open, every `interval=` minutes and shortly after
+    edits. Tested against a fake DAV server in Python and local git
+    repositories (14 network tests).
   - **GNOME app** (`Reminders`): the features in the brief, the keyboard
     shortcuts, drag and drop within the app, the quick switcher,
     configurable sidebar groups (order, visible / collapsible / hidden,
@@ -628,6 +625,31 @@ settings in a `[source.NAME]` section; later the apps show several at once.
     names as export_lists). CLI: `export -o FILE.zip` without LIST. GUI:
     Compressed Archive switch, shown when two or more lists are ticked →
     save dialog for Reminders.zip. Checked with unzip -t.
+  - **git back end** (2026-10-03): runs the `git` command (no libgit2: not
+    installed, and git's own auth then works), from net/ git_sync.{hpp,cpp}
+    via posix_spawnp, no shell, LC_ALL=C, GIT_TERMINAL_PROMPT=0, SSH
+    BatchMode (fails rather than prompts). Settings: `GitSettings` (url,
+    remote, branch, interval; `SourceConfig::git`), `backend=git`;
+    `syncs(kind)` = CalDAV, WebDAV, git (SyncRunner, CLI sync, Sync Now);
+    `has_server` stays DAV only; `sync_interval(source)`; `in_git_repo`.
+    Back end: ServerBackend (write lock; its notes are deleted, git sees
+    renames itself). Sync: open/clone (url= into an empty folder; a
+    non-empty one: init + remote's HEAD branch, then merged with
+    --allow-unrelated-histories); commit `:(glob)*.md` only (relative to
+    the folder, so subfolders and other files stay out) as "Reminders
+    (DEVICE): names", identity from git config else -c user.name=Reminders
+    user.email=reminders@DEVICE; fetch remote branch (missing → push);
+    under the write lock commit again and merge FETCH_HEAD; unmerged
+    top-level list files resolved with `merge(ours=:2, theirs=:3,
+    base=:1)`, delete/modify keeps the modified side, anything else →
+    merge --abort + error; push HEAD:refs/heads/BRANCH, retried after a
+    rejection (3 tries). No remote → commits only. remove_source leaves a
+    git clone (unpushed commits). GUI: Type Git, Repository group (Clone
+    From, Remote, Branch, Sync Every), folder defaults to
+    $XDG_DATA_HOME/reminders/git/NAME when Clone From is set; choosing a
+    folder in a repository picks Git. Tests: net_test.cpp against bare
+    repositories made by the test (GIT_CONFIG_GLOBAL set to a file with
+    init.defaultBranch=main, no identity).
   - **Dropping files imports them** (2026-10-03): `make_file_drop_target`
     (GDK_TYPE_FILE_LIST, COPY) on the window (into: the list in view) and
     on each sidebar list row (highlighted with drop-into; into: that
@@ -639,7 +661,8 @@ settings in a `[source.NAME]` section; later the apps show several at once.
     docs/settings.example.ini.
 - **Known gaps:**
   - CalDAV and WebDAV haven't been tried against a real server yet (only
-    the fake one).
+    the fake one); git only against local repositories (not GitHub or
+    another host over SSH or HTTPS).
   - CalDAV: moves and section changes made in other CalDAV clients aren't
     merged (local order wins); RRULEs beyond FORMAT.md's rules are kept but
     not shown.
