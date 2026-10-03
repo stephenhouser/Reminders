@@ -70,10 +70,12 @@ public:
     Store(fs::path folder, fs::path state_dir, BackendKind backend = BackendKind::Syncthing);
 
     BackendKind backend() const { return backend_->kind(); }
+    Backend& backend_object() { return *backend_; }
     // Back-end set-up when the source is opened (Syncthing: .stignore).
     void prepare() { backend_->prepare(folder_); }
 
     const fs::path& folder() const { return folder_; }
+    const fs::path& state_dir() const { return state_dir_; }
     fs::path path_of(std::string_view list_name) const;
 
     // Scans the folder and loads every list, merging any conflict copies.
@@ -155,6 +157,8 @@ private:
     template <class Pred> std::vector<Ref> collect(Pred&& pred);
     std::vector<std::string> taken_ids();
     void write_file(ListFile& list, const std::string& text);
+    // Holds the back end's write lock, if it has one.
+    std::unique_lock<std::mutex> write_guard();
 };
 
 }  // namespace rem

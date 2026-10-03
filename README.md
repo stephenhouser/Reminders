@@ -5,10 +5,10 @@ Markdown files. No account, no server, no database: every list is a `.md` file y
 several synchronization back-ends including Syncthing and CalDAV to connect
 your reminders with all your devices.
 
-The app can show several folders (*sources*) at once, for example a
-Syncthing folder shared with your phone beside a local folder that stays on
-this computer. Each source has a *back end* that says how its folder is kept
-in sync.
+The app can show several *sources* at once, for example a Syncthing folder
+shared with your phone beside a local folder that stays on this computer, or
+the task lists of a CalDAV account (Nextcloud, Fastmail, …). Each source has
+a *back end* that says how its lists are kept in sync.
 
 ```markdown
 ---
@@ -45,7 +45,7 @@ can reuse.
 
 ## Features (Linux client)
 
-- **Sources**: several folders open at once, each its own sidebar group, each with its own back end (Syncthing or a plain local folder). Smart lists, tags and search cover them all, and reminders can be moved between them. Managed from ☰ → Sources….
+- **Sources**: several open at once, each its own sidebar group, each with its own back end (Syncthing, a plain local folder, or a CalDAV account). Smart lists, tags and search cover them all, and reminders can be moved between them. Managed from ☰ → Sources….
 - **Lists**: colours, icons, sections, manual order (drag or Alt+↑/↓), and subtasks one level deep (indent with Ctrl+]).
 - **Reminders**: title, notes, URL, due date and time, repeat ("every 2 weeks", weekdays, …), flag, priority, tags.
 - **Smart lists**: Today, Scheduled, All, All Reminders (completed ones too), Flagged, Completed, plus one per tag. Search across everything, and a Ctrl+K "Go to" switcher.
@@ -62,8 +62,9 @@ can reuse.
 
 ## Sources and back ends
 
-Sources are set up in the app (☰ → Sources… → Add Source…), with
-`reminders folder PATH` in a terminal, or by hand in `settings.ini`:
+Sources are set up in the app (☰ → Sources… → Add Folder… or Add CalDAV
+Account…), with `reminders folder PATH` in a terminal, or by hand in
+`settings.ini`:
 
 ```ini
 [source.personal]
@@ -74,16 +75,22 @@ folder=/home/me/Sync/Reminders
 backend=local
 folder=/home/me/Documents/Work lists
 title=Work
+
+[source.fastmail]
+backend=caldav
+url=https://caldav.fastmail.com/
+username=me@fastmail.com
+password-command=secret-tool lookup service reminders-caldav
 ```
 
 | Back end | What it does |
 |---|---|
 | `syncthing` | The folder is synced by Syncthing; conflict copies are merged (below). Picked automatically for a folder inside a Syncthing folder (one with `.stfolder`). |
 | `local` | Just the folder: files are read and written as they are. Outside edits still show up live. |
+| `caldav` | Task lists on a CalDAV server, one calendar per list. A local copy (Markdown, like the others) is merged three-way with the server's tasks on start, every few minutes and after each change. Properties the app doesn't use are kept. See [CalDAV accounts](docs/USING.md#caldav-accounts). |
 
 Lists are named `source/name` where a name alone would be ambiguous (in
-settings, the CLI and the quick switcher). More back ends (git, CalDAV, …) are
-planned.
+settings, the CLI and the quick switcher). More back ends (WebDAV, git) are planned.
 
 ## How syncing works (Syncthing back end)
 
@@ -106,14 +113,17 @@ Details: [docs/FORMAT.md](docs/FORMAT.md).
 - GTK ≥ 4.20 and libadwaita ≥ 1.8, with development headers
 - `glib-compile-resources` (part of GLib's development tools)
 - ncurses with wide-character support (`ncursesw`), for the terminal client
+- libcurl and libxml2, with development headers, for CalDAV
+- Python 3, only to run the CalDAV tests (they start a small fake server)
 
 | Distribution | Packages |
 |---|---|
-| Fedora 44 (tested) | `sudo dnf install gcc-c++ cmake ninja-build gtk4-devel libadwaita-devel glib2-devel ncurses-devel` |
-| Debian / Ubuntu (untested; needs a release with GTK 4.20 and libadwaita 1.8) | `sudo apt install g++ cmake ninja-build libgtk-4-dev libadwaita-1-dev libglib2.0-dev-bin libncurses-dev` |
+| Fedora 44 (tested) | `sudo dnf install gcc-c++ cmake ninja-build gtk4-devel libadwaita-devel glib2-devel ncurses-devel libcurl-devel libxml2-devel` |
+| Debian / Ubuntu (untested; needs a release with GTK 4.20 and libadwaita 1.8) | `sudo apt install g++ cmake ninja-build libgtk-4-dev libadwaita-1-dev libglib2.0-dev-bin libncurses-dev libcurl4-openssl-dev libxml2-dev` |
 
 Each client can be left out: `-DBUILD_GNOME_APP=OFF` builds without GTK, and
-`-DBUILD_TERMINAL_APP=OFF` without ncurses. The core library alone needs only a
+`-DBUILD_TERMINAL_APP=OFF` without ncurses. `-DBUILD_CALDAV=OFF` leaves out
+CalDAV (and libcurl and libxml2). The core library alone needs only a
 C++23 compiler and CMake.
 
 ### Build, test, run
@@ -121,7 +131,9 @@ C++23 compiler and CMake.
 ```sh
 cmake -S . -B build -G Ninja
 cmake --build build
-./build/core/core_tests          # 81 tests for the core library
+ctest --test-dir build            # all the tests (or run them one by one:)
+./build/core/core_tests          # 100 tests for the core library (core_tests NAME runs the matching ones)
+./build/net/net_tests net/tests/fake_caldav.py   # CalDAV over HTTP, against a fake server
 ./build/linux/Reminders          # the GNOME app (or: ./build/linux/Reminders ~/Sync/Reminders)
 ./build/cli/reminders --help     # the terminal client
 ```
@@ -159,9 +171,11 @@ docs/
   USING.md             User guide for the GNOME app
   TERMINAL.md          Guide to the terminal client (CLI and TUI)
 core/                  Platform-neutral C++23 library (standard library only)
-  include/reminders/   model, format, merge, recurrence, store, library, backend, sources, …
+  include/reminders/   model, format, merge, recurrence, store, library, backend, sources, caldav, …
   src/
   tests/               Unit tests with a tiny built-in harness (no dependencies)
+net/                   CalDAV over HTTP (libcurl, libxml2) and background syncing
+  tests/               Tests against fake_caldav.py, a small CalDAV server in Python
 linux/                 The GNOME client
   src/                 main, window, dialogs, support, gtk_util (RAII + signal helpers)
   data/                style.css, icons, .desktop file, GResource manifest
@@ -180,12 +194,22 @@ INSTRUCTIONS.md        The original brief, and how to recreate this project
 | `store.hpp` | One source's folder: loading, saving, conflict handling, list detection, smart-list queries |
 | `library.hpp` | Every source open at once: lists keyed `source/name`, smart lists, tags and search across sources, moves between them |
 | `sources.hpp` | The `[source.NAME]` sections of settings: loading, saving, the default source, opening one |
-| `backend.hpp` | Back ends (`syncthing`, `local`): what each adds to plain loading and saving |
+| `backend.hpp` | Back ends (`syncthing`, `local`, `caldav`): what each adds to plain loading and saving |
+| `caldav.hpp` | CalDAV syncing: pull, three-way merge with local edits, push; the server behind a `Remote` interface |
+| `ical.hpp` | iCalendar components and properties, kept close to the text so unknown properties survive |
+| `vtodo.hpp` | VTODO ↔ reminder, changing only the properties whose meaning changed |
 | `history.hpp` | Undo/redo as before/after snapshots of list files, merging around changes from other devices |
 | `syncthing.hpp` | Per-device state location and the `.stignore` entry |
 | `settings.hpp` | `~/.config/reminders/settings.ini`, shared by all clients, sidebar layout, and the device name |
 | `clipboard.hpp` | Copying and pasting reminders as text |
 | `dates.hpp` | Local date, typed dates (`tomorrow`, `fri`, `+3d`), relative labels (`Tomorrow`, `Oct 3`) |
+
+### CalDAV (`net/`)
+
+| Header | Purpose |
+|---|---|
+| `caldav_client.hpp` | The `Remote` over HTTP: finding the calendars, listing, fetching and storing tasks, making calendars; `password-command=` |
+| `sync_runner.hpp` | Background syncing for the apps: on start, every `interval=` minutes, and shortly after a list file changes |
 
 ### The GNOME client
 

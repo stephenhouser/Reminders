@@ -6,6 +6,7 @@
 #include <fstream>
 #include <sstream>
 
+#include "reminders/caldav.hpp"
 #include "reminders/syncthing.hpp"
 
 namespace rem {
@@ -115,13 +116,21 @@ private:
 
 }  // namespace
 
-std::string_view backend_name(BackendKind kind) { return kind == BackendKind::Local ? "local" : "syncthing"; }
+std::string_view backend_name(BackendKind kind) {
+    switch (kind) {
+    case BackendKind::Local: return "local";
+    case BackendKind::Caldav: return "caldav";
+    case BackendKind::Syncthing: break;
+    }
+    return "syncthing";
+}
 
 std::optional<BackendKind> parse_backend(std::string_view name) {
     std::string n;
     for (char c : name) n += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     if (n == "syncthing") return BackendKind::Syncthing;
     if (n == "local") return BackendKind::Local;
+    if (n == "caldav") return BackendKind::Caldav;
     return std::nullopt;
 }
 
@@ -143,6 +152,7 @@ void Backend::drop_state(std::string_view) const {}
 
 std::unique_ptr<Backend> make_backend(BackendKind kind, fs::path state_dir) {
     if (kind == BackendKind::Local) return std::make_unique<LocalBackend>();
+    if (kind == BackendKind::Caldav) return std::make_unique<CaldavBackend>(std::move(state_dir));
     return std::make_unique<SyncthingBackend>(std::move(state_dir));
 }
 

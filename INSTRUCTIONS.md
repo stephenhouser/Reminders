@@ -400,7 +400,7 @@ only compiled.
     move-group-up [] {}` runs a `win.` action, timed before the screenshot
     hook fires (1.5 s after start-up).
 
-## Sources and back ends (stages 1–3 of 4 done, 2026-10-02)
+## Sources and back ends (stages 1–3 done; stage 4: CalDAV done, 2026-10-02)
 
 Plan agreed with the user: lists come from *sources*, each a back end and its
 settings in a `[source.NAME]` section; later the apps show several at once.
@@ -450,8 +450,45 @@ settings in a `[source.NAME]` section; later the apps show several at once.
    Source…) is also on a source heading's menu with New List…. Change
    Folder… left the main menu (the welcome page's Choose Folder… and
    `reminders folder` set the default source's folder).
-4. New back ends (git, CalDAV, …). `local` keeps watching the folder for
-   outside edits (agreed).
+4. New back ends. `local` keeps watching the folder for outside edits
+   (agreed). **CalDAV done** (2026-10-02, not yet tried against a real
+   server by the user); WebDAV and git to come. User's choices: libcurl
+   (not libsoup), `password-command=` (keyring maybe later), tests against
+   a fake server (net/tests/fake_caldav.py, Python stdlib; nothing
+   installed), sync on open + `interval=` timer + shortly after edits.
+   Design: a CalDAV source's folder is a local Markdown copy
+   (`~/.local/share/reminders/caldav/NAME`), so Store/apps/undo are
+   unchanged. core caldav.hpp `caldav_sync(folder, state, Remote&, lock)`:
+   per calendar, pull (CTag, then ETags, then multiget) into "theirs" =
+   base.md + server changes; `merge(ours, theirs, base)`; write the list
+   under the back end's write lock (aborts if the file changed meanwhile);
+   push changed VTODOs (PUT If-Match / If-None-Match, DELETE If-Match);
+   412 → base stays the server's version, retried next sync. Records in
+   `<state>/caldav/` (calendars.tsv, per calendar items.tsv, base.md,
+   <id>.ics raw copies). core ical.hpp / vtodo.hpp: parse/serialize keeping
+   unknown properties; write_todo() changes only properties whose meaning
+   changed. Store gained `Backend::write_lock()` (held while it writes,
+   renames, deletes) and `deleted_by_user()` (only an app delete removes
+   the server calendar; a file that merely vanished is fetched again).
+   net/ (reminders_net, optional `-DBUILD_CALDAV`): CurlRemote (discovery
+   via url → current-user-principal → calendar-home-set, or
+   /.well-known/caldav), `run_password_command`, `sync_caldav_source`,
+   `SyncRunner` (worker thread; detects list-file changes by mtime/size).
+   CLI: `reminders sync [SOURCE]`, syncs before/after commands,
+   `--offline`. TUI and GUI run a SyncRunner; GUI ☰ → Sync Now (hidden
+   without CalDAV sources), Sources… → Add CalDAV Account…, Source Info…
+   shows server, username, password command, interval. Known limits:
+   moves/section changes made in other CalDAV clients aren't merged (local
+   order wins); RRULEs beyond FORMAT.md's rules are kept, not shown.
+
+## Future features (not started)
+
+- **Query language**, SQL-like, for the CLI (`reminders query "…"`) and for
+  defining your own smart lists (saved queries in the sidebar). Wanted by the
+  user 2026-10-02; design not started.
+- **WebDAV back end**: list files kept on a WebDAV server (Nextcloud,
+  Fastmail files, …) instead of a synced folder. The net/ HTTP code and
+  the CalDAV local-copy + three-way-merge design should carry over.
 
 ## Where things stand (2026-10-01)
 

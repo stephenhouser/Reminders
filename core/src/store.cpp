@@ -146,7 +146,10 @@ void Store::adopt(const std::string& name) {
     if (!text) return;
     auto doc = parse(*text);
     doc.mark_as_list();
-    write_atomic(path_of(name), serialize(doc, false));
+    {
+        auto guard = write_guard();
+        write_atomic(path_of(name), serialize(doc, false));
+    }
     std::erase(candidates_, name);
     reload(name);
 }
@@ -244,7 +247,13 @@ ListFile* Store::list(std::string_view name) {
     return nullptr;
 }
 
+std::unique_lock<std::mutex> Store::write_guard() {
+    auto* m = backend_->write_lock();
+    return m ? std::unique_lock{*m} : std::unique_lock<std::mutex>{};
+}
+
 void Store::write_file(ListFile& list, const std::string& text) {
+    auto guard = write_guard();
     fs::create_directories(folder_);
     write_atomic(path_of(list.name), text);
     backend_->remember_written(list.name, text);
@@ -272,6 +281,7 @@ bool Store::rename_list(ListFile& list, const std::string& new_name) {
     if (new_name.empty() || new_name == list.name || this->list(new_name) ||
         fs::exists(path_of(new_name)))
         return false;
+    auto guard = write_guard();
     fs::rename(path_of(list.name), path_of(new_name));
     backend_->move_state(list.name, new_name);
     list.name = new_name;
@@ -279,9 +289,11 @@ bool Store::rename_list(ListFile& list, const std::string& new_name) {
 }
 
 void Store::delete_list(const std::string& name) {
+    auto guard = write_guard();
     std::error_code ec;
     fs::remove(path_of(name), ec);
     backend_->drop_state(name);
+    backend_->deleted_by_user(name);
     std::erase_if(lists_, [&](auto& l) { return l->name == name; });
 }
 

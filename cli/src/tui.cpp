@@ -21,6 +21,9 @@
 #include "reminders/format.hpp"
 #include "reminders/history.hpp"
 #include "reminders/settings.hpp"
+#ifdef REMINDERS_CALDAV
+#include "reminders/sync_runner.hpp"
+#endif
 #include "editfile.hpp"
 #include "text.hpp"
 
@@ -184,6 +187,10 @@ public:
 
 private:
     rem::Library& store_;  // every source
+#ifdef REMINDERS_CALDAV
+    std::unique_ptr<rem::SyncRunner> sync_;  // CalDAV sources, in the background
+#endif
+    void check_sync();
     bool remember_;
     rem::History history_;
     View view_;
@@ -1118,6 +1125,15 @@ void Tui::move_selection(int delta) {
     item_sel_ = ids[static_cast<std::size_t>(i)];
 }
 
+// Shows what went wrong in the last CalDAV syncs, if anything.
+void Tui::check_sync() {
+#ifdef REMINDERS_CALDAV
+    if (!sync_) return;
+    auto status = sync_->take_status();
+    if (!status.errors.empty()) message_ = "Sync: " + status.errors.back();
+#endif
+}
+
 // Reloads when files in the folder change (Syncthing, the GUI, an editor).
 void Tui::check_folder() {
     std::map<std::string, std::pair<fs::file_time_type, std::uintmax_t>> now;
@@ -1507,6 +1523,9 @@ int Tui::run() {
     ctrl_page_up_ = code("kPRV5");
     setup_colors();
     check_folder();
+#ifdef REMINDERS_CALDAV
+    sync_ = std::make_unique<rem::SyncRunner>(store_);
+#endif
     restore_view();
     if (hide_sidebar_) focus_items_ = true;  // started with the sidebar hidden (show-sidebar=false)
 
@@ -1516,6 +1535,7 @@ int Tui::run() {
             wint_t key;
             int kind = get_wch(&key);
             if (kind == ERR) {
+                check_sync();
                 check_folder();
                 draw();
                 continue;

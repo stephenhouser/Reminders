@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <charconv>
+#include <cstdlib>
 #include <format>
 
 #include "reminders/settings.hpp"
@@ -21,6 +23,17 @@ SourceConfig read_source(const std::string& name) {
     s.backend = parse_backend(load_section_setting(section_of(name), "backend")).value_or(BackendKind::Syncthing);
     s.folder = load_section_setting(section_of(name), "folder");
     s.title = load_section_setting(section_of(name), "title");
+    if (s.backend == BackendKind::Caldav) {
+        auto section = section_of(name);
+        s.caldav.url = load_section_setting(section, "url");
+        s.caldav.username = load_section_setting(section, "username");
+        s.caldav.password_command = load_section_setting(section, "password-command");
+        auto interval = load_section_setting(section, "interval");
+        int n = 0;
+        auto [p, ec] = std::from_chars(interval.data(), interval.data() + interval.size(), n);
+        if (ec == std::errc{} && p == interval.data() + interval.size() && n > 0) s.caldav.interval = n;
+        if (s.folder.empty() && !s.caldav.url.empty()) s.folder = default_caldav_folder(name);
+    }
     return s;
 }
 
@@ -37,6 +50,13 @@ std::string name_for(const fs::path& folder) {
 }
 
 }  // namespace
+
+fs::path default_caldav_folder(const std::string& name) {
+    fs::path data;
+    if (const char* xdg = std::getenv("XDG_DATA_HOME"); xdg && *xdg) data = xdg;
+    else data = fs::path(std::getenv("HOME") ? std::getenv("HOME") : ".") / ".local" / "share";
+    return data / "reminders" / "caldav" / name;
+}
 
 std::vector<SourceConfig> load_sources() {
     std::vector<SourceConfig> out;
@@ -75,6 +95,13 @@ void save_source(const SourceConfig& source) {
     save_section_setting(section_of(source.name), "backend", std::string(backend_name(source.backend)));
     save_section_setting(section_of(source.name), "folder", source.folder.string());
     if (!source.title.empty()) save_section_setting(section_of(source.name), "title", source.title);
+    if (source.backend == BackendKind::Caldav) {
+        auto section = section_of(source.name);
+        save_section_setting(section, "url", source.caldav.url);
+        save_section_setting(section, "username", source.caldav.username);
+        save_section_setting(section, "password-command", source.caldav.password_command);
+        save_section_setting(section, "interval", std::to_string(source.caldav.interval));
+    }
 }
 
 BackendKind detect_backend(const fs::path& folder) {
@@ -89,6 +116,13 @@ SourceConfig source_for_folder(const fs::path& folder) {
 }
 
 SourceConfig set_default_folder(const fs::path& folder) {
+    // A CalDAV account stays one: the folder becomes a source of its own.
+    if (auto d = default_source(); d && d->backend == BackendKind::Caldav) {
+        auto source = source_for_folder(folder);
+        if (source.name.empty()) source = add_source(folder);
+        save_setting("default-source", source.name);
+        return source;
+    }
     auto source = default_source().value_or(SourceConfig{name_for(folder), BackendKind::Syncthing, folder, {}});
     source.folder = folder;
     source.backend = detect_backend(folder);
@@ -97,12 +131,40 @@ SourceConfig set_default_folder(const fs::path& folder) {
     return source;
 }
 
-SourceConfig add_source(const fs::path& folder) {
-    auto existing = load_sources();
-    auto base = name_for(folder), name = base;
+namespace {
+
+std::string unique_source_name(const std::string& base, const std::vector<SourceConfig>& existing) {
+    auto name = base;
     for (int n = 2; std::ranges::any_of(existing, [&](auto& s) { return s.name == name; }); ++n)
         name = std::format("{}-{}", base, n);
+    return name;
+}
+
+}  // namespace
+
+SourceConfig add_source(const fs::path& folder) {
+    auto existing = load_sources();
+    auto name = unique_source_name(name_for(folder), existing);
     SourceConfig source{name, detect_backend(folder), folder, {}};
+    save_source(source);
+    if (existing.empty()) save_setting("default-source", name);
+    return source;
+}
+
+SourceConfig add_caldav_source(const CaldavSettings& caldav, const std::string& title) {
+    auto existing = load_sources();
+    std::string base = title;
+    if (base.empty()) {
+        // The host's second-to-last label: caldav.fastmail.com → fastmail.
+        auto start = caldav.url.find("://");
+        auto host = caldav.url.substr(start == std::string::npos ? 0 : start + 3);
+        host = host.substr(0, host.find_first_of("/:"));
+        auto last = host.rfind('.');
+        auto prev = last == std::string::npos || last == 0 ? std::string::npos : host.rfind('.', last - 1);
+        base = last == std::string::npos ? host : host.substr(prev == std::string::npos ? 0 : prev + 1, last - (prev == std::string::npos ? 0 : prev + 1));
+    }
+    auto name = unique_source_name(name_for(fs::path(base)), existing);
+    SourceConfig source{name, BackendKind::Caldav, default_caldav_folder(name), title, caldav};
     save_source(source);
     if (existing.empty()) save_setting("default-source", name);
     return source;
@@ -117,6 +179,7 @@ void remove_source(const std::string& name) {
 }
 
 std::unique_ptr<Store> open_source(const SourceConfig& source, const std::string& device) {
+    if (source.backend == BackendKind::Caldav) fs::create_directories(source.folder);
     auto store = std::make_unique<Store>(source.folder, state_dir(source.folder, device), source.backend);
     store->prepare();
     return store;

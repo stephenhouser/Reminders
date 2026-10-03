@@ -29,6 +29,13 @@ interactive interface use all of them:
   `--source`, in the default source. In the interactive interface, `N`
   creates it in the source whose group is selected.
 
+[CalDAV sources](USING.md#caldav-accounts) are synced with their servers
+around each command: before it runs, and after one that changes something.
+`--offline` skips that and works on the local copy. `reminders sync [SOURCE]`
+syncs now and says what changed. The interactive interface syncs in the
+background (on start, every `interval=` minutes, and shortly after a change)
+and shows any problem at the bottom of the screen.
+
 ## Commands
 
 ```
@@ -45,6 +52,7 @@ reminders delete NAME [--yes]
 reminders search TEXT
 reminders new-list NAME [--color C] [--icon I] [--source S]
 reminders folder [PATH]
+reminders sync [SOURCE]
 ```
 
 **VIEW** is a list name (case doesn't matter), `today`, `scheduled`, `all`,

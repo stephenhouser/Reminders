@@ -149,6 +149,41 @@ version received from another device, the base for three-way merges) and
   around it is deleted on another device. If it is synced anyway (another sync tool, or the line
   was removed), nothing breaks: each device writes only to its own subfolder.
 
+## CalDAV
+
+A client can also keep lists on a CalDAV server: one calendar (collection)
+per list, one VTODO per reminder. Its local copy is a folder in the format
+above. Every client that does this maps the fields the same way:
+
+| Reminder | VTODO |
+|---|---|
+| title | `SUMMARY` (line breaks become spaces) |
+| notes | `DESCRIPTION` |
+| done / completed date | `STATUS:COMPLETED` (or `CANCELLED`), `COMPLETED` (UTC; written as local noon of that day) |
+| due | `DUE`: `VALUE=DATE` for all-day, else a floating local time; UTC and `TZID` times are read in local time |
+| priority | `PRIORITY`: 1–4 high, 5 medium, 6–9 low; written as 1, 5, 9 |
+| repeat | `RRULE` `FREQ=DAILY/WEEKLY/MONTHLY/YEARLY` with `INTERVAL`, and `FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR` / `SA,SU` for weekday / weekend. Other rules are kept but not shown. |
+| tags | `CATEGORIES` (characters a tag can't have become `-`) |
+| url | `URL` |
+| created | `CREATED` |
+| flagged | `X-REMINDERS-FLAGGED:TRUE` |
+| section | `X-REMINDERS-SECTION` |
+| order | `X-APPLE-SORT-ORDER` (integers, ascending; existing values are kept where they still increase) |
+| subtask | `RELATED-TO` (`RELTYPE=PARENT`, the default) naming the parent's `UID`; deeper nesting is shown under the top parent |
+| list colour | the calendar's `calendar-color` (Apple's namespace), mapped to the nearest colour |
+| list name | the calendar's `displayname` |
+
+- A reminder's `^id` and its VTODO's `UID` are linked in the client's
+  per-device records. A UID that is already a valid id is used as the id;
+  reminders created by the client get a random UUID as their UID.
+- When writing back a VTODO, clients change only the properties whose
+  meaning changed and keep every other property (alarms, `DTSTART`, other
+  clients' `X-` properties) exactly as the server sent it. A change bumps
+  `SEQUENCE` and sets `DTSTAMP` and `LAST-MODIFIED`.
+- Changes are merged three-way, as for conflicts (below): the base is the
+  list as of the last sync, "main" is the local copy and the "conflict copy"
+  is the server's version.
+
 ## Conflicts
 
 When two devices edit the same list before syncing, Syncthing keeps one version

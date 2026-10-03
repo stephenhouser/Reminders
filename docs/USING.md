@@ -431,14 +431,16 @@ folder=/home/you/Sync/Reminders
 |---|---|
 | `syncthing` | The folder is synced by Syncthing. Conflict copies are merged; per-device records live in `<folder>/.reminders/`, which `.stignore` keeps out of the sync. |
 | `local` | Just the folder: list files are read and saved as they are, and changes made by other programs still show up. |
+| `caldav` | Task lists on a CalDAV server (see [CalDAV accounts](#caldav-accounts)). The folder is a local copy, kept in step with the server. |
 
 - **☰ → Sources…** lists your sources. Choose one for **Source Info…**:
   its title, how it's synced (Syncthing or Local Folder), its folder,
   whether it's the **Default Source** (where new lists go), and **Remove
   Source…**, which takes it out of the app and leaves its folder and files
-  as they are. **Add Source…** adds a folder as a new source, named after it
+  as they are. **Add Folder…** adds a folder as a new source, named after it
   (`[source.NAME]`), with the back end it needs: `syncthing` inside a
-  Syncthing folder (one with `.stfolder`), else `local`.
+  Syncthing folder (one with `.stfolder`), else `local`. **Add CalDAV
+  Account…** adds a CalDAV server.
 - **Right-click a source's group heading** for **New List…** in that source
   and its **Source Info…**.
 - **`reminders folder PATH`** (and the first-run Choose Folder…) sets the
@@ -464,6 +466,50 @@ folder=/home/you/Sync/Reminders
 - **Settings from before sources** had `folder=` in `[general]`; it's no
   longer read. Add the folder again with ☰ → Sources… → Add Source… (or
   `reminders folder PATH`), or write the section above by hand.
+
+### CalDAV accounts
+
+A CalDAV source shows the task lists of an account on a CalDAV server
+(Nextcloud, Fastmail, Radicale, iCloud with an app-specific password, …):
+each of its task lists is a list here, and each list made here becomes a task
+list there. Add one with ☰ → Sources… → **Add CalDAV Account…**, or by hand:
+
+```ini
+[source.fastmail]
+backend=caldav
+url=https://caldav.fastmail.com/
+username=you@fastmail.com
+password-command=secret-tool lookup service reminders-caldav
+interval=15
+title=Fastmail
+```
+
+- **`url=`** is the server's address. The app finds the calendars from it
+  (through `/.well-known/caldav` and your principal), so the server's root
+  usually works; the address of your calendar home works too.
+- **`password-command=`** is a command that prints the password, so it
+  isn't kept in the settings file. For example, store it in the GNOME
+  keyring once with `secret-tool store --label "Reminders CalDAV" service
+  reminders-caldav`, then use the line above; `pass show caldav` works too.
+  Use an app-specific password where the server offers them.
+- **When it syncs:** when the app opens, every `interval=` minutes (default
+  15), and a couple of seconds after you change something. **☰ → Sync Now**
+  syncs straight away. Offline changes wait in the local copy until the
+  next sync.
+- **The local copy** is in `~/.local/share/reminders/caldav/NAME/`
+  (`folder=` moves it): one Markdown file per task list, like any other
+  source, which you can open in an editor.
+- **Changes on both sides** are merged reminder by reminder, field by field,
+  as for Syncthing conflicts; when both sides changed the same field, this
+  device's change wins. Properties the app doesn't use (alarms, start
+  dates, other apps' extras) are kept as they are on the server.
+- **Limits:** the order of reminders and their sections are sent to the
+  server (as `X-APPLE-SORT-ORDER` and `X-REMINDERS-SECTION`), but moves made
+  in another app aren't picked up yet. Repeat rules that the app can't
+  express (say, "the first Monday of the month") are kept but not shown.
+  Deleting a list here deletes its task list on the server.
+- **Problems** (wrong password, server unreachable) show as a message at
+  the bottom of the window; the next sync tries again.
 
 ## Troubleshooting
 

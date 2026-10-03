@@ -185,6 +185,16 @@ GMenu* menu_section(GMenu* menu) {
     return section;
 }
 
+// What's wrong with a CalDAV account's settings, or "".
+std::string caldav_problem(const rem::CaldavSettings& c) {
+    if (c.url.empty()) return "Enter the server's address";
+    if (!c.url.starts_with("https://") && !c.url.starts_with("http://")) return "The address starts with https://";
+    if (c.url.find('.', c.url.find("://")) == std::string::npos && c.url.find("localhost") == std::string::npos &&
+        c.url.find("127.0.0.1") == std::string::npos)
+        return "That doesn't look like a server's address";
+    return {};
+}
+
 // Validates a list name for a file that must work on every synced platform.
 std::string list_name_error(const std::string& name) {
     if (name.empty()) return "Enter a name";
@@ -491,6 +501,7 @@ Window::Window(AdwApplication* app, std::optional<std::filesystem::path> folder)
 }
 
 Window::~Window() {
+    stop_sync();
     for (auto id : {reload_timer_, refresh_timer_, notify_timer_, autoscroll_timer_, settings_timer_})
         if (id) g_source_remove(id);
     if (settings_monitor_) {
@@ -530,6 +541,10 @@ void Window::build() {
     auto* s1 = menu_section(primary_menu);
     g_menu_append(s1, "_New List…", "win.new-list");
     g_menu_append(s1, "S_ources…", "win.sources");
+    auto* sync_item = g_menu_item_new("S_ync Now", "win.sync-now");
+    g_menu_item_set_attribute(sync_item, "hidden-when", "s", "action-disabled");  // no CalDAV sources
+    g_menu_append_item(s1, sync_item);
+    g_object_unref(sync_item);
     g_menu_append(menu_section(primary_menu), "Show _Hidden Lists", "win.show-hidden");
     auto* s2 = menu_section(primary_menu);
     g_menu_append(s2, "_Settings…", "win.settings");
@@ -790,6 +805,12 @@ void Window::add_actions() {
     add_action(window_, "change-folder", [this] { choose_folder(); });
     add_action(window_, "add-source", [this] { choose_folder(true); });
     add_action(window_, "sources", [this] { show_sources(); });
+    sync_action_ = add_action(window_, "sync-now", [this] {
+#ifdef REMINDERS_CALDAV
+        if (sync_) sync_->sync_now();
+#endif
+    });
+    g_simple_action_set_enabled(sync_action_, FALSE);
     add_action(window_, "settings", [this] { open_settings(); });
     // "go-1" … "go-10": the sidebar's entries in order (Ctrl+1 … Ctrl+9, Ctrl+0).
     for (int n = 1; n <= 10; ++n)
@@ -973,10 +994,12 @@ void Window::source_info(const std::string& name) {
         if (s.name == name) config = s;
     if (!config) return;
     SourceEdit edit{config->name, config->title, config->backend, config->folder,
-                    rem::load_setting("default-source") == name || (store_ && store_->default_source() == name)};
+                    rem::load_setting("default-source") == name || (store_ && store_->default_source() == name),
+                    config->caldav, false};
     show_source_dialog(
         window_, edit,
         [name](const SourceEdit& e) -> std::string {
+            if (e.backend == rem::BackendKind::Caldav) return caldav_problem(e.caldav);
             std::error_code ec;
             if (!std::filesystem::is_directory(e.folder, ec)) return "That folder doesn't exist";
             for (auto& s : rem::load_sources())
@@ -986,7 +1009,7 @@ void Window::source_info(const std::string& name) {
         },
         [this](SourceEdit e) {
             try {
-                rem::save_source(rem::SourceConfig{e.name, e.backend, e.folder, e.title});
+                rem::save_source(rem::SourceConfig{e.name, e.backend, e.folder, e.title, e.caldav});
                 if (e.title.empty()) rem::save_section_setting("source." + e.name, "title", "");
                 if (e.is_default) rem::save_setting("default-source", e.name);
             } catch (const std::exception& err) {
@@ -1003,12 +1026,66 @@ void Window::show_sources() {
     for (auto& s : rem::load_sources()) {
         auto folder = s.folder.string();  // ~/… for folders in the home folder
         if (std::string home = g_get_home_dir(); folder.starts_with(home + "/")) folder = "~" + folder.substr(home.size());
-        auto detail = std::format("{} · {}", s.backend == rem::BackendKind::Local ? "Local folder" : "Syncthing", folder);
+        auto detail = s.backend == rem::BackendKind::Caldav ? std::format("CalDAV · {}", s.caldav.url)
+                    : std::format("{} · {}", s.backend == rem::BackendKind::Local ? "Local folder" : "Syncthing", folder);
         rows.push_back({s.name, rem::source_title(s), detail});
     }
+    std::function<void()> add_caldav;
+#ifdef REMINDERS_CALDAV
+    add_caldav = [this] { idle([this] { add_caldav_source(); }); };
+#endif
     show_sources_dialog(
         window_, rows, [this](std::string name) { idle([this, name] { source_info(name); }); },
-        [this] { idle([this] { choose_folder(true); }); });
+        [this] { idle([this] { choose_folder(true); }); }, add_caldav);
+}
+
+void Window::add_caldav_source() {
+    SourceEdit edit;
+    edit.backend = rem::BackendKind::Caldav;
+    edit.is_new = true;
+    edit.is_default = rem::load_sources().empty();
+    show_source_dialog(
+        window_, edit, [](const SourceEdit& e) { return caldav_problem(e.caldav); },
+        [this](SourceEdit e) {
+            try {
+                auto config = rem::add_caldav_source(e.caldav, e.title);
+                if (e.is_default) rem::save_setting("default-source", config.name);
+                toast(std::format("Added “{}”; its lists will appear once it has synced", rem::source_title(config)));
+            } catch (const std::exception& err) {
+                toast(std::format("Couldn't add the account: {}", err.what()));
+                return;
+            }
+            open_sources();
+        },
+        nullptr);
+}
+
+void Window::start_sync() {
+#ifdef REMINDERS_CALDAV
+    stop_sync();
+    if (!store_) return;
+    sync_ = std::make_unique<rem::SyncRunner>(*store_);
+    g_simple_action_set_enabled(sync_action_, sync_->active());
+    if (!sync_->active()) return;
+    sync_timer_ = timeout(1000, [this] {
+        auto status = sync_->take_status();
+        // The same problem every few minutes (offline, say) is shown once.
+        if (!status.errors.empty() && status.errors.back() != last_sync_error_) {
+            last_sync_error_ = status.errors.back();
+            toast("Couldn't sync " + last_sync_error_);
+        }
+        if (status.errors.empty() && status.last_sync) last_sync_error_.clear();
+        return true;
+    });
+#endif
+}
+
+void Window::stop_sync() {
+#ifdef REMINDERS_CALDAV
+    if (sync_timer_) g_source_remove(sync_timer_);
+    sync_timer_ = 0;
+    sync_.reset();  // waits for a sync under way
+#endif
 }
 
 void Window::stop_watching() {
@@ -1028,6 +1105,7 @@ void Window::open_sources(std::optional<std::filesystem::path> folder) {
         toast(std::format("Couldn't open the lists: {}", e.what()));
         return;
     }
+    stop_sync();
     stop_watching();
     store_ = std::move(library);
     history_.clear();  // steps refer to the old lists
@@ -1060,6 +1138,7 @@ void Window::open_sources(std::optional<std::filesystem::path> folder) {
             [this](GFileMonitor*, GFile* file, GFile* other, GFileMonitorEvent) { on_file_changed(file, other); });
         monitors_.push_back(std::move(w));
     }
+    start_sync();
 
     gtk_stack_set_visible_child_name(GTK_STACK(main_stack_), "main");
     view_ = remember ? view_from_string(load_last_view()) : home_view();

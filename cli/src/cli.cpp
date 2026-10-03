@@ -21,6 +21,9 @@
 #include "reminders/sources.hpp"
 #include "reminders/store.hpp"
 #include "reminders/syncthing.hpp"
+#ifdef REMINDERS_CALDAV
+#include "reminders/caldav_client.hpp"
+#endif
 #include "editfile.hpp"
 #include "text.hpp"
 #include "tui.hpp"
@@ -54,6 +57,8 @@ Commands:
   search TEXT                   Search titles and notes
   new-list NAME [--color C] [--icon I]
   folder [PATH]                 Show or set the folder (shared with the app)
+  sync [SOURCE]                 Sync CalDAV sources with their servers now
+                                (other commands sync before and after, too)
   tui                           Open the interactive interface
 
 NAME is a reminder's title, or enough of it: an exact title wins, then one
@@ -76,6 +81,7 @@ Options:
   -f, --folder PATH  Use PATH instead of the saved folder
   --json             Machine-readable output
   --no-color         No colours (also when NO_COLOR is set or not a terminal)
+  --offline          Don't sync CalDAV sources (use their local copy)
   --show-key-numbers Label sidebar entries with their number key, e.g.
                      "(1)Today" (interactive interface; overrides the
                      show-key-numbers setting)
@@ -93,7 +99,38 @@ struct Global {
     bool json = false;
     std::optional<bool> key_numbers;  // --show-key-numbers / --hide-key-numbers
     bool color = false;
+    bool offline = false;  // --offline: no CalDAV syncing
 };
+
+// Syncs the library's CalDAV sources (or just `only`); problems are
+// reported on stderr. Returns false if any source failed.
+bool sync_caldav(rem::Library& library, const std::string& only = "", bool verbose = false) {
+    bool ok = true;
+#ifdef REMINDERS_CALDAV
+    for (auto& s : library.sources()) {
+        if (s.config.backend != rem::BackendKind::Caldav || !s.store) continue;
+        if (!only.empty() && s.config.name != only) continue;
+        try {
+            auto r = rem::sync_caldav_source(*s.store, s.config);
+            for (auto& e : r.errors) std::cerr << std::format("reminders: sync {}: {}\n", s.config.name, e);
+            ok = ok && r.errors.empty();
+            if (verbose && r.errors.empty())
+                std::cout << std::format("Synced {}{}\n", rem::source_title(s.config),
+                                         r.changed.empty() ? "" : std::format(" ({} lists changed)", r.changed.size()));
+        } catch (const std::exception& e) {
+            std::cerr << std::format("reminders: sync {}: {}\n", s.config.name, e.what());
+            ok = false;
+        }
+    }
+#else
+    (void)library, (void)only, (void)verbose;
+#endif
+    return ok;
+}
+
+bool has_caldav(const rem::Library& library) {
+    return std::ranges::any_of(library.sources(), [](auto& s) { return s.config.backend == rem::BackendKind::Caldav; });
+}
 
 // --- output ---------------------------------------------------------------
 
@@ -783,6 +820,7 @@ int main(int argc, char** argv) {
             return true;
         }
         if (s == "--no-color") return !(g.color = false);
+        if (s == "--offline") return g.offline = true;
         return false;
     });
 
@@ -845,13 +883,29 @@ int main(int argc, char** argv) {
         // A --folder that isn't a configured source is for this run only: the
         // saved view belongs to the configured ones.
         bool own_folder = !g.folder || !library->sources().front().config.name.empty();
+
+        if (cmd == "sync") {
+            if (!has_caldav(*library)) throw std::runtime_error("no CalDAV sources to sync");
+#ifndef REMINDERS_CALDAV
+            throw std::runtime_error("this build has no CalDAV support");
+#endif
+            return sync_caldav(*library, rest.empty() ? "" : rest[0], !g.json) ? 0 : 1;
+        }
+        // CalDAV sources: fresh from the server going in, and changes sent
+        // back coming out (the TUI syncs in the background instead).
+        bool sync = !g.offline && cmd != "tui" && has_caldav(*library);
+        if (sync) sync_caldav(*library);
+        auto* lib = library.get();
         App app(g, std::move(library), own_folder);
         if (cmd == "tui") {
             if (!isatty(STDIN_FILENO) || !isatty(STDOUT_FILENO))
                 throw UsageError("the interactive interface needs a terminal; see reminders --help for commands");
             return run_tui(app.store(), own_folder, g.key_numbers);
         }
-        return app.run(cmd, parse_args(rest));
+        auto status = app.run(cmd, parse_args(rest));
+        static constexpr std::string_view kEdits[] = {"add", "edit", "done", "undone", "move", "mv", "delete", "rm", "new-list"};
+        if (sync && std::ranges::find(kEdits, cmd) != std::end(kEdits)) sync_caldav(*lib);
+        return status;
     } catch (const UsageError& e) {
         std::cerr << "reminders: " << e.what() << "\n";
         return 2;

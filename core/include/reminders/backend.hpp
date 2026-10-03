@@ -10,10 +10,13 @@
 //              Syncthing.
 //   local      Just the folder: files are read and written as they are,
 //              nothing else.
+//   caldav     The folder is a local copy of task lists on a CalDAV server,
+//              kept in step by caldav_sync() (see caldav.hpp).
 #pragma once
 
 #include <filesystem>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -23,9 +26,9 @@ namespace rem {
 
 namespace fs = std::filesystem;
 
-enum class BackendKind { Syncthing, Local };
+enum class BackendKind { Syncthing, Local, Caldav };
 
-// "syncthing" / "local"; parse_backend is case-insensitive.
+// "syncthing" / "local" / "caldav"; parse_backend is case-insensitive.
 std::string_view backend_name(BackendKind kind);
 std::optional<BackendKind> parse_backend(std::string_view name);
 
@@ -53,6 +56,12 @@ public:
     // A list was renamed or deleted: its records follow.
     virtual void move_state(std::string_view from, std::string_view to) const;
     virtual void drop_state(std::string_view name) const;
+    // The user deleted a list in the app (not: its file disappeared).
+    virtual void deleted_by_user(std::string_view name) const { (void)name; }
+
+    // Held while the Store writes, renames or deletes a list file, when the
+    // back end changes files from another thread (CalDAV sync).
+    virtual std::mutex* write_lock() { return nullptr; }
 };
 
 // `state_dir` is the per-device folder (Syncthing's records live there).

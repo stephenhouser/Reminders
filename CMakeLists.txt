@@ -14,6 +14,11 @@ add_compile_options(-Wall -Wextra -Wpedantic)
 enable_testing()
 add_subdirectory(core)
 
+option(BUILD_CALDAV "Build the CalDAV back end (needs libcurl and libxml2)" ON)
+if(BUILD_CALDAV)
+  add_subdirectory(net)
+endif()
+
 option(BUILD_TERMINAL_APP "Build the terminal client (needs ncursesw)" ON)
 if(BUILD_TERMINAL_APP)
   add_subdirectory(cli)

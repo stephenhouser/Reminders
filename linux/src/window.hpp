@@ -12,6 +12,9 @@
 #include <string>
 
 #include "gtk_util.hpp"
+#ifdef REMINDERS_CALDAV
+#include "reminders/sync_runner.hpp"
+#endif
 #include "reminders/history.hpp"
 #include "reminders/settings.hpp"
 #include "reminders/library.hpp"
@@ -52,6 +55,7 @@ private:
     void remove_source(const std::string& name);
     void source_info(const std::string& name);  // Source Info…
     void show_sources();                        // Sources… (main menu)
+    void add_caldav_source();                   // Add CalDAV Account…
 public:
     // With `folder` (from the command line), just that folder for this
     // session; otherwise every configured source, remembered.
@@ -177,6 +181,14 @@ private:
     GSimpleAction* show_completed_action_ = nullptr;
 
     std::unique_ptr<rem::Library> store_;  // every source
+#ifdef REMINDERS_CALDAV
+    std::unique_ptr<rem::SyncRunner> sync_;  // CalDAV sources, synced in the background; before store_ goes
+    guint sync_timer_ = 0;                   // shows its errors
+    std::string last_sync_error_;
+#endif
+    void start_sync();
+    void stop_sync();
+    GSimpleAction* sync_action_ = nullptr;  // Sync Now (enabled with CalDAV sources)
     struct FolderWatch {
         Obj<GFileMonitor> monitor;
         gulong handler = 0;

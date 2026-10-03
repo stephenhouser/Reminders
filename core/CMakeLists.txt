@@ -12,6 +12,9 @@ add_library(reminders_core
   src/backend.cpp
   src/sources.cpp
   src/library.cpp
+  src/ical.cpp
+  src/vtodo.cpp
+  src/caldav.cpp
 )
 target_include_directories(reminders_core PUBLIC include)
 
@@ -27,6 +30,8 @@ add_executable(core_tests
   tests/clipboard_test.cpp
   tests/sources_test.cpp
   tests/library_test.cpp
+  tests/vtodo_test.cpp
+  tests/caldav_test.cpp
 )
 target_link_libraries(core_tests PRIVATE reminders_core)
 add_test(NAME core_tests COMMAND core_tests)
