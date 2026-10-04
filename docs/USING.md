@@ -117,6 +117,14 @@ Subtasks are one level deep, as in Apple Reminders.
 - **⋮ → Move To** (or right-click) moves it to another list.
 - **Drop a file** from another app to import its reminders (see [Importing
   reminders](#importing-reminders)).
+- **Drop text** from another app (an editor, a browser, a chat) to make
+  reminders of it, read as pasted text is (see [Copying and
+  pasting](#copying-and-pasting)): on a reminder in a list, above or below
+  it (a line shows where); on a list in the sidebar, at its end; anywhere
+  else, at the end of the list being shown (in a smart list, into your
+  first list, made to show there). Undo with Ctrl+Z.
+- **Drag reminders out** to another app: it gets them as text, the same
+  Markdown Copy gives (a selection drags them all). They stay here.
 - **Alt+↑ / Alt+↓** moves the selected reminder up or down, across section
   boundaries.
 - **The List field** in the details dialog moves it to another list.

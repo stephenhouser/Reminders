@@ -178,6 +178,9 @@ private:
     void reminder_context_menu(GtkWidget* row, const std::string& id, bool in_list, double x, double y);
     void paste_reminders();
     void add_pasted(const std::string& text);
+    void add_text(const std::string& text, const char* label, const std::string& list_key,
+                  const std::optional<std::string>& anchor, rem::Document::Place place);  // pasted or dropped
+    std::string reminders_text(const std::vector<std::string>& ids);  // as Markdown, for copying and dragging out
     void show_details(const std::string& id);
     void new_list(std::string source = {});
     // ☰ → Import…: a file of reminders (.ics, Markdown, text), into a new or existing list.

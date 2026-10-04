@@ -177,8 +177,11 @@ Ground rules
   base = new) so newer changes from other devices are kept; skip lists that
   were deleted elsewhere and say so. Nested actions record one step. Not
   for "adopt checklist file as list".
-- Drag and drop: rows carry the id as a private boxed GType (never plain
-  text, or text fields will paste it). Drop on the top or bottom half of a
+- Drag and drop: rows carry the ids as a private boxed GType, plus their
+  Markdown as plain text for other apps; the reminder drop targets run in
+  the capture phase so the app's own text fields don't take that text.
+  Text dropped from other apps (not the app's own drags, not files) becomes
+  reminders. Drop on the top or bottom half of a
   row (taking that row's level: next to a subtask means becoming a subtask),
   on a section's New Reminder row (end of section), or on a sidebar list
   (move to it). Auto-scroll near the edges. Look up the row through
@@ -522,6 +525,15 @@ settings in a `[source.NAME]` section; later the apps show several at once.
 
 ## Future features (not started)
 
+TODO.md (top level) is the user's readable copy of this list and of Known
+gaps below, plus what waits on them and what needs trying by hand. Update it
+whenever these change (user's request 2026-10-04).
+
+- **App icon** (waiting on the user): the .desktop file and hicolor SVG in
+  linux/data aren't installed for the user, so GNOME shows a generic icon.
+  Options offered: an install step into `$XDG_DATA_HOME/applications` and
+  `$XDG_DATA_HOME/icons/hicolor/…` (Exec= the built binary), and/or a new
+  icon design. Added 2026-10-04.
 - **Other platforms**: iOS first, then Android, Windows and macOS, each
   native (SwiftUI on iOS/macOS); iOS syncs with Syncthing's Go core built in
   (gomobile). The iOS Reminders look is the reference for features, and
@@ -530,10 +542,6 @@ settings in a `[source.NAME]` section; later the apps show several at once.
   without asking.
 - **KDE variant** (possible): a native Qt/Kirigami client for Plasma beside
   the GNOME one, on the same core library. Not decided; added 2026-10-03.
-- **Drag and drop with other apps**: dropping text onto the window or a
-  sidebar list, and dragging reminders out as text. Dropping files is done
-  (they're imported); dragging within the app already works. Added
-  2026-10-03.
 - **Query language**, SQL-like, for the CLI (`reminders query "…"`) and for
   defining your own smart lists (saved queries in the sidebar). Wanted by the
   user 2026-10-02; design not started.
@@ -658,6 +666,23 @@ settings in a `[source.NAME]` section; later the apps show several at once.
     like DAV copies (open_source, open_library); the dialog's default folder
     ($XDG_DATA_HOME/reminders/git/NAME) applies with or without Clone From,
     and any folder is accepted. Test net_git_new_repository_then_a_remote.
+  - **Drag and drop with other apps** (2026-10-04): text in, text out.
+    `make_text_drop_target` (G_TYPE_STRING, COPY; "accept" refuses drops
+    that also offer the reminder ids type or a file list) on the window
+    (end of the list in view), sidebar list rows (Into: end of that list)
+    and reminder rows in list views (Halves: above / below). All call
+    `Window::add_text(text, label, list_key, anchor, place)`, which paste
+    (`add_pasted`: after the focused reminder) now uses too:
+    from_clipboard_text; view set-up (Today due, Flagged, tag) only when
+    adding for the view; Before = add after the anchor then move_next_to
+    Before, one at a time. Out: make_draggable's provider is a union of the
+    ids value and a G_TYPE_STRING of `reminders_text(ids)` (outermost
+    to_clipboard_text, also used by Copy); actions MOVE|COPY (in-app targets
+    take MOVE, other apps copy; nothing deleted). Reminder drop targets run
+    in the capture phase so a row's text field (New Reminder, a title being
+    edited) doesn't take an in-app drag as text. Checked headless via
+    add_text and the drag source's prepare; a real drag between apps needs
+    trying by hand.
   - **Dropping files imports them** (2026-10-03): `make_file_drop_target`
     (GDK_TYPE_FILE_LIST, COPY) on the window (into: the list in view) and
     on each sidebar list row (highlighted with drop-into; into: that

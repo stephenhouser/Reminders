@@ -287,20 +287,26 @@ Obj<GdkPaintable> with_badge(GtkWidget* widget, GdkPaintable* image, std::size_t
 
 // Rows carry their reminders' ids when dragged: `ids` gives them when the
 // drag starts (the row's own, or the selection it's part of), and `mark`
-// fades those rows while they're dragged (false: no longer).
-void make_draggable(GtkWidget* row, std::function<Ids()> ids, std::function<void(const Ids&, bool)> mark) {
+// fades those rows while they're dragged (false: no longer). Other apps get
+// `text` of them (the Markdown Copy makes) and copy it; within the app they
+// move.
+void make_draggable(GtkWidget* row, std::function<Ids()> ids, std::function<void(const Ids&, bool)> mark,
+                    std::function<std::string(const Ids&)> text) {
     auto* source = gtk_drag_source_new();
-    gtk_drag_source_set_actions(source, GDK_ACTION_MOVE);
+    gtk_drag_source_set_actions(source, GdkDragAction(GDK_ACTION_MOVE | GDK_ACTION_COPY));
     auto dragging = std::make_shared<Ids>();
     connect<GdkContentProvider*(GtkDragSource*, double, double)>(
-        source, "prepare", [ids, dragging](GtkDragSource*, double, double) {
+        source, "prepare", [ids, dragging, text](GtkDragSource*, double, double) {
             *dragging = ids();
             GValue value = G_VALUE_INIT;
             g_value_init(&value, reminder_drag_type());
             g_value_set_boxed(&value, dragging.get());
-            auto* provider = gdk_content_provider_new_for_value(&value);
+            auto* own = gdk_content_provider_new_for_value(&value);
             g_value_unset(&value);
-            return provider;
+            auto markdown = text(*dragging);
+            auto* plain = gdk_content_provider_new_typed(G_TYPE_STRING, markdown.c_str());
+            GdkContentProvider* both[] = {own, plain};
+            return gdk_content_provider_new_union(both, 2);
         });
     connect<void(GtkDragSource*, GdkDrag*)>(source, "drag-begin", [dragging, mark](GtkDragSource* s, GdkDrag*) {
         auto* row = owner(s);
@@ -329,6 +335,10 @@ void make_drop_target(GtkWidget* row, DropStyle style, std::string self,
                       std::function<void(Ids, rem::Document::Place)> on_drop) {
     auto* target = gtk_drop_target_new(reminder_drag_type(), GDK_ACTION_MOVE);
     gtk_drop_target_set_preload(target, TRUE);
+    // Before the row's children: a dragged reminder also carries text, which
+    // a text field in the row (New Reminder, a title being edited) would
+    // otherwise take.
+    gtk_event_controller_set_propagation_phase(GTK_EVENT_CONTROLLER(target), GTK_PHASE_CAPTURE);
     auto place_at = [style](GtkWidget* w, double y) {
         if (style == DropStyle::Halves && y > gtk_widget_get_height(w) / 2.0) return rem::Document::Place::After;
         return rem::Document::Place::Before;
@@ -579,6 +589,54 @@ void make_group_drop_target(GtkWidget* row, const rem::SidebarGroup& group,
             return TRUE;
         });
     gtk_widget_add_controller(row, GTK_EVENT_CONTROLLER(target));
+}
+
+// Whether a drop offers `type` (directly, as drags within the app do, or
+// as a format another app's data can be read as).
+bool drop_offers(GdkDrop* drop, GType type) {
+    auto* formats = gdk_content_formats_union_deserialize_gtypes(gdk_content_formats_ref(gdk_drop_get_formats(drop)));
+    bool yes = gdk_content_formats_contain_gtype(formats, type);
+    gdk_content_formats_unref(formats);
+    return yes;
+}
+
+// Accepts text dragged from another app (not reminders dragged within this
+// one, which carry text too, nor files, which are imported) on `widget`,
+// showing where it would land: Halves (above / below a reminder) or Into
+// (a sidebar list); Above shows nothing (the window itself).
+void make_text_drop_target(GtkWidget* widget, DropStyle style,
+                           std::function<void(std::string, rem::Document::Place)> on_drop) {
+    auto* target = gtk_drop_target_new(G_TYPE_STRING, GDK_ACTION_COPY);
+    connect<gboolean(GtkDropTarget*, GdkDrop*)>(target, "accept", [](GtkDropTarget*, GdkDrop* drop) -> gboolean {
+        return drop_offers(drop, G_TYPE_STRING) && !drop_offers(drop, reminder_drag_type()) &&
+               !drop_offers(drop, GDK_TYPE_FILE_LIST);
+    });
+    auto below = [style](GtkWidget* w, double y) { return style == DropStyle::Halves && y > gtk_widget_get_height(w) / 2.0; };
+    auto clear = [](GtkWidget* w) {
+        if (!w) return;
+        for (auto* c : {"drop-above", "drop-below", "drop-into"}) gtk_widget_remove_css_class(w, c);
+    };
+    connect<GdkDragAction(GtkDropTarget*, double, double)>(
+        target, "motion", [style, below, clear](GtkDropTarget* t, double, double y) {
+            auto* w = owner(t);
+            if (!w) return GdkDragAction(0);
+            clear(w);
+            if (style == DropStyle::Into) gtk_widget_add_css_class(w, "drop-into");
+            else if (style == DropStyle::Halves) gtk_widget_add_css_class(w, below(w, y) ? "drop-below" : "drop-above");
+            return GDK_ACTION_COPY;
+        });
+    connect<void(GtkDropTarget*)>(target, "leave", [clear](GtkDropTarget* t) { clear(owner(t)); });
+    connect<gboolean(GtkDropTarget*, const GValue*, double, double)>(
+        target, "drop", [below, clear, on_drop](GtkDropTarget* t, const GValue* value, double, double y) -> gboolean {
+            auto* w = owner(t);
+            clear(w);
+            if (!w || !value || !G_VALUE_HOLDS_STRING(value) || !g_value_get_string(value)) return FALSE;
+            auto place = below(w, y) ? rem::Document::Place::After : rem::Document::Place::Before;
+            // Adding rebuilds the view; do it after the drop finishes.
+            idle([on_drop, text = std::string(g_value_get_string(value)), place] { on_drop(text, place); });
+            return TRUE;
+        });
+    gtk_widget_add_controller(widget, GTK_EVENT_CONTROLLER(target));
 }
 
 constexpr std::pair<View::Kind, std::string_view> kViewNames[] = {
@@ -833,6 +891,11 @@ Window::Window(AdwApplication* app, std::optional<std::filesystem::path> folder)
     make_file_drop_target(window_, false, [this](std::vector<std::filesystem::path> files) {
         if (!store_) return;
         import_files(std::move(files), view_.kind == View::List ? view_.name : std::string());
+    });
+    // Text from another app dropped anywhere else becomes reminders, at the
+    // end of the list in view (in a smart list, as pasting does).
+    make_text_drop_target(window_, DropStyle::Above, [this](std::string text, rem::Document::Place) {
+        if (store_) add_text(text, "Drop", {}, std::nullopt, rem::Document::Place::After);
     });
     {
         std::ifstream in(rem::settings_file());  // as read at start-up
@@ -1655,6 +1718,9 @@ void Window::rebuild_sidebar() {
                     make_file_drop_target(row, true, [this, key](std::vector<std::filesystem::path> files) {
                         import_files(std::move(files), key);
                     });
+                    make_text_drop_target(row, DropStyle::Into, [this, key](std::string text, rem::Document::Place) {
+                        add_text(text, "Drop", key, std::nullopt, rem::Document::Place::After);
+                    });
                     add(row);
                 }
                 break;
@@ -2366,11 +2432,16 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
                     if (on) gtk_widget_add_css_class(it->second, "dragging");
                     else gtk_widget_remove_css_class(it->second, "dragging");
                 }
-        });
-    if (view_.kind == View::List)
+        },
+        [this](const Ids& ids) { return reminders_text(ids); });
+    if (view_.kind == View::List) {
         make_drop_target(row, DropStyle::Halves, id, [this, id](Ids dropped, rem::Document::Place place) {
             move_reminders(dropped, id, place);
         });
+        make_text_drop_target(row, DropStyle::Halves, [this, id](std::string text, rem::Document::Place place) {
+            add_text(text, "Drop", {}, id, place);
+        });
+    }
     return row;
 }
 
@@ -2703,18 +2774,26 @@ void Window::set_due(const std::vector<std::string>& ids, int days_from_today) {
     refresh();
 }
 
+// The reminders as Markdown text (a subtask goes with its parent), as
+// copied, and as other apps get them when they're dragged out.
+std::string Window::reminders_text(const std::vector<std::string>& ids) {
+    std::string text;
+    for (auto& id : outermost(ids))
+        if (auto ref = store_->find(id)) text += rem::to_clipboard_text(*ref->reminder);
+    return text;
+}
+
 // The reminders as Markdown text, so they also paste into other apps.
 void Window::copy_reminders(const std::vector<std::string>& ids) {
     if (!store_) return;
-    std::string text, first;
+    std::string first;
     int count = 0;
     for (auto& id : outermost(ids))
         if (auto ref = store_->find(id)) {
-            text += rem::to_clipboard_text(*ref->reminder);
             if (count++ == 0) first = ref->reminder->title;
         }
     if (count == 0) return;
-    gdk_clipboard_set_text(gtk_widget_get_clipboard(window_), text.c_str());
+    gdk_clipboard_set_text(gtk_widget_get_clipboard(window_), reminders_text(ids).c_str());
     toast(count == 1 ? std::format("Copied “{}”", first) : std::format("Copied {} reminders", count));
 }
 
@@ -2907,45 +2986,69 @@ void Window::paste_reminders() {
         new Obj<GtkWindow>(std::move(keep)));
 }
 
-// Adds pasted text as reminders: after the focused reminder (in its list and
-// section), else at the end of the list being shown. In a smart list they go
-// into the first list, set up to show there (due today in Today, flagged in
-// Flagged, tagged in a tag's view).
+// Ctrl+V: after the focused reminder (in its list and section), else at the
+// end of the list being shown (see add_text).
 void Window::add_pasted(const std::string& text) {
-    auto pasted = rem::from_clipboard_text(text);
-    if (pasted.empty() || !store_) return;
-
-    std::optional<rem::Ref> anchor;
+    std::optional<std::string> anchor;
     for (auto* w = gtk_root_get_focus(GTK_ROOT(window_)); w; w = gtk_widget_get_parent(w))
         if (auto* id = static_cast<const char*>(g_object_get_data(G_OBJECT(w), "reminder-id"))) {
-            anchor = store_->find(id);
+            anchor = id;
             break;
         }
-    rem::ListFile* list = anchor ? anchor->list : view_.kind == View::List ? store_->list(view_.name) : nullptr;
-    if (!list && !store_->lists().empty()) list = store_->lists().front();
+    add_text(text, "Paste", {}, anchor, rem::Document::Place::After);
+}
+
+// Adds text (pasted, or dropped from another app) as reminders, parsed as
+// clipboard.hpp says. Into `list` (a key), or with none into the list in
+// view, or in a smart list into the first list, set up to show there (due
+// today in Today or Scheduled, flagged in Flagged, tagged in a tag's view).
+// Next to reminder `anchor` (`place`: before or after it; a subtask's
+// parent), else at the end.
+void Window::add_text(const std::string& text, const char* label, const std::string& list_key,
+                      const std::optional<std::string>& anchor_id, rem::Document::Place place) {
+    auto added = rem::from_clipboard_text(text);
+    if (added.empty() || !store_) return;
+    auto anchor = anchor_id ? store_->find(*anchor_id) : std::nullopt;
+    bool for_view = list_key.empty();  // made to show in the view
+    rem::ListFile* list = !for_view ? store_->list(list_key)
+                          : anchor  ? anchor->list
+                          : view_.kind == View::List ? store_->list(view_.name)
+                                                     : nullptr;
+    if (!list && for_view && !store_->lists().empty()) list = store_->lists().front();
     if (!list) {
         toast("Create a list first");
         return;
     }
-    // A subtask's paste goes after its parent.
-    const rem::Reminder* after = anchor ? (anchor->parent ? anchor->parent : anchor->reminder) : nullptr;
-    std::optional<std::string> section = after ? list->doc.section_of(*after) : std::nullopt;
-    std::string after_id = after ? after->id : "";
+    if (anchor && anchor->list != list) anchor.reset();
+    const rem::Reminder* next_to = anchor ? (anchor->parent ? anchor->parent : anchor->reminder) : nullptr;
+    std::optional<std::string> section = next_to ? list->doc.section_of(*next_to) : std::nullopt;
+    bool before = next_to && place == rem::Document::Place::Before;
+    std::string before_id = before ? next_to->id : "";
+    std::string after_id = next_to && !before ? next_to->id : "";
 
     auto day = today();
-    undoable("Paste", [&] {
+    undoable(label, [&] {
         std::string first;
         try {
-            for (auto& r : pasted) {
+            for (auto& r : added) {
                 if (!r.created) r.created = day;
-                if (!r.done && !r.due_date && (view_.kind == View::Today || view_.kind == View::Scheduled))
-                    r.due_date = day;
-                if (view_.kind == View::Flagged) r.flagged = true;
-                if (view_.kind == View::Tag && std::ranges::find(r.tags, view_.name) == r.tags.end())
-                    r.tags.push_back(view_.name);
-                const rem::Reminder* at = after_id.empty() ? nullptr : list->doc.find(after_id);
-                after_id = store_->add(*list, std::move(r), at, section).id;
-                if (first.empty()) first = after_id;
+                if (for_view) {
+                    if (!r.done && !r.due_date && (view_.kind == View::Today || view_.kind == View::Scheduled))
+                        r.due_date = day;
+                    if (view_.kind == View::Flagged) r.flagged = true;
+                    if (view_.kind == View::Tag && std::ranges::find(r.tags, view_.name) == r.tags.end())
+                        r.tags.push_back(view_.name);
+                }
+                if (before) {  // each just above the anchor, so they keep their order
+                    auto id = store_->add(*list, std::move(r), list->doc.find(before_id), section).id;
+                    list->doc.move_next_to(id, before_id, rem::Document::Place::Before);
+                    store_->save(*list);
+                    if (first.empty()) first = id;
+                } else {
+                    const rem::Reminder* at = after_id.empty() ? nullptr : list->doc.find(after_id);
+                    after_id = store_->add(*list, std::move(r), at, section).id;
+                    if (first.empty()) first = after_id;
+                }
             }
         } catch (const std::exception& e) {
             toast(std::format("Couldn't save: {}", e.what()));
@@ -2953,7 +3056,10 @@ void Window::add_pasted(const std::string& text) {
         if (!first.empty()) focus_reminder_ = first;
         refresh();
     });
-    if (pasted.size() > 1) toast(std::format("Pasted {} reminders", pasted.size()));
+    if (added.size() > 1)
+        toast(std::format("{} {} reminders", std::string_view(label) == "Paste" ? "Pasted" : "Added", added.size()));
+    else if (!for_view && (view_.kind != View::List || view_.name != list_key))
+        toast(std::format("Added to “{}”", store_->label(*list)));
 }
 
 void Window::show_details(const std::string& id) {
