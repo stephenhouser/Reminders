@@ -52,6 +52,16 @@ void show_shortcuts(GtkApplication* app) {
                           {"Copy", "<Control>c"},
                           {"Paste as New Reminders", "<Control>v"},
                           {"Delete", "Delete"}});
+    {
+        // Clicks can't be shown as keys, so they're told in a subtitle.
+        auto* s = adw_shortcuts_section_new("Selecting Several Reminders");
+        auto* all = adw_shortcuts_item_new("Select All", "<Control>a");
+        adw_shortcuts_item_set_subtitle(all, "Ctrl+click adds or removes one; Shift+click selects a range");
+        adw_shortcuts_section_add(s, all);
+        adw_shortcuts_section_add(s, adw_shortcuts_item_new("Extend Selection Up / Down", "<Shift>Up <Shift>Down"));
+        adw_shortcuts_section_add(s, adw_shortcuts_item_new("Clear the Selection", "Escape"));
+        adw_shortcuts_dialog_add(ADW_SHORTCUTS_DIALOG(dialog), s);
+    }
     section("Lists", {{"Go To…", "<Control>k"},
                       {"Sidebar Entries 1–9 (Today, Scheduled, …, Your Lists)", "<Control>1...<Control>9"},
                       {"Sidebar Entry 10", "<Control>0"},

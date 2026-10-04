@@ -102,6 +102,12 @@ public:
 
     // Writes the list to disk if its content changed.
     void save(ListFile& list);
+    // Holds saves until release_saves(), so an edit of many reminders writes
+    // each list file once: save() only notes the list meanwhile. Nests.
+    void hold_saves() { ++held_; }
+    // Ends a hold_saves(); the outermost one writes the lists noted. Throws
+    // if a write fails (after trying the others).
+    void release_saves();
 
     ListFile& create_list(const std::string& name, std::string_view color, std::string_view icon);
     bool rename_list(ListFile& list, const std::string& new_name);
@@ -149,6 +155,8 @@ private:
     std::function<std::vector<std::string>()> other_ids_;
     std::vector<std::unique_ptr<ListFile>> lists_;
     std::vector<std::string> candidates_;
+    int held_ = 0;                      // hold_saves() depth
+    std::vector<ListFile*> held_lists_; // saved while held, in order
 
     bool forget(const std::string& name);
     void update_candidate(const std::string& name, const std::optional<std::string>& text);

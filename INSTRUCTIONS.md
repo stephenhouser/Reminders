@@ -534,10 +534,12 @@ settings in a `[source.NAME]` section; later the apps show several at once.
   sidebar list, and dragging reminders out as text. Dropping files is done
   (they're imported); dragging within the app already works. Added
   2026-10-03.
-- **Selecting several reminders**: Ctrl/Shift-click and Ctrl+A to select
-  reminders in a list, then act on them together: drag them into another
-  list (or a place in this one), delete, complete, flag, set a date, etc.,
-  as one undo step. Also in the TUI if it fits. Asked for 2026-10-04.
+- **Selecting several reminders in the terminal client**: Space or `v`
+  marks the reminder under the cursor, `*` marks all showing, and the
+  existing keys (complete, flag, priority, date, move, delete, copy) act on
+  everything marked, as one undo step, using the same core functions as
+  the GNOME app's selection. Next after the GNOME app's; asked for
+  2026-10-04.
 - **Query language**, SQL-like, for the CLI (`reminders query "…"`) and for
   defining your own smart lists (saved queries in the sidebar). Wanted by the
   user 2026-10-02; design not started.
@@ -678,6 +680,31 @@ settings in a `[source.NAME]` section; later the apps show several at once.
     row). Core `move_sidebar_group_next_to`; `Window::drop_group` saves
     sidebar-order. The top group has no heading unless collapsible, so it's
     moved by dropping another above it. Checked headless via `drop_group`.
+  - **Selecting several reminders** (GNOME app, 2026-10-04): implicit,
+    no selection mode. `Window::selected_` (ids) is separate from the focus
+    (`cursor_`); `anchor_` for ranges; `shown_ids_` / `reminder_rows_`
+    registered by build_reminder_row, pruned on rebuild, cleared on a view
+    change. Ctrl+click toggles, Shift+click range (Ctrl+Shift adds), a
+    capture-phase click gesture that claims modified clicks so the title /
+    check / buttons don't see them; plain click outside clears, on a
+    selected row clears on release (so a press-drag drags the selection);
+    Shift+↑/↓ extends, Ctrl+A all, Esc or plain ↑/↓ clears. `.selected-
+    reminder` tint; subtitle "N Selected". Every row action goes through
+    `targets(id)` (the selection when id is in it, display order) and
+    `outermost()` (drops subtasks whose parent is there) for move / delete /
+    copy. Ops take id vectors: complete_reminders (all done, or all undone
+    if all were), toggle_flag (same rule), set_due, set_priority,
+    move_reminders (first next to target, rest after it), move_to_list,
+    move_to_section_end, delete_reminders, copy_reminders; checkbox click is
+    still one reminder; Details / indent / Alt+↑↓ stay single. Each is one
+    undo step via `batch()`: undoable + core `hold_saves()` /
+    `release_saves()` (Store and Library) so each list file is written
+    once. Drag carries `std::vector<std::string>` (type
+    RemindersReminderIds) with a count badge (accent pill) and fades all
+    dragged rows. The ⋮ menu is made on open (create_popup_func) with
+    plural labels and a new Move To submenu. Shortcuts dialog has a section.
+    Checked headless through direct calls (selection, menu, each op +
+    undo); real Ctrl/Shift clicks and drags need trying by hand.
   - **Docs:** README, docs/FORMAT.md, docs/USING.md, docs/TERMINAL.md,
     docs/settings.example.ini.
 - **Known gaps:**

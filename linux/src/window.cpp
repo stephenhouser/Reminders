@@ -236,20 +236,22 @@ std::string list_name_error(const std::string& name) {
     return {};
 }
 
-// A dragged reminder's id travels as this private type rather than as plain
+// Dragged reminders' ids travel as this private type rather than as plain
 // text, so text fields (the "New Reminder" entry, a title being edited)
-// don't accept the drop and paste the id into themselves.
+// don't accept the drop and paste the ids into themselves. Several when a
+// selection is dragged, top to bottom.
+using Ids = std::vector<std::string>;
+
 GType reminder_drag_type() {
     static GType type = g_boxed_type_register_static(
-        "RemindersReminderId",
-        [](gpointer p) -> gpointer { return new std::string(*static_cast<std::string*>(p)); },
-        [](gpointer p) { delete static_cast<std::string*>(p); });
+        "RemindersReminderIds", [](gpointer p) -> gpointer { return new Ids(*static_cast<Ids*>(p)); },
+        [](gpointer p) { delete static_cast<Ids*>(p); });
     return type;
 }
 
-const std::string* dragged_id(const GValue* value) {
+const Ids* dragged_ids(const GValue* value) {
     if (!value || !G_VALUE_HOLDS(value, reminder_drag_type())) return nullptr;
-    return static_cast<const std::string*>(g_value_get_boxed(value));
+    return static_cast<const Ids*>(g_value_get_boxed(value));
 }
 
 // The widget a controller is attached to; null once that widget is gone
@@ -258,31 +260,66 @@ GtkWidget* owner(gpointer controller) {
     return gtk_event_controller_get_widget(GTK_EVENT_CONTROLLER(controller));
 }
 
-// Rows carry their reminder's id when dragged.
-void make_draggable(GtkWidget* row, const std::string& id) {
+// `image` with a count badge in its top left corner, for dragging several.
+Obj<GdkPaintable> with_badge(GtkWidget* widget, GdkPaintable* image, std::size_t count) {
+    int w = gdk_paintable_get_intrinsic_width(image), h = gdk_paintable_get_intrinsic_height(image);
+    auto* snap = gtk_snapshot_new();
+    gdk_paintable_snapshot(image, snap, w, h);
+    auto layout = Obj<PangoLayout>::adopt(gtk_widget_create_pango_layout(widget, std::to_string(count).c_str()));
+    int lw = 0, lh = 0;
+    pango_layout_get_pixel_size(layout.get(), &lw, &lh);
+    float bh = static_cast<float>(lh + 4), bw = std::max(static_cast<float>(lw + 12), bh);
+    graphene_rect_t r = GRAPHENE_RECT_INIT(4, 4, bw, bh);
+    GskRoundedRect round;
+    gsk_rounded_rect_init_from_rect(&round, &r, bh / 2);
+    gtk_snapshot_push_rounded_clip(snap, &round);
+    auto* accent = adw_style_manager_get_accent_color_rgba(adw_style_manager_get_default());
+    gtk_snapshot_append_color(snap, accent, &r);
+    gdk_rgba_free(accent);
+    gtk_snapshot_pop(snap);
+    gtk_snapshot_save(snap);
+    graphene_point_t at = GRAPHENE_POINT_INIT(4 + (bw - static_cast<float>(lw)) / 2, 6);
+    gtk_snapshot_translate(snap, &at);
+    GdkRGBA white{1, 1, 1, 1};
+    gtk_snapshot_append_layout(snap, layout.get(), &white);
+    gtk_snapshot_restore(snap);
+    graphene_size_t size = GRAPHENE_SIZE_INIT(static_cast<float>(w), static_cast<float>(h));
+    return Obj<GdkPaintable>::adopt(gtk_snapshot_free_to_paintable(snap, &size));
+}
+
+// Rows carry their reminders' ids when dragged: `ids` gives them when the
+// drag starts (the row's own, or the selection it's part of), and `mark`
+// fades those rows while they're dragged (false: no longer).
+void make_draggable(GtkWidget* row, std::function<Ids()> ids, std::function<void(const Ids&, bool)> mark) {
     auto* source = gtk_drag_source_new();
     gtk_drag_source_set_actions(source, GDK_ACTION_MOVE);
+    auto dragging = std::make_shared<Ids>();
     connect<GdkContentProvider*(GtkDragSource*, double, double)>(
-        source, "prepare", [id](GtkDragSource*, double, double) {
+        source, "prepare", [ids, dragging](GtkDragSource*, double, double) {
+            *dragging = ids();
             GValue value = G_VALUE_INIT;
             g_value_init(&value, reminder_drag_type());
-            g_value_set_boxed(&value, &id);
+            g_value_set_boxed(&value, dragging.get());
             auto* provider = gdk_content_provider_new_for_value(&value);
             g_value_unset(&value);
             return provider;
         });
-    connect<void(GtkDragSource*, GdkDrag*)>(source, "drag-begin", [](GtkDragSource* s, GdkDrag*) {
+    connect<void(GtkDragSource*, GdkDrag*)>(source, "drag-begin", [dragging, mark](GtkDragSource* s, GdkDrag*) {
         auto* row = owner(s);
         if (!row) return;
-        // A still image of the row (the row itself fades while dragged).
+        // A still image of the row (the rows themselves fade while dragged).
         auto live = Obj<GdkPaintable>::adopt(gtk_widget_paintable_new(row));
         auto still = Obj<GdkPaintable>::adopt(gdk_paintable_get_current_image(live.get()));
+        if (dragging->size() > 1) still = with_badge(row, still.get(), dragging->size());
         gtk_drag_source_set_icon(s, still.get(), 24, 20);
         gtk_widget_add_css_class(row, "dragging");
+        mark(*dragging, true);
     });
-    connect<void(GtkDragSource*, GdkDrag*, gboolean)>(source, "drag-end", [](GtkDragSource* s, GdkDrag*, gboolean) {
-        if (auto* row = owner(s)) gtk_widget_remove_css_class(row, "dragging");
-    });
+    connect<void(GtkDragSource*, GdkDrag*, gboolean)>(
+        source, "drag-end", [dragging, mark](GtkDragSource* s, GdkDrag*, gboolean) {
+            if (auto* row = owner(s)) gtk_widget_remove_css_class(row, "dragging");
+            mark(*dragging, false);
+        });
     gtk_widget_add_controller(row, GTK_EVENT_CONTROLLER(source));
 }
 
@@ -291,7 +328,7 @@ enum class DropStyle { Halves, Above, Into };
 // Accepts dropped reminders on `row`, showing where they'd land.
 // `self` is the row's own reminder id (it can't be dropped on itself).
 void make_drop_target(GtkWidget* row, DropStyle style, std::string self,
-                      std::function<void(std::string, rem::Document::Place)> on_drop) {
+                      std::function<void(Ids, rem::Document::Place)> on_drop) {
     auto* target = gtk_drop_target_new(reminder_drag_type(), GDK_ACTION_MOVE);
     gtk_drop_target_set_preload(target, TRUE);
     auto place_at = [style](GtkWidget* w, double y) {
@@ -307,8 +344,8 @@ void make_drop_target(GtkWidget* row, DropStyle style, std::string self,
             auto* w = owner(t);
             if (!w) return GdkDragAction(0);
             clear(w);
-            auto* id = dragged_id(gtk_drop_target_get_value(t));
-            if (id && *id == self) return GdkDragAction(0);
+            auto* ids = dragged_ids(gtk_drop_target_get_value(t));
+            if (ids && std::ranges::find(*ids, self) != ids->end()) return GdkDragAction(0);
             if (style == DropStyle::Into) gtk_widget_add_css_class(w, "drop-into");
             else if (place_at(w, y) == rem::Document::Place::Before) gtk_widget_add_css_class(w, "drop-above");
             else gtk_widget_add_css_class(w, "drop-below");
@@ -320,11 +357,11 @@ void make_drop_target(GtkWidget* row, DropStyle style, std::string self,
         [self, place_at, clear, on_drop](GtkDropTarget* t, const GValue* value, double, double y) -> gboolean {
             auto* w = owner(t);
             clear(w);
-            auto* id = dragged_id(value);
-            if (!w || !id || *id == self) return FALSE;
+            auto* ids = dragged_ids(value);
+            if (!w || !ids || ids->empty() || std::ranges::find(*ids, self) != ids->end()) return FALSE;
             auto place = place_at(w, y);
             // Rebuilding the view destroys this row; do it after the drop finishes.
-            idle([on_drop, id = *id, place] { on_drop(id, place); });
+            idle([on_drop, ids = *ids, place] { on_drop(ids, place); });
             return TRUE;
         });
     gtk_widget_add_controller(row, GTK_EVENT_CONTROLLER(target));
@@ -594,6 +631,25 @@ std::uint64_t Window::undoable(const char* label, F&& f) {
     auto step = history_.record(label, before, store_->snapshot());
     update_undo_actions();
     return step;
+}
+
+// An edit of several reminders: one undo step, with saves held so each list
+// is written once.
+template <class F>
+std::uint64_t Window::batch(const char* label, F&& f) {
+    return undoable(label, [&] {
+        store_->hold_saves();
+        try {
+            f();
+        } catch (const std::exception& e) {
+            toast(std::format("Couldn't save: {}", e.what()));
+        }
+        try {
+            store_->release_saves();
+        } catch (const std::exception& e) {
+            toast(std::format("Couldn't save: {}", e.what()));
+        }
+    });
 }
 
 Window* Window::create(AdwApplication* app, std::optional<std::filesystem::path> folder) {
@@ -1459,6 +1515,10 @@ void Window::select(View v) {
         gtk_editable_set_text(GTK_EDITABLE(search_entry_), "");
         updating_sidebar_ = false;
     }
+    if (!(v == view_)) {
+        selected_.clear();
+        anchor_.reset();
+    }
     view_ = std::move(v);
     if (view_.kind != View::Search && remember_view_) save_last_view(view_to_string(view_));
     refresh();
@@ -1538,7 +1598,7 @@ void Window::rebuild_sidebar() {
                     set_row_view(row, View{View::List, key});
                     if (hidden_.list_hidden(key)) gtk_widget_add_css_class(row, "hidden-entry");
                     make_reorderable(row, View{View::List, key});
-                    make_drop_target(row, DropStyle::Into, "", [this, key](std::string dropped, rem::Document::Place) {
+                    make_drop_target(row, DropStyle::Into, "", [this, key](Ids dropped, rem::Document::Place) {
                         move_to_list(dropped, key);
                     });
                     make_file_drop_target(row, true, [this, key](std::vector<std::filesystem::path> files) {
@@ -1575,6 +1635,8 @@ void Window::rebuild_sidebar() {
 void Window::rebuild_content() {
     if (!store_) return;
     first_new_entry_ = nullptr;
+    shown_ids_.clear();  // build_reminder_row adds each row
+    reminder_rows_.clear();
     auto* title = ADW_WINDOW_TITLE(content_title_);
     bool is_list = view_.kind == View::List;
     gtk_widget_set_visible(new_button_, is_list);
@@ -1598,7 +1660,7 @@ void Window::rebuild_content() {
             ++total;
             done += r.done;
         });
-        adw_window_title_set_subtitle(title, rem::count_label(rem::CountStyle::WithComplete, total, done).c_str());
+        count_subtitle_ = rem::count_label(rem::CountStyle::WithComplete, total, done);
         body = build_list_view(*l);
     } else {
         if (auto* s = smart_info(view_.kind)) page_title = s->title;
@@ -1612,11 +1674,15 @@ void Window::rebuild_content() {
                      : view_.kind == View::Completed                                         ? rem::CountStyle::Completed
                      : view_.kind == View::Tag || view_.kind == View::AllReminders ? rem::CountStyle::WithComplete
                                                                                              : rem::CountStyle::OpenOnly;
-        adw_window_title_set_subtitle(title, rem::count_label(style, total, done).c_str());
+        count_subtitle_ = rem::count_label(style, total, done);
         body = build_smart_view();
     }
     adw_window_title_set_title(title, page_title.c_str());
     adw_navigation_page_set_title(ADW_NAVIGATION_PAGE(content_page_), page_title.c_str());
+    // Selected reminders no longer shown (completed and hidden, deleted
+    // elsewhere) drop out of the selection.
+    std::erase_if(selected_, [this](const std::string& id) { return !reminder_rows_.contains(id); });
+    update_selection();  // also sets the subtitle
 
     // Keep the scroll position across rebuilds.
     auto* adj = gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(content_scroller_));
@@ -1881,6 +1947,9 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
     gtk_widget_add_css_class(row, "reminder-row");
     gtk_widget_add_css_class(row, color_class(ref.list->color()).c_str());
     g_object_set_data_full(G_OBJECT(row), "reminder-id", g_strdup(id.c_str()), g_free);  // for paste
+    shown_ids_.push_back(id);
+    reminder_rows_[id] = row;
+    if (selected_.contains(id)) gtk_widget_add_css_class(row, "selected-reminder");
 
     auto* box = hbox(12);
     gtk_widget_set_margin_top(box, 8);
@@ -2015,64 +2084,102 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
     gtk_widget_set_tooltip_text(details, "Details");
     on(details, "clicked", [this, id] { show_details(id); });
 
-    // Per-row actions: the "more" menu, the context menu and keyboard shortcuts.
+    // Per-row actions: the "more" menu, the context menu and keyboard
+    // shortcuts. Most act on targets(id): the selection, when this row is
+    // part of it.
     bool in_list = view_.kind == View::List;
+    bool can_indent = in_list && !ref.parent && r.subtasks.empty(), can_outdent = in_list && ref.parent;
     auto* actions = g_simple_action_group_new();
     add_action(actions, "details", [this, id] { show_details(id); });
-    add_action(actions, "flag", [this, id] { toggle_flag(id); });
-    add_action(actions, "due-today", [this, id] { idle([this, id] { set_due(id, 0); }); });
-    add_action(actions, "due-tomorrow", [this, id] { idle([this, id] { set_due(id, 1); }); });
-    add_action(actions, "delete", [this, id] { idle([this, id] { delete_reminder(id); }); });
+    add_action(actions, "flag", [this, id] { idle([this, ids = targets(id)] { toggle_flag(ids); }); });
+    add_action(actions, "due-today", [this, id] { idle([this, ids = targets(id)] { set_due(ids, 0); }); });
+    add_action(actions, "due-tomorrow", [this, id] { idle([this, ids = targets(id)] { set_due(ids, 1); }); });
+    add_action(actions, "delete", [this, id] { idle([this, ids = targets(id)] { delete_reminders(ids); }); });
     auto* indent_action = add_action(actions, "indent", [this, id] { idle([this, id] { indent(id, true); }); });
     auto* outdent_action = add_action(actions, "outdent", [this, id] { idle([this, id] { indent(id, false); }); });
-    g_simple_action_set_enabled(indent_action, in_list && !ref.parent && r.subtasks.empty());
-    g_simple_action_set_enabled(outdent_action, in_list && ref.parent);
+    g_simple_action_set_enabled(indent_action, can_indent);
+    g_simple_action_set_enabled(outdent_action, can_outdent);
+    {
+        auto* move_to = g_simple_action_new("move-to", G_VARIANT_TYPE_STRING);
+        connect<void(GSimpleAction*, GVariant*)>(move_to, "activate", [this, id](GSimpleAction*, GVariant* v) {
+            idle([this, ids = outermost(targets(id)), key = std::string(g_variant_get_string(v, nullptr))] {
+                move_to_list(ids, key);
+            });
+        });
+        g_action_map_add_action(G_ACTION_MAP(actions), G_ACTION(move_to));
+        g_object_unref(move_to);
+    }
     gtk_widget_insert_action_group(row, "reminder", G_ACTION_GROUP(actions));
     g_object_unref(actions);
 
-    // Menu items show their shortcut.
-    auto item = [](GMenu* m, const char* text, const char* action, const char* accel) {
-        auto* i = g_menu_item_new(text, action);
-        g_menu_item_set_attribute(i, "accel", "s", accel);
-        g_menu_append_item(m, i);
-        g_object_unref(i);
-    };
-    auto* menu = g_menu_new();
-    item(menu, "_Details…", "reminder.details", "<Control>i");
-    item(menu, r.flagged ? "_Unflag" : "_Flag", "reminder.flag", "<Control><Shift>f");
-    auto* dates = menu_section(menu);
-    item(dates, "Due _Today", "reminder.due-today", "<Control>t");
-    item(dates, "Due To_morrow", "reminder.due-tomorrow", "<Control><Shift>t");
-    if (in_list) {
-        auto* structure = menu_section(menu);
-        item(structure, "_Indent", "reminder.indent", "<Control>bracketright");
-        item(structure, "_Outdent", "reminder.outdent", "<Control>bracketleft");
-    }
-    auto* danger = menu_section(menu);
-    item(danger, "_Delete", "reminder.delete", "Delete");
+    // The menu is made as it opens, for what it will act on then.
     auto* more = gtk_menu_button_new();
     gtk_menu_button_set_icon_name(GTK_MENU_BUTTON(more), "view-more-symbolic");
-    gtk_menu_button_set_menu_model(GTK_MENU_BUTTON(more), G_MENU_MODEL(menu));
+    using MakeMenu = std::function<void(GtkMenuButton*)>;
+    gtk_menu_button_set_create_popup_func(
+        GTK_MENU_BUTTON(more), [](GtkMenuButton* b, gpointer d) { (*static_cast<MakeMenu*>(d))(b); },
+        new MakeMenu([this, id, in_list](GtkMenuButton* b) {
+            auto menu = Obj<GMenuModel>::adopt(reminder_menu(id, in_list));
+            gtk_menu_button_set_menu_model(b, menu.get());
+        }),
+        [](gpointer d) { delete static_cast<MakeMenu*>(d); });
     gtk_widget_add_css_class(more, "flat");
     gtk_widget_add_css_class(more, "circular");
     gtk_widget_add_css_class(more, "row-button");
     gtk_widget_set_valign(more, GTK_ALIGN_CENTER);
     gtk_widget_set_tooltip_text(more, "More");
-    g_object_unref(menu);
     append(box, {details, more});
 
-    // Right-click and long-press open the same menu.
+    // Right-click and long-press open the same menu; on a row outside the
+    // selection, for that row only.
+    auto popup = [this, id, more] {
+        if (!selected_.contains(id)) clear_selection();
+        gtk_menu_button_popup(GTK_MENU_BUTTON(more));
+    };
     auto* click = gtk_gesture_click_new();
     gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(click), GDK_BUTTON_SECONDARY);
-    connect<void(GtkGestureClick*, int, double, double)>(
-        click, "pressed", [more](GtkGestureClick*, int, double, double) { gtk_menu_button_popup(GTK_MENU_BUTTON(more)); });
+    connect<void(GtkGestureClick*, int, double, double)>(click, "pressed",
+                                                        [popup](GtkGestureClick*, int, double, double) { popup(); });
     gtk_widget_add_controller(row, GTK_EVENT_CONTROLLER(click));
     auto* press = gtk_gesture_long_press_new();
-    connect<void(GtkGestureLongPress*, double, double)>(
-        press, "pressed", [more](GtkGestureLongPress*, double, double) { gtk_menu_button_popup(GTK_MENU_BUTTON(more)); });
+    connect<void(GtkGestureLongPress*, double, double)>(press, "pressed",
+                                                        [popup](GtkGestureLongPress*, double, double) { popup(); });
     gtk_widget_add_controller(row, GTK_EVENT_CONTROLLER(press));
 
-    // Clicking a row's empty space selects it, so its keyboard shortcuts apply.
+    // Selecting: Ctrl+click adds or removes the row, Shift+click selects up
+    // to it (Ctrl+Shift+click adds that range), anywhere on the row, before
+    // its title or buttons see the click. A plain click outside the
+    // selection clears it; on a selected row, when released without
+    // dragging the selection (and not on its menu or Details buttons).
+    auto* pick = gtk_gesture_click_new();
+    gtk_event_controller_set_propagation_phase(GTK_EVENT_CONTROLLER(pick), GTK_PHASE_CAPTURE);
+    auto modifiers = [](GtkGestureClick* g) {
+        return gtk_event_controller_get_current_event_state(GTK_EVENT_CONTROLLER(g)) &
+               gtk_accelerator_get_default_mod_mask();
+    };
+    connect<void(GtkGestureClick*, int, double, double)>(
+        pick, "pressed", [this, id, row, modifiers](GtkGestureClick* g, int, double, double) {
+            auto mods = modifiers(g);
+            if (mods & (GDK_CONTROL_MASK | GDK_SHIFT_MASK)) {
+                gtk_gesture_set_state(GTK_GESTURE(g), GTK_EVENT_SEQUENCE_CLAIMED);
+                if (mods & GDK_SHIFT_MASK) select_range(id, mods & GDK_CONTROL_MASK);
+                else toggle_selected(id);
+                gtk_widget_grab_focus(row);
+                return;
+            }
+            if (!selected_.contains(id)) clear_selection();
+            anchor_ = id;
+        });
+    connect<void(GtkGestureClick*, int, double, double)>(
+        pick, "released", [this, id, row, modifiers](GtkGestureClick* g, int, double x, double y) {
+            if (modifiers(g) & (GDK_CONTROL_MASK | GDK_SHIFT_MASK) || !selected_.contains(id)) return;
+            for (auto* w = gtk_widget_pick(row, x, y, GTK_PICK_DEFAULT); w && w != row; w = gtk_widget_get_parent(w))
+                if (GTK_IS_BUTTON(w) || GTK_IS_MENU_BUTTON(w)) return;  // acts on the selection
+            clear_selection();
+        });
+    gtk_widget_add_controller(row, GTK_EVENT_CONTROLLER(pick));
+
+    // Clicking a row's empty space focuses it, so its keyboard shortcuts apply.
     auto* select_click = gtk_gesture_click_new();
     connect<void(GtkGestureClick*, int, double, double)>(
         select_click, "pressed", [row](GtkGestureClick*, int, double x, double y) {
@@ -2082,6 +2189,10 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
             gtk_widget_grab_focus(row);
         });
     gtk_widget_add_controller(row, GTK_EVENT_CONTROLLER(select_click));
+
+    auto* focus = gtk_event_controller_focus_new();
+    connect<void(GtkEventControllerFocus*)>(focus, "enter", [this, id](GtkEventControllerFocus*) { cursor_ = id; });
+    gtk_widget_add_controller(row, focus);
 
     auto* keys = gtk_event_controller_key_new();
     connect<gboolean(GtkEventControllerKey*, guint, guint, GdkModifierType)>(
@@ -2097,8 +2208,12 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
             if (mask == 0) {
                 switch (key) {
                     case GDK_KEY_Delete:
-                    case GDK_KEY_KP_Delete: return later([this, id] { delete_reminder(id); });
+                    case GDK_KEY_KP_Delete: return later([this, ids = targets(id)] { delete_reminders(ids); });
                     case GDK_KEY_space:
+                        if (selected_.contains(id)) {
+                            focus_reminder_ = id;
+                            return later([this, ids = targets(id)] { complete_reminders(ids); });
+                        }
                         gtk_check_button_set_active(GTK_CHECK_BUTTON(check),
                                                     !gtk_check_button_get_active(GTK_CHECK_BUTTON(check)));
                         return TRUE;
@@ -2107,12 +2222,24 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
                     case GDK_KEY_F2:
                         gtk_editable_label_start_editing(GTK_EDITABLE_LABEL(title));
                         return TRUE;
+                    case GDK_KEY_Escape:
+                        if (selected_.empty()) break;
+                        clear_selection();
+                        return TRUE;
+                    case GDK_KEY_Up:
+                    case GDK_KEY_Down:
+                        clear_selection();  // the selection doesn't follow the focus
+                        break;
                 }
+            } else if (mask == GDK_SHIFT_MASK && (key == GDK_KEY_Up || key == GDK_KEY_Down)) {
+                extend_selection(id, key == GDK_KEY_Up);
+                return TRUE;
             } else if (mask == GDK_CONTROL_MASK) {
                 switch (key) {
-                    case GDK_KEY_t: return later([this, id] { set_due(id, 0); });
+                    case GDK_KEY_a: select_all(); return TRUE;
+                    case GDK_KEY_t: return later([this, ids = targets(id)] { set_due(ids, 0); });
                     case GDK_KEY_i: return later([this, id] { show_details(id); });
-                    case GDK_KEY_c: copy_reminder(id); return TRUE;
+                    case GDK_KEY_c: copy_reminders(targets(id)); return TRUE;
                     case GDK_KEY_bracketright:
                         if (in_list) return later([this, id] { indent(id, true); });
                         break;
@@ -2121,12 +2248,12 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
                         break;
                 }
             } else if (mask == (GDK_CONTROL_MASK | GDK_SHIFT_MASK) && key == GDK_KEY_f) {
-                return later([this, id] { toggle_flag(id); });
+                return later([this, ids = targets(id)] { toggle_flag(ids); });
             } else if (mask == (GDK_CONTROL_MASK | GDK_SHIFT_MASK) && key == GDK_KEY_t) {
-                return later([this, id] { set_due(id, 1); });
+                return later([this, ids = targets(id)] { set_due(ids, 1); });
             } else if (mask == GDK_ALT_MASK && key >= GDK_KEY_0 && key <= GDK_KEY_3) {
                 auto p = static_cast<rem::Priority>(key - GDK_KEY_0);
-                return later([this, id, p] { set_priority(id, p); });
+                return later([this, ids = targets(id), p] { set_priority(ids, p); });
             } else if (mask == GDK_ALT_MASK && in_list && (key == GDK_KEY_Up || key == GDK_KEY_Down)) {
                 bool up = key == GDK_KEY_Up;
                 return later([this, id, up] { move_step(id, up); });
@@ -2144,12 +2271,68 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
     }
 
     if (!first_row_) first_row_ = row;
-    make_draggable(row, id);
+    // Dragging a selected row drags the whole selection.
+    make_draggable(
+        row, [this, id] { return outermost(targets(id)); },
+        [this](const Ids& ids, bool on) {
+            for (auto& i : ids)
+                if (auto it = reminder_rows_.find(i); it != reminder_rows_.end()) {
+                    if (on) gtk_widget_add_css_class(it->second, "dragging");
+                    else gtk_widget_remove_css_class(it->second, "dragging");
+                }
+        });
     if (view_.kind == View::List)
-        make_drop_target(row, DropStyle::Halves, id, [this, id](std::string dropped, rem::Document::Place place) {
-            move_reminder(dropped, id, place);
+        make_drop_target(row, DropStyle::Halves, id, [this, id](Ids dropped, rem::Document::Place place) {
+            move_reminders(dropped, id, place);
         });
     return row;
+}
+
+// A reminder's ⋮ / right-click menu, for targets(id) as it opens: one
+// reminder, or the selection it's part of.
+GMenuModel* Window::reminder_menu(const std::string& id, bool in_list) {
+    auto ids = targets(id);
+    bool several = ids.size() > 1;
+    bool all_flagged = std::ranges::all_of(ids, [this](auto& i) {
+        auto ref = store_->find(i);
+        return !ref || ref->reminder->flagged;
+    });
+    // Menu items show their shortcut.
+    auto item = [](GMenu* m, const std::string& text, const char* action, const char* accel) {
+        auto* i = g_menu_item_new(text.c_str(), action);
+        if (accel) g_menu_item_set_attribute(i, "accel", "s", accel);
+        g_menu_append_item(m, i);
+        g_object_unref(i);
+    };
+    auto* menu = g_menu_new();
+    if (!several) item(menu, "_Details…", "reminder.details", "<Control>i");
+    item(menu, all_flagged ? "_Unflag" : "_Flag", "reminder.flag", "<Control><Shift>f");
+    auto* dates = menu_section(menu);
+    item(dates, "Due _Today", "reminder.due-today", "<Control>t");
+    item(dates, "Due To_morrow", "reminder.due-tomorrow", "<Control><Shift>t");
+    // Move To: every list but the one they're all in already.
+    std::set<rem::ListFile*> in;
+    for (auto& i : ids)
+        if (auto ref = store_->find(i)) in.insert(ref->list);
+    auto* lists = g_menu_new();
+    for (auto* l : store_->lists()) {
+        if (in.size() == 1 && in.contains(l)) continue;
+        auto* i = g_menu_item_new(store_->label(*l).c_str(), nullptr);
+        g_menu_item_set_action_and_target_value(i, "reminder.move-to", g_variant_new_string(store_->key_of(*l).c_str()));
+        g_menu_append_item(lists, i);
+        g_object_unref(i);
+    }
+    if (g_menu_model_get_n_items(G_MENU_MODEL(lists)) > 0)
+        g_menu_append_submenu(menu_section(menu), "_Move To", G_MENU_MODEL(lists));
+    g_object_unref(lists);
+    if (in_list && !several) {
+        auto* structure = menu_section(menu);
+        item(structure, "_Indent", "reminder.indent", "<Control>bracketright");
+        item(structure, "_Outdent", "reminder.outdent", "<Control>bracketleft");
+    }
+    item(menu_section(menu), several ? std::format("_Delete {} Reminders", ids.size()) : "_Delete",
+         "reminder.delete", "Delete");
+    return G_MENU_MODEL(menu);
 }
 
 GtkWidget* Window::build_new_row(const std::string& list, const std::optional<std::string>& section) {
@@ -2176,7 +2359,7 @@ GtkWidget* Window::build_new_row(const std::string& list, const std::optional<st
         idle([this, list, section, text] { add_reminder(list, section, text); });
     });
 
-    make_drop_target(row, DropStyle::Above, "", [this, list, section](std::string dropped, rem::Document::Place) {
+    make_drop_target(row, DropStyle::Above, "", [this, list, section](Ids dropped, rem::Document::Place) {
         move_to_section_end(dropped, list, section);
     });
 
@@ -2223,7 +2406,7 @@ void Window::edit_title(const std::string& id, const std::string& text) {
     undoable("Edit Reminder", [&] {
         auto ref = store_->find(id);
         if (!ref) return;
-        if (trim(text).empty()) return delete_reminder(id);
+        if (trim(text).empty()) return delete_reminders({id});
         auto& r = *ref->reminder;
         // Typed fields ("#tag", "📅 2026-10-03", …) are applied, not kept in the title.
         auto f = rem::parse_fields(trim(text));
@@ -2258,38 +2441,229 @@ void Window::toggle_done(const std::string& id, bool done) {
     });
 }
 
-void Window::move_reminder(const std::string& id, const std::string& target, rem::Document::Place place) {
-    undoable("Move Reminder", [&] {
+void Window::complete_reminders(const std::vector<std::string>& ids) {
+    bool all_done = std::ranges::all_of(ids, [this](auto& id) {
         auto ref = store_->find(id);
-        auto target_ref = store_->find(target);
-        if (!ref || !target_ref) return;
-        try {
-            if (ref->list != target_ref->list) store_->move_to_list(id, *target_ref->list);
-            auto* l = store_->find(target)->list;
-            if (!l->doc.move_next_to(id, target, place)) toast("Subtasks can't have subtasks of their own");
-            store_->save(*l);  // also covers a move from another list
-        } catch (const std::exception& e) {
-            toast(std::format("Couldn't save: {}", e.what()));
-        }
-        refresh();
+        return !ref || ref->reminder->done;
     });
+    batch(ids.size() > 1 ? "Complete Reminders" : "Complete Reminder", [&] {
+        for (auto& id : ids) store_->set_done(id, !all_done, today());
+    });
+    refresh_later(kCompleteDelayMs);
 }
 
-void Window::move_to_section_end(const std::string& id, const std::string& list,
+// Several land together, in their order: the first next to `target`, each
+// other after the one before.
+void Window::move_reminders(const std::vector<std::string>& ids, const std::string& target,
+                            rem::Document::Place place) {
+    bool nested = false;
+    batch(ids.size() > 1 ? "Move Reminders" : "Move Reminder", [&] {
+        auto anchor = target;
+        for (auto& id : ids) {
+            auto ref = store_->find(id);
+            auto target_ref = store_->find(anchor);
+            if (!ref || !target_ref) continue;
+            if (ref->list != target_ref->list) store_->move_to_list(id, *target_ref->list);
+            auto* l = store_->find(anchor)->list;
+            if (l->doc.move_next_to(id, anchor, place)) {
+                anchor = id;
+                place = rem::Document::Place::After;
+            } else {
+                nested = true;
+            }
+            store_->save(*l);  // also covers a move from another list
+        }
+    });
+    if (nested) toast("Subtasks can't have subtasks of their own");
+    refresh();
+}
+
+void Window::move_to_section_end(const std::vector<std::string>& ids, const std::string& list,
                                  const std::optional<std::string>& section) {
-    undoable("Move Reminder", [&] {
-        auto ref = store_->find(id);
+    batch(ids.size() > 1 ? "Move Reminders" : "Move Reminder", [&] {
         auto* l = store_->list(list);
-        if (!ref || !l) return;
-        try {
+        if (!l) return;
+        for (auto& id : ids) {
+            auto ref = store_->find(id);
+            if (!ref) continue;
             if (ref->list != l) store_->move_to_list(id, *l);
             l->doc.move_to_end(id, section);
             store_->save(*l);
-        } catch (const std::exception& e) {
-            toast(std::format("Couldn't save: {}", e.what()));
         }
-        refresh();
     });
+    refresh();
+}
+
+void Window::move_to_list(const std::vector<std::string>& ids, const std::string& list) {
+    auto* l = store_->list(list);
+    if (!l) return;
+    int moved = 0;
+    batch(ids.size() > 1 ? "Move Reminders" : "Move Reminder", [&] {
+        for (auto& id : ids) {
+            auto ref = store_->find(id);
+            if (!ref || ref->list == l) continue;
+            store_->move_to_list(id, *l);
+            ++moved;
+        }
+    });
+    if (moved == 0) return;
+    refresh();
+    auto name = store_->label(*l);
+    toast(moved == 1 ? std::format("Moved to “{}”", name) : std::format("Moved {} reminders to “{}”", moved, name));
+}
+
+void Window::set_priority(const std::vector<std::string>& ids, rem::Priority priority) {
+    batch("Set Priority", [&] {
+        for (auto& id : ids)
+            if (auto ref = store_->find(id); ref && ref->reminder->priority != priority) {
+                ref->reminder->priority = priority;
+                store_->touch(id);
+            }
+    });
+    keep_focus(ids);
+    refresh();
+}
+
+void Window::toggle_flag(const std::vector<std::string>& ids) {
+    bool all_flagged = std::ranges::all_of(ids, [this](auto& id) {
+        auto ref = store_->find(id);
+        return !ref || ref->reminder->flagged;
+    });
+    batch(ids.size() > 1 ? "Flag Reminders" : "Flag Reminder", [&] {
+        for (auto& id : ids)
+            if (auto ref = store_->find(id)) {
+                ref->reminder->flagged = !all_flagged;
+                store_->touch(id);
+            }
+    });
+    keep_focus(ids);
+    refresh();
+}
+
+void Window::set_due(const std::vector<std::string>& ids, int days_from_today) {
+    batch("Set Due Date", [&] {
+        auto due = rem::Date{std::chrono::sys_days{today()} + std::chrono::days{days_from_today}};
+        for (auto& id : ids)
+            if (auto ref = store_->find(id)) {
+                ref->reminder->due_date = due;
+                store_->touch(id);  // keeps any time already set
+            }
+    });
+    keep_focus(ids);
+    refresh();
+}
+
+// The reminders as Markdown text, so they also paste into other apps.
+void Window::copy_reminders(const std::vector<std::string>& ids) {
+    if (!store_) return;
+    std::string text, first;
+    int count = 0;
+    for (auto& id : outermost(ids))
+        if (auto ref = store_->find(id)) {
+            text += rem::to_clipboard_text(*ref->reminder);
+            if (count++ == 0) first = ref->reminder->title;
+        }
+    if (count == 0) return;
+    gdk_clipboard_set_text(gtk_widget_get_clipboard(window_), text.c_str());
+    toast(count == 1 ? std::format("Copied “{}”", first) : std::format("Copied {} reminders", count));
+}
+
+void Window::delete_reminders(const std::vector<std::string>& ids) {
+    auto gone = outermost(ids);
+    std::erase_if(gone, [this](auto& id) { return !store_->find(id); });
+    if (gone.empty()) return;
+    auto step = batch(gone.size() > 1 ? "Delete Reminders" : "Delete Reminder", [&] {
+        for (auto& id : gone) store_->remove(id);
+    });
+    refresh();
+    // The toast's Undo only applies while this deletion is still the latest step.
+    auto text = gone.size() > 1 ? std::format("{} reminders deleted", gone.size()) : std::string("Reminder deleted");
+    if (step) toast(text, "_Undo", [this, step] {
+        if (history_.next_undo() == step) undo();
+    });
+}
+
+// --- selection -------------------------------------------------------------
+
+// The selection (top to bottom) when `id` is in it, else just `id`.
+std::vector<std::string> Window::targets(const std::string& id) {
+    if (!selected_.contains(id)) return {id};
+    std::vector<std::string> out;
+    for (auto& s : shown_ids_)
+        if (selected_.contains(s)) out.push_back(s);
+    return out;
+}
+
+// For moving, deleting and copying: a subtask goes along with its parent.
+std::vector<std::string> Window::outermost(const std::vector<std::string>& ids) {
+    std::vector<std::string> out;
+    for (auto& id : ids) {
+        auto ref = store_->find(id);
+        if (ref && ref->parent && std::ranges::find(ids, ref->parent->id) != ids.end()) continue;
+        out.push_back(id);
+    }
+    return out;
+}
+
+void Window::toggle_selected(const std::string& id) {
+    if (!selected_.erase(id)) selected_.insert(id);
+    anchor_ = id;
+    update_selection();
+}
+
+// From the anchor (the last reminder clicked, else the focused one) to `to`;
+// `add` keeps what was already selected.
+void Window::select_range(const std::string& to, bool add) {
+    auto from = anchor_.value_or(cursor_.value_or(to));
+    auto a = std::ranges::find(shown_ids_, from), b = std::ranges::find(shown_ids_, to);
+    if (b == shown_ids_.end()) return;
+    if (a == shown_ids_.end()) {
+        a = b;
+        from = to;
+    }
+    if (a > b) std::swap(a, b);
+    if (!add) selected_.clear();
+    selected_.insert(a, b + 1);
+    anchor_ = from;
+    update_selection();
+}
+
+// Shift+↑/↓: selects from the anchor to the row above or below `from`, and
+// moves the focus there.
+void Window::extend_selection(const std::string& from, bool up) {
+    auto at = std::ranges::find(shown_ids_, from);
+    if (at == shown_ids_.end() || (up ? at == shown_ids_.begin() : at + 1 == shown_ids_.end())) return;
+    auto next = up ? *(at - 1) : *(at + 1);
+    if (selected_.empty() || !anchor_) anchor_ = from;
+    select_range(next, false);
+    if (auto row = reminder_rows_.find(next); row != reminder_rows_.end()) gtk_widget_grab_focus(row->second);
+}
+
+void Window::select_all() {
+    if (shown_ids_.empty()) return;
+    selected_ = {shown_ids_.begin(), shown_ids_.end()};
+    if (!anchor_) anchor_ = shown_ids_.front();
+    update_selection();
+}
+
+void Window::clear_selection() {
+    if (selected_.empty()) return;
+    selected_.clear();
+    update_selection();
+}
+
+void Window::update_selection() {
+    for (auto& [id, row] : reminder_rows_) {
+        if (selected_.contains(id)) gtk_widget_add_css_class(row, "selected-reminder");
+        else gtk_widget_remove_css_class(row, "selected-reminder");
+    }
+    auto subtitle = selected_.empty() ? count_subtitle_ : std::format("{} Selected", selected_.size());
+    adw_window_title_set_subtitle(ADW_WINDOW_TITLE(content_title_), subtitle.c_str());
+}
+
+void Window::keep_focus(const std::vector<std::string>& ids) {
+    if (ids.empty()) return;
+    focus_reminder_ = cursor_ && std::ranges::find(ids, *cursor_) != ids.end() ? *cursor_ : ids.front();
 }
 
 void Window::move_step(const std::string& id, bool up) {
@@ -2307,21 +2681,6 @@ void Window::move_step(const std::string& id, bool up) {
         }
         focus_reminder_ = id;
         refresh();
-    });
-}
-
-void Window::move_to_list(const std::string& id, const std::string& list) {
-    undoable("Move Reminder", [&] {
-        auto ref = store_->find(id);
-        auto* l = store_->list(list);
-        if (!ref || !l || ref->list == l) return;
-        try {
-            store_->move_to_list(id, *l);
-        } catch (const std::exception& e) {
-            toast(std::format("Couldn't save: {}", e.what()));
-        }
-        refresh();
-        toast(std::format("Moved to “{}”", list));
     });
 }
 
@@ -2355,21 +2714,6 @@ void Window::setup_autoscroll() {
     gtk_widget_add_controller(content_scroller_, GTK_EVENT_CONTROLLER(motion));
 }
 
-void Window::set_priority(const std::string& id, rem::Priority priority) {
-    undoable("Set Priority", [&] {
-        auto ref = store_->find(id);
-        if (!ref || ref->reminder->priority == priority) return;
-        ref->reminder->priority = priority;
-        try {
-            store_->touch(id);
-        } catch (const std::exception& e) {
-            toast(std::format("Couldn't save: {}", e.what()));
-        }
-    });
-    focus_reminder_ = id;
-    refresh();
-}
-
 void Window::indent(const std::string& id, bool in) {
     auto ref = store_->find(id);
     if (!ref) return;
@@ -2390,29 +2734,6 @@ void Window::indent(const std::string& id, bool in) {
     if (auto now = store_->find(id); moved && now && now->parent) collapsed_.erase(now->parent->id);
     focus_reminder_ = id;
     refresh();
-}
-
-void Window::toggle_flag(const std::string& id) {
-    undoable("Flag Reminder", [&] {
-        auto ref = store_->find(id);
-        if (!ref) return;
-        ref->reminder->flagged = !ref->reminder->flagged;
-        try {
-            store_->touch(id);
-        } catch (const std::exception& e) {
-            toast(std::format("Couldn't save: {}", e.what()));
-        }
-    });
-    focus_reminder_ = id;
-    refresh();
-}
-
-// The reminder as Markdown text, so it also pastes into other apps.
-void Window::copy_reminder(const std::string& id) {
-    auto ref = store_ ? store_->find(id) : std::nullopt;
-    if (!ref) return;
-    gdk_clipboard_set_text(gtk_widget_get_clipboard(window_), rem::to_clipboard_text(*ref->reminder).c_str());
-    toast(std::format("Copied “{}”", ref->reminder->title));
 }
 
 void Window::paste_reminders() {
@@ -2479,22 +2800,6 @@ void Window::add_pasted(const std::string& text) {
     if (pasted.size() > 1) toast(std::format("Pasted {} reminders", pasted.size()));
 }
 
-void Window::delete_reminder(const std::string& id) {
-    if (!store_->find(id)) return;
-    auto step = undoable("Delete Reminder", [&] {
-        try {
-            store_->remove(id);
-        } catch (const std::exception& e) {
-            toast(std::format("Couldn't save: {}", e.what()));
-        }
-    });
-    refresh();
-    // The toast's Undo only applies while this deletion is still the latest step.
-    if (step) toast("Reminder deleted", "_Undo", [this, step] {
-        if (history_.next_undo() == step) undo();
-    });
-}
-
 void Window::show_details(const std::string& id) {
     auto ref = store_->find(id);
     if (!ref) return;
@@ -2502,7 +2807,7 @@ void Window::show_details(const std::string& id) {
     for (auto* l : store_->lists()) names.push_back(store_->label(*l));
     show_reminder_dialog(window_, *ref->reminder, ref->parent != nullptr, store_->label(*ref->list), names,
                          [this, id](ReminderEdit e) {
-        if (e.deleted) return delete_reminder(id);
+        if (e.deleted) return delete_reminders({id});
         auto ref = store_->find(id);
         if (!ref) {
             toast("This reminder was changed on another device");
@@ -3658,21 +3963,6 @@ void Window::focus_results() {
 void Window::show_content() {
     auto* split = ADW_OVERLAY_SPLIT_VIEW(split_);
     if (adw_overlay_split_view_get_collapsed(split)) adw_overlay_split_view_set_show_sidebar(split, FALSE);
-}
-
-void Window::set_due(const std::string& id, int days_from_today) {
-    undoable("Set Due Date", [&] {
-        auto ref = store_->find(id);
-        if (!ref) return;
-        ref->reminder->due_date = rem::Date{std::chrono::sys_days{today()} + std::chrono::days{days_from_today}};
-        try {
-            store_->touch(id);  // keeps any time already set
-        } catch (const std::exception& e) {
-            toast(std::format("Couldn't save: {}", e.what()));
-        }
-    });
-    focus_reminder_ = id;
-    refresh();
 }
 
 void Window::undo() {

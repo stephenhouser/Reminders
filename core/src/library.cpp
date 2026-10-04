@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <exception>
 #include <stdexcept>
 
 #include "reminders/settings.hpp"
@@ -157,6 +158,22 @@ void Library::decline(std::string_view key) {
 
 void Library::save(ListFile& list) {
     if (auto* s = owner(list)) s->store->save(list);
+}
+
+void Library::hold_saves() {
+    for (auto& s : sources_) s.store->hold_saves();
+}
+
+void Library::release_saves() {
+    std::exception_ptr error;
+    for (auto& s : sources_) {
+        try {
+            s.store->release_saves();
+        } catch (...) {
+            if (!error) error = std::current_exception();
+        }
+    }
+    if (error) std::rethrow_exception(error);
 }
 
 ListFile& Library::create_list(std::string_view source, const std::string& name, std::string_view color,

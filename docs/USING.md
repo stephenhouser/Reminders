@@ -109,6 +109,7 @@ Subtasks are one level deep, as in Apple Reminders.
   or below a reminder, or at the end of a section when you drop on its "New
   Reminder" row.
 - **Drag onto a list in the sidebar** to move it to that list.
+- **⋮ → Move To** (or right-click) moves it to another list.
 - **Drop a file** from another app to import its reminders (see [Importing
   reminders](#importing-reminders)).
 - **Alt+↑ / Alt+↓** moves the selected reminder up or down, across section
@@ -137,6 +138,35 @@ Subtasks are one level deep, as in Apple Reminders.
 
 Press Delete, or **⋮ → Delete**. Undo from the message that appears, or with
 Ctrl+Z.
+
+### Selecting several reminders
+
+Select several reminders to change them all at once:
+
+- **Ctrl+click** a reminder (anywhere on its row) to add it to the selection
+  or take it out.
+- **Shift+click** selects every reminder from the last one clicked to this
+  one; **Ctrl+Shift+click** adds that range to what's selected.
+- **Shift+↑ / Shift+↓** extends the selection from the keyboard.
+- **Ctrl+A** selects every reminder showing (not hidden completed ones, nor
+  the subtasks of a collapsed reminder).
+- **Escape**, a plain click, or moving with ↑ / ↓ clears it. So does going to
+  another list.
+
+Selected rows are tinted and the header says how many ("4 Selected"). The
+usual keys and the **⋮** or right-click menu of a selected reminder then act
+on all of them: Space, Ctrl+Shift+F, Ctrl+T / Ctrl+Shift+T, Alt+0 … Alt+3,
+Ctrl+C, Delete, and **Move To** (in the menu). Dragging a selected reminder
+drags them all; they land together, in their order. Each change is one step
+for Ctrl+Z.
+
+- **Complete and flag** set them all the same way: all completed (or all not
+  completed, when they all already were); likewise flagged.
+- **A selected reminder's subtasks** go with it when moving, copying or
+  deleting, selected or not.
+- **Clicking a selected reminder's circle** completes just that one.
+- **Details, Indent / Outdent and Alt+↑ / Alt+↓** still work on the one
+  reminder with the focus.
 
 ## Importing reminders
 
@@ -286,6 +316,15 @@ Press Ctrl+? in the app for this list.
 | Ctrl+C | Copy (as Markdown) |
 | Ctrl+V | Paste reminders (outside a text field) |
 | Delete | Delete |
+
+**Selecting several reminders** (see [Selecting several reminders](#selecting-several-reminders))
+
+| Shortcut | Action |
+|---|---|
+| Ctrl+A | Select all |
+| Ctrl+click | Add to / remove from the selection |
+| Shift+click, Shift+↑ / Shift+↓ | Select a range |
+| Esc | Clear the selection |
 
 **Lists**
 

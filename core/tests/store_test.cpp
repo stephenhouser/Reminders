@@ -356,3 +356,30 @@ TEST(backend_names) {
     CHECK(!parse_backend("dropbox"));
     CHECK_EQ(backend_name(BackendKind::Local), "local");
 }
+
+TEST(held_saves_write_each_list_once) {
+    TempDir t;
+    write(t.sync() / "A.md", MARK "- [ ] one ^a00001\n- [ ] two ^a00002\n");
+    write(t.sync() / "B.md", MARK "- [ ] three ^b00001\n");
+    Store s(t.sync(), t.state());
+    s.load_all();
+    auto before = read(t.sync() / "A.md");
+    s.hold_saves();
+    s.hold_saves();  // nested
+    s.set_done("a00001", true, d(2026, 10, 4));
+    s.set_done("a00002", true, d(2026, 10, 4));
+    s.move_to_list("b00001", *s.list("A"));
+    s.release_saves();
+    CHECK_EQ(read(t.sync() / "A.md"), before);  // still held
+    s.release_saves();
+    CHECK_EQ(read(t.sync() / "A.md"),
+             MARK "- [x] one ✅ 2026-10-04 ^a00001\n- [x] two ✅ 2026-10-04 ^a00002\n- [ ] three ^b00001\n");
+    CHECK_EQ(read(t.sync() / "B.md"), MARK);
+    // A list deleted while held is skipped.
+    s.hold_saves();
+    s.set_done("b00001", true, d(2026, 10, 4));
+    s.delete_list("B");
+    s.release_saves();
+    CHECK(!fs::exists(t.sync() / "B.md"));
+    CHECK(read(t.sync() / "A.md").find("- [x] three") != std::string::npos);
+}

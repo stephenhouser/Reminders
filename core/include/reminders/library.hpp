@@ -70,6 +70,9 @@ public:
 
     // As Store's, on the list's own source.
     void save(ListFile& list);
+    // Store::hold_saves / release_saves on every source.
+    void hold_saves();
+    void release_saves();
     ListFile& create_list(std::string_view source, const std::string& name, std::string_view color,
                           std::string_view icon);
     bool rename_list(ListFile& list, const std::string& new_name);

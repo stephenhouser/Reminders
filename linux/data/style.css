@@ -95,3 +95,5 @@
 .reminder-list > row:not(:last-child) {
   border-bottom: 1px solid alpha(currentColor, 0.1);
 }
+/* Selected reminders (Ctrl/Shift+click, Ctrl+A). */
+.reminder-list > row.selected-reminder { background-color: alpha(var(--accent-bg-color), 0.18); }

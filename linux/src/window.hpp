@@ -89,9 +89,12 @@ private:
     void add_reminder(const std::string& list, const std::optional<std::string>& section,
                       const std::string& text);
     void edit_title(const std::string& id, const std::string& text);
-    void toggle_done(const std::string& id, bool done);
-    void toggle_flag(const std::string& id);
-    void set_priority(const std::string& id, rem::Priority priority);
+    void toggle_done(const std::string& id, bool done);  // its check button
+    // Edits of several reminders (a selection, or just one), each one undo
+    // step that writes each list once.
+    void complete_reminders(const std::vector<std::string>& ids);  // all done, or not if they all were
+    void toggle_flag(const std::vector<std::string>& ids);         // all flagged, or not if they all were
+    void set_priority(const std::vector<std::string>& ids, rem::Priority priority);
     void indent(const std::string& id, bool in);  // false: outdent
     std::vector<View> smart_views();
     // Your lists and tags the sidebar shows: hidden ones only with Show Hidden.
@@ -139,20 +142,32 @@ private:
     ViewInfo view_info(const View& v);
     void quick_switcher();
     void step_view(int delta);
-    void set_due(const std::string& id, int days_from_today);
+    void set_due(const std::vector<std::string>& ids, int days_from_today);
     void toggle_subtasks(const std::string& id);
     void show_content();  // on narrow windows, hides the overlaid sidebar
     void focus_results();  // from the search entry into the search results
-    // Drag and drop.
-    void move_reminder(const std::string& id, const std::string& target, rem::Document::Place place);
-    void move_to_section_end(const std::string& id, const std::string& list,
+    // Drag and drop (several reminders land together, in order).
+    void move_reminders(const std::vector<std::string>& ids, const std::string& target, rem::Document::Place place);
+    void move_to_section_end(const std::vector<std::string>& ids, const std::string& list,
                              const std::optional<std::string>& section);
-    void move_to_list(const std::string& id, const std::string& list);
+    void move_to_list(const std::vector<std::string>& ids, const std::string& list);
     void move_step(const std::string& id, bool up);
     void setup_autoscroll();
-    void delete_reminder(const std::string& id);
-    // Ctrl+C on a reminder; Ctrl+V outside text fields (see clipboard.hpp).
-    void copy_reminder(const std::string& id);
+    void delete_reminders(const std::vector<std::string>& ids);
+    // Ctrl+C on reminders; Ctrl+V outside text fields (see clipboard.hpp).
+    void copy_reminders(const std::vector<std::string>& ids);
+    // Selecting several reminders: Ctrl+click, Shift+click, Shift+↑/↓,
+    // Ctrl+A; Escape or a plain click clears it.
+    std::vector<std::string> targets(const std::string& id);  // what an action on id's row applies to
+    std::vector<std::string> outermost(const std::vector<std::string>& ids);  // without subtasks whose parent is there
+    void toggle_selected(const std::string& id);
+    void select_range(const std::string& to, bool add);
+    void extend_selection(const std::string& from, bool up);
+    void select_all();
+    void clear_selection();
+    void update_selection();  // row highlights and the header's "N Selected"
+    void keep_focus(const std::vector<std::string>& ids);  // on the focused one of them after a rebuild
+    GMenuModel* reminder_menu(const std::string& id, bool in_list);  // ⋮ / right-click, made as it opens
     void paste_reminders();
     void add_pasted(const std::string& text);
     void show_details(const std::string& id);
@@ -177,6 +192,7 @@ private:
     void delete_section(const std::string& list, const std::string& name, int count);
     void update_banner();
     template <class F> std::uint64_t undoable(const char* label, F&& f);
+    template <class F> std::uint64_t batch(const char* label, F&& f);  // undoable, saves held
     void undo();
     void redo();
     void after_history(const rem::History::Result& result);
@@ -246,6 +262,12 @@ private:
     rem::SidebarGroup menu_group_;  // the sidebar menu's group
     GSimpleAction* collapsible_action_ = nullptr;  // the sidebar menu's "Collapsible" check item
     std::set<std::string> collapsed_;  // reminders whose subtasks are hidden (this session)
+    std::set<std::string> selected_;   // selected reminders (ids), in the view shown
+    std::optional<std::string> anchor_;  // where Shift+click / Shift+↑/↓ extend from
+    std::optional<std::string> cursor_;  // the reminder row that last had focus
+    std::vector<std::string> shown_ids_;  // the content's reminder rows, top to bottom
+    std::map<std::string, GtkWidget*> reminder_rows_;  // by id, until the next rebuild
+    std::string count_subtitle_;  // the header's count, shown when nothing is selected
     bool remember_view_ = true;  // false for a folder opened just for this session
     View view_;
     std::optional<std::string> focus_new_row_;

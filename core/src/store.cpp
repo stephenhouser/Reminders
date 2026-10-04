@@ -2,10 +2,12 @@
 
 #include <algorithm>
 #include <charconv>
+#include <exception>
 #include <cstdint>
 #include <format>
 #include <fstream>
 #include <sstream>
+#include <utility>
 
 #include "reminders/format.hpp"
 #include "reminders/merge.hpp"
@@ -260,7 +262,27 @@ void Store::write_file(ListFile& list, const std::string& text) {
     list.disk_text = text;
 }
 
+void Store::release_saves() {
+    if (held_ == 0 || --held_ > 0) return;
+    auto lists = std::exchange(held_lists_, {});
+    std::exception_ptr error;
+    for (auto* l : lists) {
+        // A list deleted meanwhile is gone from lists_.
+        if (std::ranges::none_of(lists_, [l](auto& p) { return p.get() == l; })) continue;
+        try {
+            save(*l);
+        } catch (...) {
+            if (!error) error = std::current_exception();
+        }
+    }
+    if (error) std::rethrow_exception(error);
+}
+
 void Store::save(ListFile& list) {
+    if (held_ > 0) {
+        if (std::ranges::find(held_lists_, &list) == held_lists_.end()) held_lists_.push_back(&list);
+        return;
+    }
     // Ids given to hand-written lines only get written along with a real change.
     if (serialize(list.doc, false) == list.disk_text) return;
     write_file(list, serialize(list.doc));
