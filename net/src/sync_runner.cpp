@@ -47,6 +47,14 @@ void SyncRunner::sync_now() {
 	wake_.notify_all();
 }
 
+void SyncRunner::sync_now(const std::string& source) {
+	{
+		std::lock_guard g(mutex_);
+		now_sources_.insert(source);
+	}
+	wake_.notify_all();
+}
+
 SyncRunner::Status SyncRunner::take_status() {
 	std::lock_guard g(mutex_);
 	auto out = status_;
@@ -70,7 +78,9 @@ SyncRunner::Snapshot SyncRunner::snapshot(const fs::path& folder) {
 void SyncRunner::run() {
 	std::unique_lock lock(mutex_);
 	while (!stop_) {
-		wake_.wait_for(lock, kPoll, [this] { return stop_ || now_; });
+		wake_.wait_for(lock, kPoll, [this] {
+			return stop_ || now_ || !now_sources_.empty();
+		});
 		if (stop_) {
 			break;
 		}
@@ -81,6 +91,12 @@ void SyncRunner::run() {
 			}
 			now_ = false;
 		}
+		for (auto& j : jobs_) {
+			if (now_sources_.contains(j.config.name)) {
+				j.next = now;
+			}
+		}
+		now_sources_.clear();
 		for (auto& j : jobs_) {
 			// A change here since the last sync: sync once it has settled.
 			auto files = snapshot(j.config.folder);

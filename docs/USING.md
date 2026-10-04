@@ -651,11 +651,19 @@ folder as `~/…`, so the file works on another computer with a different home.
   server or the folder.
 - **Choose a source in Sources…** for **Source Info…**: the same rows, its
   **Default Source** switch (where new lists go), and **Remove Source…**,
-  which takes it out of the app and leaves its folder and files as they are
-  (a CalDAV or WebDAV source's local copy goes, since the server has the
-  lists).
-- **Right-click a source's group heading** for **New List…** in that source
-  and its **Source Info…**.
+  which takes it out of the app. Left at that, its folder and files stay
+  as they are. Tick **Erase all source data** to also erase everything it
+  has on this computer, for good: its whole folder (the local copy, the
+  clone, or the list folder with everything in it) and the app's records
+  for it. Remote copies are never touched: a CalDAV or WebDAV server keeps
+  its lists, a git remote keeps its history (commits not pushed yet are
+  lost). It's ticked to start with for CalDAV and WebDAV, whose local copy
+  is only a copy. **Syncthing:** if Syncthing still shares the folder, it
+  erases it on your other devices too, so remove the folder from Syncthing
+  first. The app won't erase the filesystem's root, your home folder, or a
+  folder holding it.
+- **Right-click a source's group heading** for **New List…** in that source,
+  **Sync Now** (CalDAV, WebDAV and git sources) and its **Source Info…**.
 - **`reminders folder PATH`** (and the first-run Choose Folder…) sets the
   default source's folder, creating the source if there's none.
 - **`default-source=`** in `[general]` is the default source; without it,
@@ -706,8 +714,9 @@ title=Fastmail
   reminders-caldav`, then use the line above; `pass show caldav` works too.
   Use an app-specific password where the server offers them.
 - **When it syncs:** when the app opens, every `interval=` minutes (default
-  15), and a couple of seconds after you change something. **☰ → Sync Now**
-  syncs straight away. Offline changes wait in the local copy until the
+  15), and a couple of seconds after you change something. **☰ → Sync All**
+  syncs every source straight away; **Sync Now** in the menu of the source's
+  sidebar heading (right-click it) syncs just that one. Offline changes wait in the local copy until the
   next sync.
 - **The local copy** is in `$XDG_DATA_HOME/reminders/caldav/NAME/`
   (`~/.local/share/…` when `$XDG_DATA_HOME` isn't set; `folder=` moves it): one Markdown file per task list, like any other
@@ -808,7 +817,8 @@ title=Notes
   one, set up a key or a credential helper first.
 - **When it syncs:** when the app opens, every `interval=` minutes (default
   15), and a couple of seconds after you change something; **☰ → Sync
-  Now** syncs straight away. Each sync commits the lists that changed, as
+  All** syncs every source straight away, and **Sync Now** in the menu of
+  the source's sidebar heading (right-click it) just this one. Each sync commits the lists that changed, as
   "Reminders (this computer): Groceries, Home", then pulls and pushes.
 - **Changes on both sides** of a list are merged by Reminders, reminder by
   reminder, field by field, as for Syncthing conflicts, not line by line
@@ -819,7 +829,9 @@ title=Notes
   so you get a history of your lists and nothing else. Give it a `url=`
   (Clone From in Source Info…) later to start pushing.
 - **Removing the source** leaves the folder as it is, even a clone in the
-  default place, since it may hold commits that haven't been pushed.
+  default place, since it may hold commits that haven't been pushed, unless
+  you tick **Erase all source data**, which erases the folder from this
+  computer (the remote keeps everything pushed).
 
 ## Troubleshooting
 

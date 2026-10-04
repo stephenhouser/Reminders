@@ -9,6 +9,7 @@
 #include <map>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
@@ -30,6 +31,8 @@ class SyncRunner {
 		bool active() const { return !jobs_.empty(); }
 		// Syncs every source as soon as possible.
 		void sync_now();
+		// Syncs one source (by name) as soon as possible.
+		void sync_now(const std::string& source);
 
 		struct Status {
 				bool syncing = false;
@@ -60,6 +63,8 @@ class SyncRunner {
 		std::mutex mutex_;
 		std::condition_variable wake_;
 		bool stop_ = false, now_ = false;
+		std::set<std::string>
+			now_sources_;  // sync_now(source), not yet started
 		Status status_;
 		std::thread thread_;
 };

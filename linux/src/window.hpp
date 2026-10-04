@@ -320,7 +320,7 @@ class Window {
 		void start_sync();
 		void stop_sync();
 		GSimpleAction* sync_action_ =
-			nullptr;  // Sync Now (enabled with CalDAV or WebDAV sources)
+			nullptr;  // Sync All (enabled with CalDAV, WebDAV or git sources)
 		struct FolderWatch {
 				Obj<GFileMonitor> monitor;
 				gulong handler = 0;

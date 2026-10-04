@@ -9,7 +9,6 @@
 ## Known gaps
 
 - CalDAV and WebDAV untested against real servers.
-- Git untested against GitHub or another hosted repository.
 - CalDAV: reordering in other apps isn't picked up.
 - CalDAV: unusual repeat rules are kept but not shown.
 - A notes line like "- [ ] …" reads back as a subtask.

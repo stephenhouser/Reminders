@@ -1538,7 +1538,7 @@ void Window::build() {
 	g_menu_append(s1, "_Import…", "win.import");
 	g_menu_append(s1, "_Export…", "win.export");
 	g_menu_append(s1, "S_ources…", "win.sources");
-	auto* sync_item = g_menu_item_new("S_ync Now", "win.sync-now");
+	auto* sync_item = g_menu_item_new("S_ync All", "win.sync-all");
 	g_menu_item_set_attribute(
 		sync_item, "hidden-when", "s",
 		"action-disabled");	 // no CalDAV, WebDAV or git sources
@@ -1908,7 +1908,7 @@ void Window::add_actions() {
 			import_file();
 		}
 	});
-	sync_action_ = add_action(window_, "sync-now", [this] {
+	sync_action_ = add_action(window_, "sync-all", [this] {
 #ifdef REMINDERS_NETWORK
 		if (sync_)
 			sync_->sync_now();
@@ -2108,36 +2108,127 @@ void Window::open_folder(const std::filesystem::path& folder) {
 
 // Removes a source from the app (settings.ini), after asking. Its folder and
 // files stay as they are.
-void Window::remove_source(const std::string& name) {
-	std::string title = name;
-	for (auto& s : store_->sources()) {
-		if (s.config.name == name) {
-			title = rem::source_title(s.config);
+// Whether erasing `folder` would take more than one source's data with it:
+// the filesystem root, the home folder, or a folder holding the home folder.
+static bool unsafe_to_erase(const std::filesystem::path& folder) {
+	std::error_code ec;
+	auto target = std::filesystem::weakly_canonical(folder, ec);
+	if (ec || target.empty() || target == target.root_path()) {
+		return true;
+	}
+	auto home = std::filesystem::weakly_canonical(g_get_home_dir(), ec);
+	for (auto p = home; !p.empty(); p = p.parent_path()) {
+		if (p == target) {
+			return true;
+		}
+		if (p == p.parent_path()) {
+			break;
 		}
 	}
-	auto* dialog =
-		adw_alert_dialog_new(std::format("Remove “{}”?", title).c_str(),
-							 "Its lists leave the app. The folder and its "
-							 "files stay where they are, "
-							 "and you can add it again with Add Source….");
+	return false;
+}
+
+// Removes a source, after asking. "Erase all source data" also erases what
+// it has on this computer: its whole folder (a CalDAV / WebDAV local copy,
+// a git clone, a list folder) and the app's records for it. Remote copies
+// (the server, the git remote) are left as they are.
+void Window::remove_source(const std::string& name) {
+	const rem::Library::Source* source = nullptr;
+	for (auto& s : store_->sources()) {
+		if (s.config.name == name) {
+			source = &s;
+		}
+	}
+	if (!source) {
+		return;
+	}
+	auto config = source->config;
+	bool server = rem::has_server(config.backend);
+	auto where = rem::contract_path(config.folder);
+	std::string detail;
+	switch (config.backend) {
+		case rem::BackendKind::Caldav:
+		case rem::BackendKind::Webdav:
+			detail = std::format(
+				"Deletes the local copy in {}. The lists on the server are unaffected.",
+				where);
+			break;
+		case rem::BackendKind::Git:
+			detail = std::format(
+				"Deletes the local copy in {}. Any remote source is unaffected.",
+				"Any changes not pushed yet are lost.",
+				where);
+			break;
+		case rem::BackendKind::Syncthing:
+			detail = std::format(
+				"Deletes {} and everything in it from this computer.",
+				"WARNING: If Syncthing still shares the folder, ",
+				"it WILL BE DELETED EVERYWHERE.",
+				"Remove it from Syncthing first.",
+				where);
+			break;
+		default:
+			detail = std::format(
+				"Deletes {} and everything in it. This computer may have the "
+				"only copy.",
+				where);
+			break;
+	}
+
+	auto* dialog = adw_alert_dialog_new(
+		std::format("Remove “{}”?", rem::source_title(config)).c_str(),
+		"The source and its lists will be removed. You can add it again with Add Source.");
 	adw_alert_dialog_add_responses(ADW_ALERT_DIALOG(dialog), "cancel",
 								   "_Cancel", "remove", "_Remove", nullptr);
 	adw_alert_dialog_set_response_appearance(ADW_ALERT_DIALOG(dialog), "remove",
 											 ADW_RESPONSE_DESTRUCTIVE);
 	adw_alert_dialog_set_close_response(ADW_ALERT_DIALOG(dialog), "cancel");
+	auto* box = vbox(4);
+	auto* check = gtk_check_button_new_with_mnemonic("_Delete all source's data");
+	gtk_check_button_set_active(GTK_CHECK_BUTTON(check),
+								server);  // only a copy of the server's
+	auto* note = label(detail, {"caption", "dim-label"});
+	gtk_label_set_wrap(GTK_LABEL(note), TRUE);
+	gtk_label_set_xalign(GTK_LABEL(note), 0);
+	gtk_widget_set_margin_start(note, 28);	// under the check box's label
+	append(box, {check, note});
+	adw_alert_dialog_set_extra_child(ADW_ALERT_DIALOG(dialog), box);
 	connect<void(AdwAlertDialog*, const char*)>(
 		dialog, "response",
-		[this, name](AdwAlertDialog*, const char* response) {
+		[this, name, folder = config.folder, check](AdwAlertDialog*,
+													const char* response) {
 			if (std::string_view(response) != "remove") {
 				return;
 			}
+			bool erase = gtk_check_button_get_active(GTK_CHECK_BUTTON(check));
+			if (erase && unsafe_to_erase(folder)) {
+				toast(std::format(
+					"Not erasing {}: it holds more than this source",
+					rem::contract_path(folder)));
+				return;
+			}
 			try {
-				rem::remove_source(name);
+				rem::remove_source(name,
+								   !erase);	 // this computer's records; a DAV
+											 // copy in the default place
 			} catch (const std::exception& e) {
 				toast(std::format("Couldn't remove the source: {}", e.what()));
 				return;
 			}
-			idle([this] { open_sources(); });
+			// Erased once the source is closed and its syncing stopped.
+			idle([this, folder, erase] {
+				open_sources();
+				if (!erase) {
+					return;
+				}
+				std::error_code ec;
+				std::filesystem::remove_all(folder, ec);
+				if (ec) {
+					toast(std::format("Couldn't erase all of {}: {}",
+									  rem::contract_path(folder),
+									  ec.message()));
+				}
+			});
 		});
 	adw_dialog_present(ADW_DIALOG(dialog), window_);
 }
@@ -6019,8 +6110,26 @@ void Window::sidebar_menu(GtkListBoxRow* row, double x, double y) {
 			add_action(actions, "info", [this, source] {
 				idle([this, source] { source_info(source); });
 			});
+			// A source this app syncs (CalDAV, WebDAV, git): Sync Now, for
+			// just this one.
+			bool syncs = false;
+#ifdef REMINDERS_NETWORK
+			for (auto& s : store_->sources()) {
+				if (s.config.name == source && rem::syncs(s.config.backend)) {
+					syncs = sync_ != nullptr;
+				}
+			}
+			add_action(actions, "sync", [this, source] {
+				if (sync_) {
+					sync_->sync_now(source);
+				}
+			});
+#endif
 			auto* items = menu_section(m);
 			g_menu_append(items, "_New List…", "sidebar-source.new-list");
+			if (syncs) {
+				g_menu_append(items, "_Sync Now", "sidebar-source.sync");
+			}
 			g_menu_append(items, "Source _Info…", "sidebar-source.info");
 		}
 		menu = Obj<GMenuModel>::adopt(G_MENU_MODEL(m));

@@ -149,10 +149,16 @@ TEST(sources_webdav) {
 	CHECK(has_server(BackendKind::Webdav) && has_server(BackendKind::Caldav) &&
 		  !has_server(BackendKind::Local));
 
-	// Removing it removes the local copy in the default place, too.
+	// Removing it can keep the local copy in the default place...
 	fs::create_directories(a.folder);
-	remove_source(a.name);
-	CHECK(!fs::exists(a.folder));
+	remove_source(a.name, true);
+	CHECK(fs::exists(a.folder));
+	CHECK(load_sources().empty());
+	// ...or, by default, removes it too.
+	auto b = add_source(SourceConfig{"", BackendKind::Webdav, {}, "", s});
+	fs::create_directories(b.folder);
+	remove_source(b.name);
+	CHECK(!fs::exists(b.folder));
 	unsetenv("XDG_DATA_HOME");
 	std::error_code ec;
 	fs::remove_all(dir, ec);

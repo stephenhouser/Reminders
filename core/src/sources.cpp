@@ -364,12 +364,12 @@ SourceConfig add_source(const fs::path& folder) {
 	return add_source(SourceConfig{"", detect_backend(folder), folder, {}});
 }
 
-void remove_source(const std::string& name) {
+void remove_source(const std::string& name, bool keep_copy) {
 	std::error_code ec;
 	for (auto& s : load_sources()) {
 		if (s.name == name) {
 			fs::remove_all(source_state_dir(s, device_name()), ec);
-			if (has_server(s.backend) &&
+			if (!keep_copy && has_server(s.backend) &&
 				s.folder == default_copy_folder(s.backend, name)) {
 				fs::remove_all(s.folder, ec);
 			}

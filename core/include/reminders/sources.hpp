@@ -142,9 +142,10 @@ SourceConfig add_source(SourceConfig source);
 SourceConfig add_source(const fs::path& folder);
 // Removes a source from settings.ini, and this device's records for it.
 // Its folder and files stay as they are, except a CalDAV or WebDAV source's
-// local copy in the default place, which is only a copy of the server's
-// (a git clone stays: it may hold commits not pushed yet).
-void remove_source(const std::string& name);
+// local copy in the default place, which is only a copy of the server's,
+// unless `keep_copy` (a git clone stays: it may hold commits not pushed
+// yet). The apps offer to move other local files to the Trash themselves.
+void remove_source(const std::string& name, bool keep_copy = false);
 
 // Opens a source: its Store, with per-device state in source_state_dir()
 // (for a source other than Syncthing, moved there from <folder>/.reminders/,

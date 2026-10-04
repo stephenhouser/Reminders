@@ -493,7 +493,7 @@ settings in a `[source.NAME]` section; later the apps show several at once.
    /.well-known/caldav), `run_password_command`, `sync_caldav_source`,
    `SyncRunner` (worker thread; detects list-file changes by mtime/size).
    CLI: `reminders sync [SOURCE]`, syncs before/after commands,
-   `--offline`. TUI and GUI run a SyncRunner; GUI ☰ → Sync Now (hidden
+   `--offline`. TUI and GUI run a SyncRunner; GUI ☰ → Sync All (hidden
    without CalDAV sources), Sources… → Add Source… with Type CalDAV;
    its Server group has address, username, password command, interval. Known limits:
    moves/section changes made in other CalDAV clients aren't merged (local
@@ -567,7 +567,8 @@ install). Update it whenever these change (user's requests 2026-10-04).
     shortcuts, drag and drop within the app, the quick switcher,
     configurable sidebar groups (order, visible / collapsible / hidden,
     rearranged from the sidebar), one sidebar group per source, ☰ →
-    Sources… with one Add Source… form for every type, Sync Now.
+    Sources… with one Add Source… form for every type, ☰ → Sync All, and
+    Sync Now on a syncing source's sidebar heading menu (SyncRunner::sync_now(source)).
   - **Terminal client** (`reminders`): the CLI and the TUI, sharing settings
     and the last view with the app; `sync`, `--offline`, `new-list
     --source`, `import`.
@@ -642,7 +643,7 @@ install). Update it whenever these change (user's requests 2026-10-04).
     via posix_spawnp, no shell, LC_ALL=C, GIT_TERMINAL_PROMPT=0, SSH
     BatchMode (fails rather than prompts). Settings: `GitSettings` (url,
     remote, branch, interval; `SourceConfig::git`), `backend=git`;
-    `syncs(kind)` = CalDAV, WebDAV, git (SyncRunner, CLI sync, Sync Now);
+    `syncs(kind)` = CalDAV, WebDAV, git (SyncRunner, CLI sync, Sync All / Sync Now);
     `has_server` stays DAV only; `sync_interval(source)`; `in_git_repo`.
     Back end: ServerBackend (write lock; its notes are deleted, git sees
     renames itself). Sync: open/clone (url= into an empty folder; a
@@ -662,6 +663,18 @@ install). Update it whenever these change (user's requests 2026-10-04).
     folder in a repository picks Git. Tests: net_test.cpp against bare
     repositories made by the test (GIT_CONFIG_GLOBAL set to a file with
     init.defaultBranch=main, no identity).
+  - **Erase all source data** (2026-10-04, user's wording): Remove
+    Source's AdwAlertDialog has that check box (extra child; ticked to start
+    with only for CalDAV / WebDAV) and a note per back end naming the
+    folder. Ticked: core `remove_source(name, keep_copy=false)` (settings,
+    state dir, DAV default copy), then, in an idle after open_sources()
+    (source closed, its syncing stopped), `fs::remove_all(folder)` -
+    permanent, the whole folder. Remote copies untouched (server, git
+    remote); Syncthing's note says to unshare first or it propagates.
+    `unsafe_to_erase` refuses /, $HOME and its ancestors (toast). Unticked:
+    keep_copy, so even a DAV default copy stays. Checked headless (local
+    folder erased with a non-list file, git clone erased with the bare
+    remote intact, a source at the home folder refused) and sources_test.
   - **git: new repositories** (2026-10-04): a git source's folder that
     isn't in a repository and has no url= is `git init`ed on the first sync
     (was an error); url= on a repository without that remote adds it, so a
@@ -810,8 +823,8 @@ install). Update it whenever these change (user's requests 2026-10-04).
   untried; TODO.md "Needs trying by hand" is empty.
 - **Known gaps:**
   - CalDAV and WebDAV haven't been tried against a real server yet (only
-    the fake one); git only against local repositories (not GitHub or
-    another host over SSH or HTTPS).
+    the fake one). Git against a hosted repository: tried by the user
+    2026-10-04, works.
   - CalDAV: moves and section changes made in other CalDAV clients aren't
     merged (local order wins); RRULEs beyond FORMAT.md's rules are kept but
     not shown.
