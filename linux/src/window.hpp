@@ -167,7 +167,15 @@ private:
     void clear_selection();
     void update_selection();  // row highlights and the header's "N Selected"
     void keep_focus(const std::vector<std::string>& ids);  // on the focused one of them after a rebuild
+    // While a row's menu is open the row shows as selected, unless it's in
+    // the selection already; it's unselected again when the menu closes.
+    void select_for_menu(const std::string& id, GtkPopover* popover);
+    // Any click in the window, on `hit`: one outside a title being edited
+    // finishes the edit; one outside the reminder rows clears the selection.
+    void clicked(GtkWidget* hit, bool modified);
     GMenuModel* reminder_menu(const std::string& id, bool in_list);  // ⋮ / right-click, made as it opens
+    // The same menu at the pointer (x, y in `row`), for a right-click or long-press.
+    void reminder_context_menu(GtkWidget* row, const std::string& id, bool in_list, double x, double y);
     void paste_reminders();
     void add_pasted(const std::string& text);
     void show_details(const std::string& id);
@@ -209,6 +217,7 @@ private:
     GtkWidget* split_ = nullptr;
     GtkWidget* sidebar_list_ = nullptr;
     GtkWidget* sidebar_menu_button_ = nullptr;  // invisible; hosts the sidebar's context menu
+    GtkWidget* content_menu_button_ = nullptr;  // invisible; hosts a reminder's context menu
     GtkWidget* search_bar_ = nullptr;
     GtkWidget* search_entry_ = nullptr;
     GtkWidget* content_page_ = nullptr;
@@ -269,6 +278,8 @@ private:
     std::map<std::string, GtkWidget*> reminder_rows_;  // by id, until the next rebuild
     std::string count_subtitle_;  // the header's count, shown when nothing is selected
     bool syncing_checks_ = false;  // setting rows' check buttons to match, not a click
+    std::optional<std::string> menu_selected_;  // selected just for its open menu (select_for_menu)
+    bool follow_focus_ = false;  // ↑/↓ with a selection: the row they move to becomes the selection
     bool remember_view_ = true;  // false for a folder opened just for this session
     View view_;
     std::optional<std::string> focus_new_row_;

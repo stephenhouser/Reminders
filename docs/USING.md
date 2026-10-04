@@ -55,13 +55,18 @@ the shortcuts below set the same fields without any emoji.
 
 ### Editing
 
-- **Title:** click it, or select the reminder and press Enter or F2. Enter or
-  Ctrl+S saves; Esc puts back the old title. Clearing the title deletes the
-  reminder.
+- **Title:** click it, or select the reminder and press Enter or F2. Enter,
+  Ctrl+S or clicking anywhere else saves; Esc puts back the old title.
+  Clearing the title deletes the reminder.
 - **Everything else:** the ✏ button (shown on hover), Ctrl+I, or **Details…**
   in the ⋮ menu. The details dialog has the title, notes, URL, date, time,
   repeat, flag, priority, list, tags and subtasks. **Done** or Ctrl+S saves;
   **Cancel** or Esc discards.
+- **The reminder's menu:** **⋮**, or right-click (or long-press) anywhere on
+  the reminder, title included, which opens it where you clicked: Mark as
+  Completed, Details…, Flag, Due Today / Tomorrow, Copy, Move To, Indent /
+  Outdent, Delete. While you're editing a title, right-clicking it gives the
+  usual text menu (cut, copy, paste) instead.
 
 ### Completing
 
@@ -118,9 +123,9 @@ Subtasks are one level deep, as in Apple Reminders.
 
 ### Copying and pasting
 
-- **Ctrl+C** on a selected reminder copies it as the Markdown line from its
-  file, with its notes and subtasks (no id), so it also pastes into an editor
-  or a chat as a checklist.
+- **Ctrl+C** on a selected reminder (or **Copy** in its menu) copies it as
+  the Markdown line from its file, with its notes and subtasks (no id), so it
+  also pastes into an editor or a chat as a checklist.
 - **Ctrl+V** while not typing in a text field pastes reminders:
   - **A copied reminder** (or any `- [ ] …` checklist lines) comes back with
     every field, notes and subtasks.
@@ -152,10 +157,18 @@ Select several reminders to change them all at once:
   the subtasks of a collapsed reminder), wherever the focus is: just after
   opening a list from the sidebar, too. Only while you're typing (a title,
   New Reminder, search) does Ctrl+A select text instead.
-- **Escape** (again, unless you're typing), a plain click, or moving with
-  ↑ / ↓ clears it. So does going to another list.
+- **A plain click** on a reminder's empty space selects just that one;
+  clicking its title (to edit it) or its circle leaves nothing selected.
+  **↑ / ↓** then move the selection along with the focus.
+- **Right-click** (or ⋮) shows the reminder as selected while its menu is
+  open, unless it's already part of a selection, which the menu then acts
+  on.
+- **Escape** (again, unless you're typing) clears it. So does clicking
+  anywhere outside the reminders (the empty space below them, the header,
+  the sidebar), or going to another list.
 
-Selected rows are tinted and the header says how many ("4 Selected"). The
+Selected rows are tinted, and with two or more the header says how many
+("4 Selected"). The
 usual keys and the **⋮** or right-click menu of a selected reminder then act
 on all of them: Space, Ctrl+Shift+F, Ctrl+T / Ctrl+Shift+T, Alt+0 … Alt+3,
 Ctrl+C, Delete, and in the menu **Mark as Completed** (or Not Completed)

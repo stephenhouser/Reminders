@@ -812,6 +812,23 @@ Window::Window(AdwApplication* app, std::optional<std::filesystem::path> folder)
             return FALSE;
         });
     gtk_widget_add_controller(window_, selection_keys);
+    // A click outside a title being edited finishes the edit (keeping the
+    // text, as Enter does); a click outside every reminder row clears the
+    // selection. Seen before the widget clicked (which still gets it);
+    // clicks in menus and dialogs are left alone.
+    auto* outside = gtk_gesture_click_new();
+    gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(outside), 0);  // any button
+    gtk_event_controller_set_propagation_phase(GTK_EVENT_CONTROLLER(outside), GTK_PHASE_CAPTURE);
+    connect<void(GtkGestureClick*, int, double, double)>(
+        outside, "pressed", [this](GtkGestureClick* g, int, double x, double y) {
+            if (!store_ || adw_application_window_get_visible_dialog(ADW_APPLICATION_WINDOW(window_))) return;
+            auto* event = gtk_event_controller_get_current_event(GTK_EVENT_CONTROLLER(g));
+            if (!event || gdk_event_get_surface(event) != gtk_native_get_surface(GTK_NATIVE(window_))) return;  // a menu
+            auto mods = gtk_event_controller_get_current_event_state(GTK_EVENT_CONTROLLER(g)) &
+                        gtk_accelerator_get_default_mod_mask();
+            clicked(gtk_widget_pick(window_, x, y, GTK_PICK_DEFAULT), mods & (GDK_CONTROL_MASK | GDK_SHIFT_MASK));
+        });
+    gtk_widget_add_controller(window_, GTK_EVENT_CONTROLLER(outside));
     // A file dropped anywhere else is imported, into the list in view.
     make_file_drop_target(window_, false, [this](std::vector<std::filesystem::path> files) {
         if (!store_) return;
@@ -1081,7 +1098,19 @@ void Window::build() {
     auto* content_view = adw_toolbar_view_new();
     adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(content_view), content_header);
     adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(content_view), banner_);
-    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(content_view), content_scroller_);
+    // As over the sidebar, an invisible menu button hosts a reminder's
+    // context menu, which opens where the row was clicked.
+    content_menu_button_ = gtk_menu_button_new();
+    gtk_widget_set_halign(content_menu_button_, GTK_ALIGN_START);
+    gtk_widget_set_valign(content_menu_button_, GTK_ALIGN_START);
+    gtk_widget_set_opacity(content_menu_button_, 0);
+    gtk_widget_set_can_target(content_menu_button_, FALSE);
+    gtk_widget_set_can_focus(content_menu_button_, FALSE);
+    gtk_accessible_update_state(GTK_ACCESSIBLE(content_menu_button_), GTK_ACCESSIBLE_STATE_HIDDEN, TRUE, -1);
+    auto* content_overlay = gtk_overlay_new();
+    gtk_overlay_set_child(GTK_OVERLAY(content_overlay), content_scroller_);
+    gtk_overlay_add_overlay(GTK_OVERLAY(content_overlay), content_menu_button_);
+    adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(content_view), content_overlay);
     content_page_ = GTK_WIDGET(adw_navigation_page_new(content_view, "Today"));
 
     // An overlay split view can hide its sidebar at any width (Ctrl+B); on
@@ -2119,6 +2148,7 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
         idle([this, ids = targets(id)] { complete_reminders(ids); });
     });
     add_action(actions, "flag", [this, id] { idle([this, ids = targets(id)] { toggle_flag(ids); }); });
+    add_action(actions, "copy", [this, id] { copy_reminders(targets(id)); });
     add_action(actions, "due-today", [this, id] { idle([this, ids = targets(id)] { set_due(ids, 0); }); });
     add_action(actions, "due-tomorrow", [this, id] { idle([this, ids = targets(id)] { set_due(ids, 1); }); });
     add_action(actions, "delete", [this, id] { idle([this, ids = targets(id)] { delete_reminders(ids); }); });
@@ -2137,7 +2167,8 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
         g_object_unref(move_to);
     }
     gtk_widget_insert_action_group(row, "reminder", G_ACTION_GROUP(actions));
-    g_object_unref(actions);
+    // Kept for the context menu, whose popover isn't inside the row.
+    g_object_set_data_full(G_OBJECT(row), "reminder-actions", actions, g_object_unref);
 
     // The menu is made as it opens, for what it will act on then.
     auto* more = gtk_menu_button_new();
@@ -2148,6 +2179,7 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
         new MakeMenu([this, id, in_list](GtkMenuButton* b) {
             auto menu = Obj<GMenuModel>::adopt(reminder_menu(id, in_list));
             gtk_menu_button_set_menu_model(b, menu.get());
+            select_for_menu(id, gtk_menu_button_get_popover(b));
         }),
         [](gpointer d) { delete static_cast<MakeMenu*>(d); });
     gtk_widget_add_css_class(more, "flat");
@@ -2157,20 +2189,25 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
     gtk_widget_set_tooltip_text(more, "More");
     append(box, {details, more});
 
-    // Right-click and long-press open the same menu; on a row outside the
-    // selection, for that row only.
-    auto popup = [this, id, more] {
-        if (!selected_.contains(id)) clear_selection();
-        gtk_menu_button_popup(GTK_MENU_BUTTON(more));
-    };
+    // Right-click and long-press anywhere on the row open the same menu,
+    // where it was clicked; on a row outside the selection, for that row
+    // only. Caught before the title, so it doesn't start editing (a title
+    // being edited keeps its own text menu).
     auto* click = gtk_gesture_click_new();
     gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(click), GDK_BUTTON_SECONDARY);
-    connect<void(GtkGestureClick*, int, double, double)>(click, "pressed",
-                                                        [popup](GtkGestureClick*, int, double, double) { popup(); });
+    gtk_event_controller_set_propagation_phase(GTK_EVENT_CONTROLLER(click), GTK_PHASE_CAPTURE);
+    connect<void(GtkGestureClick*, int, double, double)>(
+        click, "pressed", [this, id, row, title, in_list](GtkGestureClick* g, int, double x, double y) {
+            if (gtk_editable_label_get_editing(GTK_EDITABLE_LABEL(title))) return;
+            gtk_gesture_set_state(GTK_GESTURE(g), GTK_EVENT_SEQUENCE_CLAIMED);
+            reminder_context_menu(row, id, in_list, x, y);
+        });
     gtk_widget_add_controller(row, GTK_EVENT_CONTROLLER(click));
     auto* press = gtk_gesture_long_press_new();
-    connect<void(GtkGestureLongPress*, double, double)>(press, "pressed",
-                                                        [popup](GtkGestureLongPress*, double, double) { popup(); });
+    connect<void(GtkGestureLongPress*, double, double)>(
+        press, "pressed", [this, id, row, title, in_list](GtkGestureLongPress*, double x, double y) {
+            if (!gtk_editable_label_get_editing(GTK_EDITABLE_LABEL(title))) reminder_context_menu(row, id, in_list, x, y);
+        });
     gtk_widget_add_controller(row, GTK_EVENT_CONTROLLER(press));
 
     // Selecting: Ctrl+click adds or removes the row, Shift+click selects up
@@ -2197,12 +2234,19 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
             if (!selected_.contains(id)) clear_selection();
             anchor_ = id;
         });
+    // A plain click (not a drag) on the row's empty space selects just this
+    // row; on its title (which starts editing) or circle, nothing stays
+    // selected; its ⋮ and Details buttons leave the selection as it is.
     connect<void(GtkGestureClick*, int, double, double)>(
         pick, "released", [this, id, row, modifiers](GtkGestureClick* g, int, double x, double y) {
-            if (modifiers(g) & (GDK_CONTROL_MASK | GDK_SHIFT_MASK) || !selected_.contains(id)) return;
-            for (auto* w = gtk_widget_pick(row, x, y, GTK_PICK_DEFAULT); w && w != row; w = gtk_widget_get_parent(w))
-                if (GTK_IS_BUTTON(w) || GTK_IS_MENU_BUTTON(w)) return;  // acts on the selection
-            clear_selection();
+            if (modifiers(g) & (GDK_CONTROL_MASK | GDK_SHIFT_MASK)) return;
+            for (auto* w = gtk_widget_pick(row, x, y, GTK_PICK_DEFAULT); w && w != row; w = gtk_widget_get_parent(w)) {
+                if (GTK_IS_BUTTON(w) || GTK_IS_MENU_BUTTON(w)) return;
+                if (GTK_IS_CHECK_BUTTON(w) || GTK_IS_EDITABLE_LABEL(w)) return clear_selection();
+            }
+            selected_ = {id};
+            anchor_ = id;
+            update_selection();
         });
     gtk_widget_add_controller(row, GTK_EVENT_CONTROLLER(pick));
 
@@ -2218,7 +2262,14 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
     gtk_widget_add_controller(row, GTK_EVENT_CONTROLLER(select_click));
 
     auto* focus = gtk_event_controller_focus_new();
-    connect<void(GtkEventControllerFocus*)>(focus, "enter", [this, id](GtkEventControllerFocus*) { cursor_ = id; });
+    connect<void(GtkEventControllerFocus*)>(focus, "enter", [this, id](GtkEventControllerFocus*) {
+        cursor_ = id;
+        if (follow_focus_) {  // moved here with ↑/↓ from a selection
+            selected_ = {id};
+            anchor_ = id;
+            update_selection();
+        }
+    });
     gtk_widget_add_controller(row, focus);
 
     auto* keys = gtk_event_controller_key_new();
@@ -2251,7 +2302,20 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
                         return TRUE;
                     case GDK_KEY_Up:
                     case GDK_KEY_Down:
-                        clear_selection();  // the selection doesn't follow the focus
+                        // With a selection, the row the focus moves to becomes
+                        // the selection (none, if it's a New Reminder row).
+                        if (!selected_.empty()) {
+                            clear_selection();
+                            follow_focus_ = true;
+                            idle([this, id] {
+                                // Nowhere to go (the top or bottom): it stays selected.
+                                if (follow_focus_ && cursor_ == id && reminder_rows_.contains(id)) {
+                                    selected_ = {id};
+                                    update_selection();
+                                }
+                                follow_focus_ = false;
+                            });
+                        }
                         break;
                 }
             } else if (mask == GDK_SHIFT_MASK && (key == GDK_KEY_Up || key == GDK_KEY_Down)) {
@@ -2310,6 +2374,52 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
     return row;
 }
 
+void Window::reminder_context_menu(GtkWidget* row, const std::string& id, bool in_list, double x, double y) {
+    // The menu belongs to the invisible button over the content (rows are
+    // rebuilt, taking their popovers with them); the row's actions go along.
+    auto* button = GTK_MENU_BUTTON(content_menu_button_);
+    gtk_widget_insert_action_group(content_menu_button_, "reminder",
+                                   G_ACTION_GROUP(g_object_get_data(G_OBJECT(row), "reminder-actions")));
+    auto menu = Obj<GMenuModel>::adopt(reminder_menu(id, in_list));
+    gtk_menu_button_set_menu_model(button, menu.get());
+    auto* popover = GTK_POPOVER(gtk_menu_button_get_popover(button));
+    graphene_point_t in_row{static_cast<float>(x), static_cast<float>(y)}, point{};
+    if (!gtk_widget_compute_point(row, content_menu_button_, &in_row, &point)) point = in_row;
+    GdkRectangle at{static_cast<int>(point.x), static_cast<int>(point.y), 1, 1};
+    gtk_popover_set_pointing_to(popover, &at);
+    gtk_popover_set_has_arrow(popover, FALSE);
+    select_for_menu(id, popover);
+    gtk_menu_button_popup(button);
+}
+
+// A click in the window on `hit` (before it sees the click).
+void Window::clicked(GtkWidget* hit, bool modified) {
+    auto inside = [hit](GtkWidget* w) { return hit && (hit == w || gtk_widget_is_ancestor(hit, w)); };
+    for (auto* f = gtk_root_get_focus(GTK_ROOT(window_)); f; f = gtk_widget_get_parent(f))
+        if (GTK_IS_EDITABLE_LABEL(f)) {
+            if (gtk_editable_label_get_editing(GTK_EDITABLE_LABEL(f)) && !inside(f))
+                gtk_editable_label_stop_editing(GTK_EDITABLE_LABEL(f), TRUE);  // keeps the text
+            break;
+        }
+    for (auto* w = hit; w; w = gtk_widget_get_parent(w))
+        if (GTK_IS_LIST_BOX_ROW(w) && g_object_get_data(G_OBJECT(w), "reminder-id")) return;  // its own rules
+    if (!modified) clear_selection();
+}
+
+void Window::select_for_menu(const std::string& id, GtkPopover* popover) {
+    if (selected_.contains(id)) return;  // the menu acts on the selection
+    selected_ = {id};
+    anchor_ = id;
+    menu_selected_ = id;
+    update_selection();
+    if (!popover || g_object_get_data(G_OBJECT(popover), "unselects")) return;
+    g_object_set_data(G_OBJECT(popover), "unselects", GINT_TO_POINTER(1));  // connected once per popover
+    connect<void(GtkPopover*)>(popover, "closed", [this](GtkPopover*) {
+        if (menu_selected_ && selected_ == std::set{*menu_selected_}) clear_selection();
+        menu_selected_.reset();
+    });
+}
+
 // A reminder's ⋮ / right-click menu, for targets(id) as it opens: one
 // reminder, or the selection it's part of.
 GMenuModel* Window::reminder_menu(const std::string& id, bool in_list) {
@@ -2349,8 +2459,9 @@ GMenuModel* Window::reminder_menu(const std::string& id, bool in_list) {
         g_menu_append_item(lists, i);
         g_object_unref(i);
     }
-    if (g_menu_model_get_n_items(G_MENU_MODEL(lists)) > 0)
-        g_menu_append_submenu(menu_section(menu), "_Move To", G_MENU_MODEL(lists));
+    auto* place = menu_section(menu);
+    item(place, "_Copy", "reminder.copy", "<Control>c");
+    if (g_menu_model_get_n_items(G_MENU_MODEL(lists)) > 0) g_menu_append_submenu(place, "_Move To", G_MENU_MODEL(lists));
     g_object_unref(lists);
     if (in_list && !several) {
         auto* structure = menu_section(menu);
@@ -2702,7 +2813,7 @@ void Window::update_selection() {
         if (selected_.contains(id)) gtk_widget_add_css_class(row, "selected-reminder");
         else gtk_widget_remove_css_class(row, "selected-reminder");
     }
-    auto subtitle = selected_.empty() ? count_subtitle_ : std::format("{} Selected", selected_.size());
+    auto subtitle = selected_.size() < 2 ? count_subtitle_ : std::format("{} Selected", selected_.size());
     adw_window_title_set_subtitle(ADW_WINDOW_TITLE(content_title_), subtitle.c_str());
 }
 

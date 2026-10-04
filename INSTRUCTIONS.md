@@ -707,8 +707,23 @@ settings in a `[source.NAME]` section; later the apps show several at once.
     once. Drag carries `std::vector<std::string>` (type
     RemindersReminderIds) with a count badge (accent pill) and fades all
     dragged rows. The ⋮ menu is made on open (create_popup_func) with
-    plural labels, Mark as (Not) Completed (Space; complete_reminders) and
-    a new Move To submenu. Shortcuts dialog has a section.
+    plural labels, Mark as (Not) Completed (Space; complete_reminders), Copy
+    and a new Move To submenu. Right-click / long-press anywhere on a row
+    (capture phase, claimed, so the title doesn't start editing; not while
+    editing) opens the same menu at the pointer from an invisible
+    `content_menu_button_` over the content (as the sidebar's), with the
+    row's action group (kept as "reminder-actions" data) inserted on it.
+    Later: a plain click on a row's empty space selects it (on release, so
+    a press-drag still drags the selection; title / circle clear it, ⋮ /
+    Details keep it); `select_for_menu` selects a row while its menu is open
+    and unselects on the popover's "closed" (`menu_selected_`); plain ↑/↓
+    with a selection make the row focused next the selection
+    (`follow_focus_`, set by the key handler, used by the row's focus
+    "enter"); "N Selected" only for 2+. A capture-phase click gesture on the
+    window (any button; not in menus, by surface, or dialogs) calls
+    `Window::clicked(hit, modified)`: outside the title being edited it
+    stops editing, keeping the text; outside every reminder row it clears
+    the selection. Shortcuts dialog has a section.
     Checked headless through direct calls (selection, menu, each op +
     undo); real Ctrl/Shift clicks and drags need trying by hand.
   - **Marking several reminders in the TUI** (2026-10-04): `v` toggles the
