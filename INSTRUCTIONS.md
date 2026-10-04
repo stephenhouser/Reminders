@@ -525,9 +525,11 @@ settings in a `[source.NAME]` section; later the apps show several at once.
 
 ## Future features (not started)
 
-TODO.md (top level) is the user's readable copy of this list and of Known
-gaps below, plus what waits on them and what needs trying by hand. Update it
-whenever these change (user's request 2026-10-04).
+TODO.md (top level) is the user's brief copy of this list and of Known
+gaps below, plus "Needs trying by hand". One terse line per item, no
+detail (that stays here); no "waiting on you" or "tried by you" sections;
+the app icon isn't listed there (the user expects it with a proper
+install). Update it whenever these change (user's requests 2026-10-04).
 
 - **App icon** (waiting on the user): the .desktop file and hicolor SVG in
   linux/data aren't installed for the user, so GNOME shows a generic icon.
@@ -803,8 +805,8 @@ whenever these change (user's request 2026-10-04).
   section's end, the field stays empty); pasting / dropping several lines
   (split or one, Split / Combine, Ctrl+Shift+V); pasting a link. TUI:
   marking (v, *, Esc) and acting on the marks, completing them included; the help box after its
-  fixes. Not explicitly confirmed (no problems reported): ⋮ → Mark as
-  Completed. TODO.md "Needs trying by hand" is empty.
+  fixes. ⋮ → Mark as Completed on a selection. Nothing
+  untried; TODO.md "Needs trying by hand" is empty.
 - **Known gaps:**
   - CalDAV and WebDAV haven't been tried against a real server yet (only
     the fake one); git only against local repositories (not GitHub or
