@@ -22,6 +22,17 @@ add_custom_command(
 add_executable(reminders-gnome
   src/main.cpp
   src/window.cpp
+  src/sidebar.cpp
+  src/content.cpp
+  src/reminder_row.cpp
+  src/editing.cpp
+  src/selection.cpp
+  src/lists_ui.cpp
+  src/import_export.cpp
+  src/sources_ui.cpp
+  src/switcher.cpp
+  src/widgets.cpp
+  src/dnd.cpp
   src/dialogs.cpp
   src/support.cpp
   ${RES_C})

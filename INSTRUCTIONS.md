@@ -524,6 +524,66 @@ settings in a `[source.NAME]` section; later the apps show several at once.
    WebDAV under /files/). GUI Type list: Syncthing, Local Folder, CalDAV,
    WebDAV; the Server group's description and Address hint follow the type.
 
+## Modular refactor (staged; started 2026-10-04)
+
+Bookmark: tag `before-modular-refactor` (c4c8666). User's decisions: string
+back-end ids with a registry (no BackendKind enum in the end), a build option
+per back end, the shared app layer early, each back end's docs moved into
+its module. Each stage ends green (build, core + net tests, clang-format,
+docs and INSTRUCTIONS updated) and is committed by the user before the next.
+
+1. **Split the big UI files by area, no behaviour change.** window.cpp →
+   window.cpp (setup, actions) + sidebar.cpp, content.cpp (list / smart
+   views), reminder_row.cpp, dnd.cpp, selection.cpp, menus.cpp,
+   sources_ui.cpp, import_export_ui.cpp, sync_ui.cpp (one Window class
+   across files; shared helpers in an internal header). tui.cpp → tui/
+   files (sidebar, items, keys, help, editing); cli.cpp → a command table +
+   cli/commands/*.cpp.
+2. **Shared app layer `app/` (libreminders-app, no UI toolkit), unit
+   tested:** Actions (complete / flag / due / priority / move with anchor
+   chain / delete / copy / add_text placement, one undo step with held
+   saves), Selection, SidebarModel (groups, order, hidden, folding,
+   counts), ViewModel (a view's refs, grouping, count label), preferences.
+   GNOME app switched first, then the TUI.
+3. **Back-end API and registry with string ids** (backends/api): Backend,
+   Syncer, `BackendModule` descriptor (id, title, description,
+   capabilities, settings fields, detect, validate, name hint, default
+   folder, summary, erase note, make_backend, make_syncer). SourceConfig
+   becomes generic (name, backend id, folder, title, options); modules own
+   their typed settings. Every switch on the back end in core, net, cli and
+   linux goes through the registry; the Add Source form is generated from
+   the fields.
+4. **One module per back end:** backends/{local,syncthing,caldav,webdav,git}
+   with code, tests (fakes included), CMake target and option
+   BUILD_BACKEND_<ID>, and a README.md with its user docs (moved out of
+   USING.md / FORMAT.md, which link to them). backends/common: libcurl
+   HTTP, XML multistatus, password-command. The apps call a generated
+   `register_backends()`; no `#ifdef REMINDERS_NETWORK` left.
+5. **Split settings.cpp:** ini read / write, preferences (to app/), source
+   config.
+
+Done so far:
+- **Stage 1** (2026-10-04): split mechanically by scripts that cut the
+  files at top-level definitions (brace scanner aware of strings, chars,
+  comments; every method mapped to a file by name, unknown ones fail),
+  then a line-multiset comparison against the old file (nothing lost).
+  - GNOME app (linux/src): window.cpp (setup, actions, settings, undo,
+    banner), sidebar.cpp, content.cpp, reminder_row.cpp, editing.cpp,
+    selection.cpp, lists_ui.cpp, import_export.cpp, sources_ui.cpp,
+    switcher.cpp; helpers out of the anonymous namespace into
+    `ui::detail`, declared in window_internal.hpp (also Window's
+    undoable / batch templates): widgets.cpp (rows, menus, view names,
+    validation) and dnd.cpp (drag sources / targets, the text-drop reader).
+  - TUI: cli/src/tui/ — internal.hpp (types, class Tui, helper
+    declarations, namespace `tui`), tui.cpp (run, sync / folder checks,
+    run_tui), sidebar, items, editing, help, keys, marks, util.
+  - CLI: cli/src/cli/ — internal.hpp (namespace `cli`: Global, Args,
+    Style, App, externs for g_library / kValued / kFlags), main.cpp,
+    app.cpp (App helpers; `run` is now a command table), helpers.cpp,
+    commands_read / commands_edit / commands_io.cpp.
+  - No behaviour change: build, both test suites, a GUI screenshot, CLI
+    commands and the TUI (marks, help) checked.
+
 ## Future features (not started)
 
 TODO.md (top level) is the user's brief copy of this list and of Known
@@ -545,6 +605,10 @@ install). Update it whenever these change (user's requests 2026-10-04).
   without asking.
 - **KDE variant** (possible): a native Qt/Kirigami client for Plasma beside
   the GNOME one, on the same core library. Not decided; added 2026-10-03.
+- **TUI sync keys**: a key to sync the selected source (as the GNOME app's
+  Sync Now on a source heading) and one to sync every source (☰ → Sync
+  All). Only for sources the app syncs (CalDAV, WebDAV, git); uses
+  SyncRunner::sync_now(source) / sync_now(). Asked for 2026-10-04.
 - **Query language**, SQL-like, for the CLI (`reminders query "…"`) and for
   defining your own smart lists (saved queries in the sidebar). Wanted by the
   user 2026-10-02; design not started.

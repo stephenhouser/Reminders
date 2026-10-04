@@ -1,0 +1,235 @@
+// reminders: the command-line interface (and, with no command, the TUI).
+//
+// Internal to the CLI's files (cli/src/cli/): the shared types, the App
+// class with a method per command, and the helpers they use.
+#pragma once
+
+#include <unistd.h>
+
+#include <algorithm>
+#include <charconv>
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
+#include <format>
+#include <fstream>
+#include <iostream>
+#include <map>
+#include <optional>
+#include <span>
+#include <sstream>
+#include <string>
+#include <vector>
+
+#include "reminders/dates.hpp"
+#include "reminders/exporter.hpp"
+#include "reminders/format.hpp"
+#include "reminders/importer.hpp"
+#include "reminders/library.hpp"
+#include "reminders/paths.hpp"
+#include "reminders/settings.hpp"
+#include "reminders/sources.hpp"
+#include "reminders/store.hpp"
+#include "reminders/syncthing.hpp"
+#ifdef REMINDERS_NETWORK
+#include "reminders/server_sync.hpp"
+#endif
+#include "../editfile.hpp"
+#include "../text.hpp"
+#include "../tui.hpp"
+
+namespace cli {
+
+extern const rem::Library* g_library;
+extern const std::vector<std::string> kValued;
+extern const std::vector<std::string> kFlags;
+
+constexpr const char* kVersion = "0.1.0";
+
+constexpr const char* kUsage =
+	R"(Usage: reminders [--folder PATH] [--json] [--no-color] [COMMAND …]
+
+With no command, opens the interactive (terminal) interface.
+
+Commands:
+  lists                         Lists, with how many reminders are open in each
+  list [VIEW] [-a]              Reminders in VIEW: a list name, today,
+                                scheduled, all, all-reminders, flagged,
+                                completed or #tag.
+                                Default: the list that last had focus in the
+                                app or TUI. -a also shows completed reminders
+  show NAME                     Everything about one reminder
+  add TEXT… [FIELDS]            Add a reminder (inline fields like "#tag" or
+                                "📅 2026-10-03" work in TEXT too). Goes to
+                                --list, else the list that last had focus
+  edit NAME [FIELDS]            Change a reminder (no FIELDS: edit them all
+                                in $EDITOR)
+  done NAME                     Complete (repeating reminders roll forward)
+  undone NAME                   Mark as not completed
+  move NAME --to LIST [--section S]
+                                Move to another list
+  delete NAME [--yes]           Delete
+  search TEXT                   Search titles and notes
+  new-list NAME [--color C] [--icon I]
+  import FILE [--list LIST] [--source S] [--format F] [--duplicates]
+                                Import reminders from a file into LIST,
+                                made in S if missing (default: the
+                                calendar's name, else the file's). F, found
+                                from the file if not given: md, txt (a line
+                                each), todo.txt, csv or ics. Ones already
+                                here are skipped, or with --duplicates
+                                added again as copies
+  export [LIST] [--format F] [-o FILE] [-a]
+                                Write LIST as F: md (the list file, the
+                                default), txt (a line per open reminder; -a
+                                adds completed ones), todo.txt, csv or ics.
+                                Without --format, FILE's name says. To FILE
+                                (a folder: LIST.EXT in it), else to the
+                                terminal. Without LIST: every list, into
+                                the folder -o names, or one .zip archive
+                                if -o names a .zip file
+  folder [PATH]                 Show or set the folder (shared with the app)
+  sync [SOURCE]                 Sync CalDAV, WebDAV and git sources now
+                                (other commands sync before and after, too)
+  tui                           Open the interactive interface
+
+NAME is a reminder's title, or enough of it: an exact title wins, then one
+starting with NAME, then one containing it, then one containing all its words.
+Open reminders win over completed ones. --in LIST looks in one list only. If
+several still match, you're asked which one (or, in a script, they're listed).
+
+Fields:
+  --title TEXT      --list LIST (add: where; edit: move there)
+  --section NAME    --parent NAME (add a subtask)    --in LIST (find NAME in LIST)
+  --due DATE        DATE: today, tomorrow, fri, +3d, +2w, 2026-10-31
+  --time HH:MM      --no-due
+  --flag            --unflag
+  --priority none|low|medium|high
+  --tag TAG         --untag TAG      (repeatable)
+  --repeat RULE     e.g. "every week", "every 2 months"   --no-repeat
+  --notes TEXT      --url URL
+
+Options:
+  -f, --folder PATH  Use PATH instead of the saved folder
+  --json             Machine-readable output
+  --no-color         No colours (also when NO_COLOR is set or not a terminal)
+  --offline          Don't sync CalDAV, WebDAV or git sources
+  --show-key-numbers Label sidebar entries with their number key, e.g.
+                     "(1)Today" (interactive interface; overrides the
+                     show-key-numbers setting)
+  --hide-key-numbers Don't label them
+  -h, --help         This help
+  --version          Show the version
+)";
+
+struct UsageError : std::runtime_error {
+		using std::runtime_error::runtime_error;
+};
+
+struct Global {
+		std::optional<rem::fs::path> folder;
+		bool json = false;
+		std::optional<bool>
+			key_numbers;  // --show-key-numbers / --hide-key-numbers
+		bool color = false;
+		bool offline = false;  // --offline: no CalDAV or WebDAV syncing
+};
+
+struct Style {
+		bool on;
+		std::string fg(term::Rgb c) const {
+			return on ? std::format("\033[38;2;{};{};{}m", c.r, c.g, c.b) : "";
+		}
+		std::string bold() const { return on ? "\033[1m" : ""; }
+		std::string dim() const { return on ? "\033[2m" : ""; }
+		std::string red() const { return on ? "\033[31m" : ""; }
+		std::string reset() const { return on ? "\033[0m" : ""; }
+};
+
+struct Args {
+		std::vector<std::string> positional;
+		std::multimap<std::string, std::string>
+			options;  // name → value ("" for flags)
+
+		bool has(const std::string& k) const { return options.contains(k); }
+		std::optional<std::string> get(const std::string& k) const {
+			auto it = options.find(k);
+			return it == options.end() ? std::nullopt
+									   : std::optional{it->second};
+		}
+		std::vector<std::string> all(const std::string& k) const {
+			std::vector<std::string> out;
+			for (auto [a, b] = options.equal_range(k); a != b; ++a) {
+				out.push_back(a->second);
+			}
+			return out;
+		}
+};
+
+class App {
+	public:
+		// `own_folder`: this is the saved folder, so the saved view applies to
+		// it. `library`: every source, or the --folder one (see
+		// rem::open_library).
+		App(Global g, std::unique_ptr<rem::Library> library, bool own_folder)
+			: g_(g),
+			  st_{g.color},
+			  owned_(std::move(library)),
+			  store_(*owned_),
+			  today_(rem::local_today()),
+			  own_folder_(own_folder) {
+			store_.load_all();
+			g_library = owned_.get();
+		}
+
+		int run(const std::string& cmd, const Args& a);
+		rem::Library& store() { return store_; }
+
+	private:
+		Global g_;
+		Style st_;
+		std::unique_ptr<rem::Library> owned_;
+		rem::Library& store_;
+		rem::Date today_;
+		bool own_folder_;
+
+		rem::ListFile& list_named(const std::string& name);
+		term::SavedView saved_view();
+		rem::ListFile& default_list();
+		// Finds a reminder by name (or id); `in` limits the search to one list.
+		rem::Ref resolve(const std::string& text,
+						 const std::optional<std::string>& in);
+		void apply_fields(rem::Reminder& r, const Args& a);
+		void report(const std::string& verb, const rem::Ref& ref);
+
+		int cmd_lists();
+		int cmd_list(const Args& a);
+		int cmd_show(const Args& a);
+		int cmd_add(const Args& a);
+		int cmd_edit(const Args& a);
+		int cmd_done(const Args& a, bool done);
+		int cmd_move(const Args& a);
+		int cmd_delete(const Args& a);
+		int cmd_search(const Args& a);
+		int cmd_new_list(const Args& a);
+		int cmd_import(const Args& a);
+		int cmd_export(const Args& a);
+};
+
+bool sync_servers([[maybe_unused]] rem::Library& library,
+				  [[maybe_unused]] const std::string& only = "",
+				  [[maybe_unused]] bool verbose = false);
+rem::fs::path folder_arg(const std::string& arg);
+bool has_servers(const rem::Library& library);
+std::string json_escape(std::string_view s);
+std::string list_label(const rem::ListFile& l);
+std::string json_reminder(const rem::Ref& ref);
+void print_json(const std::vector<rem::Ref>& refs);
+void print_reminder(const rem::Ref& ref, const Style& st, int indent,
+					bool show_list, rem::Date today);
+void print_heading(int level, const std::string& text,
+				   std::optional<term::Rgb> color, const Style& st);
+Args parse_args(std::span<const std::string> in);
+std::string join(const std::vector<std::string>& v, std::size_t from = 0);
+
+}  // namespace cli
