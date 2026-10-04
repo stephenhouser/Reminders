@@ -66,10 +66,8 @@ automatic tests here can't send clicks, drags or key presses).
 
 Nothing is waiting for a check. Not tried by you yet, but no problems
 reported:
-- **⋮ → Mark as Completed** on a selection of reminders.
-- **The terminal app:** marking reminders (`v`, `*`, Esc) and acting on
-  them, and the help screen (`?`) after its last fixes. Both were tested
-  here in a terminal session.
+- **⋮ → Mark as Completed** on a selection of reminders, in the GNOME app
+  (the right-click / ⋮ menu item).
 
 ### Tried by you and working (4 October)
 
@@ -90,3 +88,9 @@ GNOME app:
   one reminder with notes; the Split / Combine button and Ctrl+Shift+V
   (Paste Special).
 - Pasting a link: it shows as a clickable link.
+
+Terminal app:
+- Marking reminders (`v`, `*`, Esc) and acting on all of them, including
+  completing them with Space / `x`.
+- The help screen (`?`): one column, fits the screen, scrolls, and leaves
+  nothing behind when closed.

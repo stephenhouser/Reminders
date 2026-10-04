@@ -801,10 +801,10 @@ whenever these change (user's request 2026-10-04).
   a Firefox link dropped; reminders dragged out to Files (a file named
   after the reminder); a reminder dropped on New Reminder (moves to the
   section's end, the field stays empty); pasting / dropping several lines
-  (split or one, Split / Combine, Ctrl+Shift+V); pasting a link. Not
-  explicitly confirmed (no problems reported): ⋮ → Mark as Completed, the
-  TUI's marking (tested here in tmux) and its help box after the last
-  fixes. TODO.md "Needs trying by hand" is empty.
+  (split or one, Split / Combine, Ctrl+Shift+V); pasting a link. TUI:
+  marking (v, *, Esc) and acting on the marks, completing them included; the help box after its
+  fixes. Not explicitly confirmed (no problems reported): ⋮ → Mark as
+  Completed. TODO.md "Needs trying by hand" is empty.
 - **Known gaps:**
   - CalDAV and WebDAV haven't been tried against a real server yet (only
     the fake one); git only against local repositories (not GitHub or
