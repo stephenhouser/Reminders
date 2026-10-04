@@ -11,7 +11,9 @@
 #include <vector>
 
 #include "dialogs.hpp"
+#include "reminders/actions.hpp"
 #include "reminders/sources.hpp"
+#include "reminders/view_model.hpp"
 #include "support.hpp"
 #include "window.hpp"
 
@@ -49,16 +51,6 @@ constexpr SmartInfo kSmart[] = {
 using Ids = std::vector<std::string>;
 
 enum class DropStyle { Halves, Above, Into };
-
-constexpr std::pair<View::Kind, std::string_view> kViewNames[] = {
-	{View::Today, "today"},
-	{View::Scheduled, "scheduled"},
-	{View::All, "all"},
-	{View::Flagged, "flagged"},
-	{View::Completed, "completed"},
-	{View::AllReminders, "all-reminders"},
-	{View::List, "list"},
-	{View::Tag, "tag"}};
 
 const SmartInfo* smart_info(View::Kind k);
 std::string color_class(std::string_view color);
@@ -121,8 +113,6 @@ void make_text_drop_target(
 	GtkWidget* widget, DropStyle style,
 	std::function<void(std::optional<std::string>, rem::Document::Place)>
 		on_drop);
-std::string view_to_string(const View& v);
-View view_from_string(std::string_view s);
 std::string lower(std::string_view s);
 
 }  // namespace detail

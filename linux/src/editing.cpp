@@ -98,15 +98,8 @@ void Window::toggle_done(const std::string& id, bool done) {
 }
 
 void Window::complete_reminders(const std::vector<std::string>& ids) {
-	bool all_done = std::ranges::all_of(ids, [this](auto& id) {
-		auto ref = store_->find(id);
-		return !ref || ref->reminder->done;
-	});
-	batch(ids.size() > 1 ? "Complete Reminders" : "Complete Reminder", [&] {
-		for (auto& id : ids) {
-			store_->set_done(id, !all_done, today());
-		}
-	});
+	batch(ids.size() > 1 ? "Complete Reminders" : "Complete Reminder",
+		  [&] { rem::complete(*store_, ids, today()); });
 	// Show the change at once, as a click on one circle does; the rows then
 	// linger a moment before the view is rebuilt (and completed ones hide).
 	syncing_checks_ = true;
@@ -129,27 +122,8 @@ void Window::move_reminders(const std::vector<std::string>& ids,
 							const std::string& target,
 							rem::Document::Place place) {
 	bool nested = false;
-	batch(ids.size() > 1 ? "Move Reminders" : "Move Reminder", [&] {
-		auto anchor = target;
-		for (auto& id : ids) {
-			auto ref = store_->find(id);
-			auto target_ref = store_->find(anchor);
-			if (!ref || !target_ref) {
-				continue;
-			}
-			if (ref->list != target_ref->list) {
-				store_->move_to_list(id, *target_ref->list);
-			}
-			auto* l = store_->find(anchor)->list;
-			if (l->doc.move_next_to(id, anchor, place)) {
-				anchor = id;
-				place = rem::Document::Place::After;
-			} else {
-				nested = true;
-			}
-			store_->save(*l);  // also covers a move from another list
-		}
-	});
+	batch(ids.size() > 1 ? "Move Reminders" : "Move Reminder",
+		  [&] { nested = !rem::move_next_to(*store_, ids, target, place); });
 	if (nested) {
 		toast("Subtasks can't have subtasks of their own");
 	}
@@ -160,20 +134,8 @@ void Window::move_to_section_end(const std::vector<std::string>& ids,
 								 const std::string& list,
 								 const std::optional<std::string>& section) {
 	batch(ids.size() > 1 ? "Move Reminders" : "Move Reminder", [&] {
-		auto* l = store_->list(list);
-		if (!l) {
-			return;
-		}
-		for (auto& id : ids) {
-			auto ref = store_->find(id);
-			if (!ref) {
-				continue;
-			}
-			if (ref->list != l) {
-				store_->move_to_list(id, *l);
-			}
-			l->doc.move_to_end(id, section);
-			store_->save(*l);
+		if (auto* l = store_->list(list)) {
+			rem::move_to_section_end(*store_, ids, *l, section);
 		}
 	});
 	refresh();
@@ -186,16 +148,8 @@ void Window::move_to_list(const std::vector<std::string>& ids,
 		return;
 	}
 	int moved = 0;
-	batch(ids.size() > 1 ? "Move Reminders" : "Move Reminder", [&] {
-		for (auto& id : ids) {
-			auto ref = store_->find(id);
-			if (!ref || ref->list == l) {
-				continue;
-			}
-			store_->move_to_list(id, *l);
-			++moved;
-		}
-	});
+	batch(ids.size() > 1 ? "Move Reminders" : "Move Reminder",
+		  [&] { moved = rem::move_to_list(*store_, ids, *l); });
 	if (moved == 0) {
 		return;
 	}
@@ -207,32 +161,14 @@ void Window::move_to_list(const std::vector<std::string>& ids,
 
 void Window::set_priority(const std::vector<std::string>& ids,
 						  rem::Priority priority) {
-	batch("Set Priority", [&] {
-		for (auto& id : ids) {
-			if (auto ref = store_->find(id);
-				ref && ref->reminder->priority != priority) {
-				ref->reminder->priority = priority;
-				store_->touch(id);
-			}
-		}
-	});
+	batch("Set Priority", [&] { rem::set_priority(*store_, ids, priority); });
 	keep_focus(ids);
 	refresh();
 }
 
 void Window::toggle_flag(const std::vector<std::string>& ids) {
-	bool all_flagged = std::ranges::all_of(ids, [this](auto& id) {
-		auto ref = store_->find(id);
-		return !ref || ref->reminder->flagged;
-	});
-	batch(ids.size() > 1 ? "Flag Reminders" : "Flag Reminder", [&] {
-		for (auto& id : ids) {
-			if (auto ref = store_->find(id)) {
-				ref->reminder->flagged = !all_flagged;
-				store_->touch(id);
-			}
-		}
-	});
+	batch(ids.size() > 1 ? "Flag Reminders" : "Flag Reminder",
+		  [&] { rem::toggle_flag(*store_, ids); });
 	keep_focus(ids);
 	refresh();
 }
@@ -241,12 +177,7 @@ void Window::set_due(const std::vector<std::string>& ids, int days_from_today) {
 	batch("Set Due Date", [&] {
 		auto due = rem::Date{std::chrono::sys_days{today()} +
 							 std::chrono::days{days_from_today}};
-		for (auto& id : ids) {
-			if (auto ref = store_->find(id)) {
-				ref->reminder->due_date = due;
-				store_->touch(id);	// keeps any time already set
-			}
-		}
+		rem::set_due(*store_, ids, due);  // keeps any time already set
 	});
 	keep_focus(ids);
 	refresh();
@@ -255,13 +186,7 @@ void Window::set_due(const std::vector<std::string>& ids, int days_from_today) {
 // The reminders as Markdown text (a subtask goes with its parent), as
 // copied, and as other apps get them when they're dragged out.
 std::string Window::reminders_text(const std::vector<std::string>& ids) {
-	std::string text;
-	for (auto& id : outermost(ids)) {
-		if (auto ref = store_->find(id)) {
-			text += rem::to_clipboard_text(*ref->reminder);
-		}
-	}
-	return text;
+	return rem::as_text(*store_, ids);
 }
 
 // The reminders as Markdown text, so they also paste into other apps.
@@ -293,12 +218,8 @@ void Window::delete_reminders(const std::vector<std::string>& ids) {
 	if (gone.empty()) {
 		return;
 	}
-	auto step =
-		batch(gone.size() > 1 ? "Delete Reminders" : "Delete Reminder", [&] {
-			for (auto& id : gone) {
-				store_->remove(id);
-			}
-		});
+	auto step = batch(gone.size() > 1 ? "Delete Reminders" : "Delete Reminder",
+					  [&] { rem::remove(*store_, gone); });
 	refresh();
 	// The toast's Undo only applies while this deletion is still the latest
 	// step.
@@ -473,87 +394,31 @@ void Window::add_text(const std::string& text, const char* label,
 					  const std::optional<std::string>& anchor_id,
 					  rem::Document::Place place, rem::TextSplit split,
 					  bool offer_switch) {
-	auto added = rem::from_clipboard_text(text, split);
-	if (added.empty() || !store_) {
+	if (!store_ || rem::from_clipboard_text(text, split).empty()) {
 		return;
 	}
-	auto anchor = anchor_id ? store_->find(*anchor_id) : std::nullopt;
-	bool for_view = list_key.empty();  // made to show in the view
-	rem::ListFile* list = !for_view				   ? store_->list(list_key)
-						: anchor				   ? anchor->list
-						: view_.kind == View::List ? store_->list(view_.name)
-												   : nullptr;
-	if (!list && for_view && !store_->lists().empty()) {
-		list = store_->lists().front();
-	}
-	if (!list) {
-		toast("Create a list first");
-		return;
-	}
-	if (anchor && anchor->list != list) {
-		anchor.reset();
-	}
-	const rem::Reminder* next_to =
-		anchor ? (anchor->parent ? anchor->parent : anchor->reminder) : nullptr;
-	std::optional<std::string> section =
-		next_to ? list->doc.section_of(*next_to) : std::nullopt;
-	bool before = next_to && place == rem::Document::Place::Before;
-	std::string before_id = before ? next_to->id : "";
-	std::string after_id = next_to && !before ? next_to->id : "";
-
-	auto day = today();
-	auto count = added.size();
-	auto title = added.front().title;
+	rem::AddedText added;
 	auto step = undoable(label, [&] {
-		std::string first;
 		try {
-			for (auto& r : added) {
-				if (!r.created) {
-					r.created = day;
-				}
-				if (for_view) {
-					if (!r.done && !r.due_date &&
-						(view_.kind == View::Today ||
-						 view_.kind == View::Scheduled)) {
-						r.due_date = day;
-					}
-					if (view_.kind == View::Flagged) {
-						r.flagged = true;
-					}
-					if (view_.kind == View::Tag &&
-						std::ranges::find(r.tags, view_.name) == r.tags.end()) {
-						r.tags.push_back(view_.name);
-					}
-				}
-				if (before) {  // each just above the anchor, so they keep their
-							   // order
-					auto id = store_
-								  ->add(*list, std::move(r),
-										list->doc.find(before_id), section)
-								  .id;
-					list->doc.move_next_to(id, before_id,
-										   rem::Document::Place::Before);
-					store_->save(*list);
-					if (first.empty()) {
-						first = id;
-					}
-				} else {
-					const rem::Reminder* at =
-						after_id.empty() ? nullptr : list->doc.find(after_id);
-					after_id = store_->add(*list, std::move(r), at, section).id;
-					if (first.empty()) {
-						first = after_id;
-					}
-				}
-			}
+			added = rem::add_text(*store_, text, split, view_,
+								  {list_key, anchor_id, place}, today());
 		} catch (const std::exception& e) {
 			toast(std::format("Couldn't save: {}", e.what()));
 		}
-		if (!first.empty()) {
-			focus_reminder_ = first;
+		if (!added.ids.empty()) {
+			focus_reminder_ = added.ids.front();
 		}
 		refresh();
 	});
+	if (!added.list) {
+		toast("Create a list first");
+		return;
+	}
+	auto* list = added.list;
+	bool for_view = list_key.empty();
+	auto count = added.ids.size();
+	auto first = store_->find(added.ids.empty() ? "" : added.ids.front());
+	auto title = first ? first->reminder->title : std::string();
 	// Several lines: say how they came in, and offer the other way (it
 	// undoes this and adds them again, split or combined).
 	auto as_lines =

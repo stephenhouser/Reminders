@@ -22,63 +22,26 @@ namespace ui {
 
 // The selection (top to bottom) when `id` is in it, else just `id`.
 std::vector<std::string> Window::targets(const std::string& id) {
-	if (!selected_.contains(id)) {
-		return {id};
-	}
-	std::vector<std::string> out;
-	for (auto& s : shown_ids_) {
-		if (selected_.contains(s)) {
-			out.push_back(s);
-		}
-	}
-	return out;
+	return selection_.targets(id, shown_ids_);
 }
 
 // For moving, deleting and copying: a subtask goes along with its parent.
 std::vector<std::string> Window::outermost(
 	const std::vector<std::string>& ids) {
-	std::vector<std::string> out;
-	for (auto& id : ids) {
-		auto ref = store_->find(id);
-		if (ref && ref->parent &&
-			std::ranges::find(ids, ref->parent->id) != ids.end()) {
-			continue;
-		}
-		out.push_back(id);
-	}
-	return out;
+	return rem::outermost(*store_, ids);
 }
 
 void Window::toggle_selected(const std::string& id) {
-	if (!selected_.erase(id)) {
-		selected_.insert(id);
-	}
-	anchor_ = id;
+	selection_.toggle(id);
 	update_selection();
 }
 
 // From the anchor (the last reminder clicked, else the focused one) to `to`;
 // `add` keeps what was already selected.
 void Window::select_range(const std::string& to, bool add) {
-	auto from = anchor_.value_or(cursor_.value_or(to));
-	auto a = std::ranges::find(shown_ids_, from),
-		 b = std::ranges::find(shown_ids_, to);
-	if (b == shown_ids_.end()) {
-		return;
+	if (selection_.select_range(shown_ids_, to, add, cursor_)) {
+		update_selection();
 	}
-	if (a == shown_ids_.end()) {
-		a = b;
-		from = to;
-	}
-	if (a > b) {
-		std::swap(a, b);
-	}
-	if (!add) {
-		selected_.clear();
-	}
-	selected_.insert(a, b + 1);
-	anchor_ = from;
-	update_selection();
 }
 
 // Shift+↑/↓: selects from the anchor to the row above or below `from`, and
@@ -90,8 +53,8 @@ void Window::extend_selection(const std::string& from, bool up) {
 		return;
 	}
 	auto next = up ? *(at - 1) : *(at + 1);
-	if (selected_.empty() || !anchor_) {
-		anchor_ = from;
+	if (selection_.empty() || !selection_.anchor()) {
+		selection_.set_anchor(from);
 	}
 	select_range(next, false);
 	if (auto row = reminder_rows_.find(next); row != reminder_rows_.end()) {
@@ -103,10 +66,7 @@ void Window::select_all() {
 	if (shown_ids_.empty()) {
 		return;
 	}
-	selected_ = {shown_ids_.begin(), shown_ids_.end()};
-	if (!anchor_) {
-		anchor_ = shown_ids_.front();
-	}
+	selection_.select_all(shown_ids_);
 	update_selection();
 	// The keys that act on the selection work from a reminder row: focus the
 	// first one unless one has the focus already (say, just after opening
@@ -122,24 +82,24 @@ void Window::select_all() {
 }
 
 void Window::clear_selection() {
-	if (selected_.empty()) {
+	if (selection_.empty()) {
 		return;
 	}
-	selected_.clear();
+	selection_.clear();
 	update_selection();
 }
 
 void Window::update_selection() {
 	for (auto& [id, row] : reminder_rows_) {
-		if (selected_.contains(id)) {
+		if (selection_.contains(id)) {
 			gtk_widget_add_css_class(row, "selected-reminder");
 		} else {
 			gtk_widget_remove_css_class(row, "selected-reminder");
 		}
 	}
-	auto subtitle = selected_.size() < 2
+	auto subtitle = selection_.size() < 2
 					  ? count_subtitle_
-					  : std::format("{} Selected", selected_.size());
+					  : std::format("{} Selected", selection_.size());
 	adw_window_title_set_subtitle(ADW_WINDOW_TITLE(content_title_),
 								  subtitle.c_str());
 }

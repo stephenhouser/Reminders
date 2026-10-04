@@ -3,7 +3,7 @@
 ## Refactor (in stages)
 
 1. Split the big UI files (window, tui, cli) by area. Done.
-2. Shared app layer for the GNOME app and the TUI.
+2. Shared app layer for the GNOME app and the TUI. Done.
 3. Back-end registry with string ids.
 4. One self-contained module per back end, with its own build option and docs.
 5. Split settings into ini, preferences and source config.

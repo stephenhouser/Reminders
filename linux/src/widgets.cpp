@@ -273,29 +273,6 @@ std::string list_name_error(const std::string& name) {
 	return {};
 }
 
-std::string view_to_string(const View& v) {
-	for (auto& [k, n] : kViewNames) {
-		if (k == v.kind) {
-			return v.name.empty() ? std::string(n)
-								  : std::format("{}:{}", n, v.name);
-		}
-	}
-	return "today";
-}
-
-View view_from_string(std::string_view s) {
-	auto colon = s.find(':');
-	auto kind = s.substr(0, colon);
-	for (auto& [k, n] : kViewNames) {
-		if (n == kind) {
-			return View{k, colon == std::string_view::npos
-							   ? ""
-							   : std::string(s.substr(colon + 1))};
-		}
-	}
-	return View{View::Today, ""};
-}
-
 std::string lower(std::string_view s) {
 	std::string out(s);
 	for (auto& c : out) {

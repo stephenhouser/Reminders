@@ -239,16 +239,7 @@ void Tui::edit_settings() {
 	refresh();
 	load_layout();
 	// The view may have just been hidden.
-	bool smart = view_.kind != View::List && view_.kind != View::Tag &&
-				 view_.kind != View::Search;
-	if ((smart &&
-		 std::ranges::none_of(smart_entries(),
-							  [&](auto& e) { return e.view == view_; })) ||
-		(view_.kind == View::Tag &&
-		 (tags_.hidden() ||
-		  (!hidden_.show && hidden_.tag_hidden(view_.name)))) ||
-		(view_.kind == View::List && !hidden_.show &&
-		 hidden_.list_hidden(view_.name))) {
+	if (sidebar_.gone(view_)) {
 		select_view(home_view());
 	} else {
 		auto keep = std::pair{item_sel_, item_scroll_};

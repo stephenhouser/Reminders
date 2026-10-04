@@ -49,6 +49,7 @@ from them rather than reopen them.
 | Paths | XDG config / data / state / cache dirs (core paths.hpp); `folder=` accepts `~`, `$HOME`, `${VAR}`, home-relative; saved as `~/…` | User's request 2026-10-03 |
 | XDG locations (mandate) | Always resolve them through `$XDG_CONFIG_HOME`, `$XDG_DATA_HOME`, `$XDG_STATE_HOME`, `$XDG_CACHE_HOME` (core `config_dir()` / `data_dir()` / `state_dir()` / `cache_dir()`), never a hard-coded `~/.config`, `~/.local/share`, `~/.local/state` or `~/.cache`. Docs and comments name the variable and give the default only as "when it isn't set" | User's mandate 2026-10-03 |
 | C/C++ formatting (mandate) | The user's `~/.clang-format` (Google-based; tabs, width 4; braces attached; no single-line ifs / loops / blocks; `ColumnLimit: 0`; case labels and blocks indented; namespace end comments; `InsertBraces`, so every if / for / while body has braces). Run `clang-format -i --style=file` on every C/C++ file changed before finishing, again until a pass changes nothing (InsertBraces can need two passes for nested statements): `cmake --build build --target format` does both passes on every source, `--target format-check` only reports (top-level CMakeLists.txt); the whole tree was reformatted 2026-10-04 (bookmark tag `before-clang-format`) | User's mandate 2026-10-04 |
+| GUI tests (mandate) | Launch the GNOME app for tests only through `tools/gui-test.sh HOME_DIR [ARGS]`: its own D-Bus session, a headless mutter on a private Wayland socket, GDK_BACKEND=wayland, DISPLAY unset, settings under HOME_DIR. Never `WAYLAND_DISPLAY=wayland-0` (the user's desktop): on 2026-10-04 test windows opened on the user's screen and caught their typing | User's rule 2026-10-01, made a script 2026-10-04 |
 | iOS sync (later) | Syncthing embedded via gomobile, not the Möbius Sync app | Self-contained app |
 | Names | GNOME app `Reminders`, terminal client `reminders` (CLI + TUI in one binary; not `rem`, too close to DOS `rem`), app ID `com.stephenhouser.Reminders`, config `$XDG_CONFIG_HOME/reminders/` | Case-sensitive file names on Linux let both live in one `bin` |
 | Terminal client | Separate binary from the GUI, no GTK dependency; ncurses for the TUI | Works over SSH and on headless Syncthing machines |
@@ -583,6 +584,42 @@ Done so far:
     commands_read / commands_edit / commands_io.cpp.
   - No behaviour change: build, both test suites, a GUI screenshot, CLI
     commands and the TUI (marks, help) checked.
+- **Stage 2** (2026-10-04, bookmark `before-stage-2`): app/ =
+  libreminders_app (standard C++, on reminders_core; app_tests with the
+  core's test harness, 8 tests). Both apps link it.
+  - `view.hpp`: the shared `View` (was duplicated in window.hpp and the
+    TUI) with view_to_string / view_from_string / smart_view_name.
+  - `selection.hpp`: `Selection` (ids + anchor; toggle, select_only,
+    select_range with a fallback, select_all, prune, in_order, targets).
+    The GUI's selected_ / anchor_ and the TUI's marked_ are Selections.
+  - `actions.hpp`: the multi-reminder rules as functions on a Library —
+    outermost, all_done / all_flagged, complete, toggle_flag, set_due
+    (date, optional time, nullopt clears), set_priority, set_tag,
+    move_next_to (anchor chain), move_to_section_end, move_to_list,
+    remove, as_text, add_text (TextPlace {list, anchor, place}; view set-up
+    for smart lists). The apps keep their undo wrappers (GUI batch /
+    undoable, TUI batch / undoable) around these calls; every GUI edit and
+    every TUI edit key (single and marked) uses them.
+  - `view_model.hpp`: view_refs, view_count (style + label / short),
+    grouped (RefGroup kind None / Overdue / Day / List; the apps word the
+    headings, the GUI with its locale dates), shows_list_name.
+  - `sidebar.hpp`: `Sidebar` holds the layout (sidebar-order, smart
+    lists, group displays, hidden) and does groups, title, foldable /
+    folded / toggle_fold / set_foldable, entries / smart_views / lists /
+    tags / all / home, count, hidden / set_hidden / show_hidden /
+    set_show_hidden / gone, same_group, can_move / move / move_next_to,
+    can_move_group / move_group / move_group_next_to (saves; throws on
+    write errors). GUI: `std::unique_ptr<rem::Sidebar> sidebar_` made in
+    open_sources; its old sidebar methods forward to it (entry_order,
+    layout_of, source_names gone). TUI: `rem::Sidebar sidebar_{store_}`;
+    `entry_for(View)` makes a row (title, colour, count, hidden), used by
+    the sidebar and Go To.
+  - Checked: app_tests; the GUI selection-ops run matched the pre-refactor
+    output line for line; GUI and TUI Scheduled / Flagged grouping; GUI
+    sidebar drop / hide / group drop; TUI marks, single edits, J / K, h / H,
+    fold, Go To. While doing this, found the GUI test windows had been
+    opening on the user's desktop (WAYLAND_DISPLAY=wayland-0); fixed with
+    tools/gui-test.sh (see the decisions table).
 
 ## Future features (not started)
 

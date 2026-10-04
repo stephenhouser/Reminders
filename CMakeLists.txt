@@ -13,6 +13,7 @@ add_compile_options(-Wall -Wextra -Wpedantic)
 
 enable_testing()
 add_subdirectory(core)
+add_subdirectory(app)
 
 option(BUILD_NETWORK "Build the CalDAV and WebDAV back ends (needs libcurl and libxml2)" ON)
 if(BUILD_NETWORK)
@@ -39,6 +40,7 @@ find_program(CLANG_FORMAT clang-format)
 if(CLANG_FORMAT)
   file(GLOB_RECURSE FORMAT_SOURCES CONFIGURE_DEPENDS
        ${CMAKE_CURRENT_SOURCE_DIR}/core/*.cpp ${CMAKE_CURRENT_SOURCE_DIR}/core/*.hpp
+       ${CMAKE_CURRENT_SOURCE_DIR}/app/*.cpp ${CMAKE_CURRENT_SOURCE_DIR}/app/*.hpp
        ${CMAKE_CURRENT_SOURCE_DIR}/net/*.cpp ${CMAKE_CURRENT_SOURCE_DIR}/net/*.hpp
        ${CMAKE_CURRENT_SOURCE_DIR}/cli/*.cpp ${CMAKE_CURRENT_SOURCE_DIR}/cli/*.hpp
        ${CMAKE_CURRENT_SOURCE_DIR}/linux/*.cpp ${CMAKE_CURRENT_SOURCE_DIR}/linux/*.hpp)

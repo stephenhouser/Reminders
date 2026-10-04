@@ -31,63 +31,12 @@ namespace tui {
 
 // The reminders a smart, tag or search view shows (empty for a list).
 std::vector<rem::Ref> Tui::view_refs() {
-	auto today = rem::local_today();
-	std::vector<rem::Ref> refs;
-	switch (view_.kind) {
-		case View::Today:
-			refs = store_.today(today);
-			break;
-		case View::Scheduled:
-			refs = store_.scheduled();
-			break;
-		case View::All:
-			refs = store_.all();
-			break;
-		case View::AllReminders:
-			refs = store_.everything();
-			break;
-		case View::Flagged:
-			refs = store_.flagged();
-			break;
-		case View::Completed:
-			refs = store_.completed();
-			break;
-		case View::Tag:
-			refs = store_.tagged(view_.name);
-			break;
-		case View::Search:
-			refs = store_.search(view_.name);
-			break;
-		case View::List:
-			break;
-	}
-	return refs;
+	return rem::view_refs(store_, view_, rem::local_today());
 }
 
 std::pair<std::string, std::string> Tui::view_count() {
-	int total = 0, done = 0;
-	auto style = rem::CountStyle::OpenOnly;
-	if (view_.kind == View::List) {
-		if (auto* l = store_.list(view_.name)) {
-			l->doc.walk([&](rem::Reminder& r, rem::Reminder*) {
-				++total;
-				done += r.done;
-			});
-		}
-		style = rem::CountStyle::WithComplete;
-	} else {
-		auto refs = view_refs();
-		total = static_cast<int>(refs.size());
-		done = static_cast<int>(std::ranges::count_if(
-			refs, [](auto& r) { return r.reminder->done; }));
-		style = view_.kind == View::Search	  ? rem::CountStyle::Results
-			  : view_.kind == View::Completed ? rem::CountStyle::Completed
-			  : view_.kind == View::Tag || view_.kind == View::AllReminders
-				  ? rem::CountStyle::WithComplete
-				  : rem::CountStyle::OpenOnly;
-	}
-	return {rem::count_label(style, total, done),
-			rem::count_short(style, total, done)};
+	auto count = rem::view_count(store_, view_, rem::local_today());
+	return {count.label(), count.short_label()};
 }
 
 std::vector<Line> Tui::lines() {
@@ -149,39 +98,25 @@ std::vector<Line> Tui::lines() {
 		return out;
 	}
 
-	auto refs = view_refs();
-	bool by_date = view_.kind == View::Today || view_.kind == View::Scheduled;
-	if (by_date) {
-		std::ranges::stable_sort(refs, [](auto& a, auto& b) {
-			auto key = [](const rem::Ref& r) {
-				auto t = r.reminder->due_time.value_or(rem::TimeOfDay{-1, 0});
-				return std::pair{*r.reminder->due_date, t.hour * 60 + t.minute};
-			};
-			return key(a) < key(b);
-		});
-	}
-	std::string group = "\x01";
-	for (auto& ref : refs) {
-		std::string g, color;
-		if (by_date) {
-			g = *ref.reminder->due_date < today
-				  ? "Overdue"
-				  : rem::relative_date(*ref.reminder->due_date, today);
-		} else if (view_.kind != View::Flagged) {
-			g = store_.label(*ref.list), color = ref.list->color();
-		}
-		if (g != group) {
-			if (!g.empty()) {
-				if (!out.empty()) {
-					out.push_back({Line::Note, "", "", "", 0});
-				}
-				out.push_back({Line::Heading, "", "## " + g, color, 0});
+	// Smart views by date, list or in one group; each heading as in a file.
+	bool show_list = rem::shows_list_name(view_) || view_.kind == View::Search;
+	for (auto& g : rem::grouped(store_, view_, today)) {
+		std::string heading =
+			g.kind == rem::RefGroup::Overdue ? "Overdue"
+			: g.kind == rem::RefGroup::Day	 ? rem::relative_date(g.day, today)
+			: g.kind == rem::RefGroup::List	 ? store_.label(*g.list)
+											 : "";
+		if (!heading.empty()) {
+			if (!out.empty()) {
+				out.push_back({Line::Note, "", "", "", 0});
 			}
-			group = g;
+			out.push_back({Line::Heading, "", "## " + heading,
+						   g.kind == rem::RefGroup::List ? g.list->color() : "",
+						   0});
 		}
-		item(ref, 0,
-			 by_date || view_.kind == View::Flagged ||
-				 view_.kind == View::Search);
+		for (auto& ref : g.refs) {
+			item(ref, 0, show_list);
+		}
 	}
 	return out;
 }
@@ -190,11 +125,15 @@ void Tui::draw_items(int x, int width, int height) {
 	title_y_ = -1;
 	auto ls = lines();
 	// Marks only on reminders in view (completed ones hidden, gone elsewhere).
-	std::erase_if(marked_, [&](const std::string& id) {
-		return std::ranges::none_of(ls, [&](const Line& l) {
-			return l.kind == Line::Item && l.id == id;
-		});
-	});
+	{
+		std::vector<std::string> shown;
+		for (auto& l : ls) {
+			if (l.kind == Line::Item) {
+				shown.push_back(l.id);
+			}
+		}
+		marked_.prune(shown);
+	}
 	// Title
 	std::string title;
 	if (view_.kind == View::List) {
@@ -380,9 +319,10 @@ void Tui::restore_view() {
 		return;
 	}
 	auto saved = term::parse_view_setting(rem::load_setting("view"));
-	for (auto [kind, name] : kViewSettings) {
-		if (saved.kind == name) {
-			view_ = {static_cast<View::Kind>(kind), ""};
+	for (auto kind : {View::Today, View::Scheduled, View::All, View::Flagged,
+					  View::Completed, View::AllReminders}) {
+		if (saved.kind == rem::smart_view_name(kind)) {
+			view_ = {kind, ""};
 		}
 	}
 	if (saved.kind ==
@@ -392,21 +332,12 @@ void Tui::restore_view() {
 		}
 	}
 	auto tags = store_.tags();
-	if (saved.kind == "tag" && !tags_.hidden() &&
+	if (saved.kind == "tag" && !sidebar_.tags_group_hidden() &&
 		std::ranges::find(tags, saved.name) != tags.end()) {
 		view_ = {View::Tag, saved.name};
 	}
-	bool smart = view_.kind != View::List && view_.kind != View::Tag &&
-				 view_.kind != View::Search;
-	if (smart && std::ranges::none_of(smart_entries(), [&](auto& e) {
-			return e.view == view_;
-		})) {
-		view_ = home_view();
-	}
-	if (!hidden_.show &&
-		((view_.kind == View::List && hidden_.list_hidden(view_.name)) ||
-		 (view_.kind == View::Tag && hidden_.tag_hidden(view_.name)))) {
-		view_ = home_view();  // hidden in the sidebar
+	if (sidebar_.gone(view_)) {
+		view_ = home_view();  // hidden in the sidebar, or not shown there
 	}
 	select_view(view_);
 }
@@ -418,7 +349,7 @@ void Tui::remember_view() {
 	std::string value = view_.kind == View::List ? "list:" + view_.name
 					  : view_.kind == View::Tag
 						  ? "tag:" + view_.name
-						  : kViewSettings[static_cast<int>(view_.kind)].second;
+						  : std::string(rem::smart_view_name(view_.kind));
 	try {
 		if (rem::load_setting("view") != value) {
 			rem::save_setting("view", value);

@@ -45,13 +45,7 @@ void Window::rebuild_content() {
 		page_title = l->name;
 		// "6 Reminders / 3 Complete": every reminder (subtasks included), and
 		// how many of them are done (shown with Ctrl+H or ⋮ → Show Completed).
-		int total = 0, done = 0;
-		l->doc.walk([&](rem::Reminder& r, rem::Reminder*) {
-			++total;
-			done += r.done;
-		});
-		count_subtitle_ =
-			rem::count_label(rem::CountStyle::WithComplete, total, done);
+		count_subtitle_ = rem::view_count(*store_, view_, today()).label();
 		body = build_list_view(*l);
 	} else {
 		if (auto* s = smart_info(view_.kind)) {
@@ -62,16 +56,7 @@ void Window::rebuild_content() {
 			page_title = "Search";
 		}
 		// The same kind of count as a list's: what the view contains.
-		auto refs = view_refs();
-		int done = static_cast<int>(std::ranges::count_if(
-			refs, [](auto& r) { return r.reminder->done; }));
-		int total = static_cast<int>(refs.size());
-		auto style = view_.kind == View::Search	   ? rem::CountStyle::Results
-				   : view_.kind == View::Completed ? rem::CountStyle::Completed
-				   : view_.kind == View::Tag || view_.kind == View::AllReminders
-					   ? rem::CountStyle::WithComplete
-					   : rem::CountStyle::OpenOnly;
-		count_subtitle_ = rem::count_label(style, total, done);
+		count_subtitle_ = rem::view_count(*store_, view_, today()).label();
 		body = build_smart_view();
 	}
 	adw_window_title_set_title(title, page_title.c_str());
@@ -79,9 +64,7 @@ void Window::rebuild_content() {
 								  page_title.c_str());
 	// Selected reminders no longer shown (completed and hidden, deleted
 	// elsewhere) drop out of the selection.
-	std::erase_if(selected_, [this](const std::string& id) {
-		return !reminder_rows_.contains(id);
-	});
+	selection_.prune(shown_ids_);
 	update_selection();	 // also sets the subtitle
 
 	// Keep the scroll position across rebuilds.
@@ -311,37 +294,7 @@ GtkWidget* Window::build_list_view(rem::ListFile& l) {
 }
 
 std::vector<rem::Ref> Window::view_refs() {
-	auto day = today();
-	std::vector<rem::Ref> refs;
-	switch (view_.kind) {
-		case View::Today:
-			refs = store_->today(day);
-			break;
-		case View::Scheduled:
-			refs = store_->scheduled();
-			break;
-		case View::All:
-			refs = store_->all();
-			break;
-		case View::AllReminders:
-			refs = store_->everything();
-			break;
-		case View::Flagged:
-			refs = store_->flagged();
-			break;
-		case View::Completed:
-			refs = store_->completed();
-			break;
-		case View::Tag:
-			refs = store_->tagged(view_.name);
-			break;
-		case View::Search:
-			refs = store_->search(view_.name);
-			break;
-		case View::List:
-			break;
-	}
-	return refs;
+	return rem::view_refs(*store_, view_, today());
 }
 
 GtkWidget* Window::build_smart_view() {
@@ -371,57 +324,26 @@ GtkWidget* Window::build_smart_view() {
 		}
 	}
 
-	// Each view groups its reminders: by date, or by list.
-	struct Group {
-			std::string title;
-			std::string color_name;
-			GtkWidget* listbox;
-	};
-	std::vector<Group> groups;
-	auto group_for = [&](const std::string& title,
-						 const std::string& color) -> GtkWidget* {
-		for (auto& g : groups) {
-			if (g.title == title) {
-				return g.listbox;
-			}
-		}
-		groups.push_back(Group{title, color, boxed_list()});
-		return groups.back().listbox;
-	};
-
-	bool by_date = view_.kind == View::Today || view_.kind == View::Scheduled;
-	bool flat = view_.kind == View::Flagged;
-	if (by_date) {
-		auto key = [](const rem::Ref& r) {
-			auto t = r.reminder->due_time.value_or(rem::TimeOfDay{-1, 0});
-			return std::pair{*r.reminder->due_date, t.hour * 60 + t.minute};
-		};
-		std::ranges::stable_sort(
-			refs, [&](auto& a, auto& b) { return key(a) < key(b); });
-	}
-	for (auto& ref : refs) {
-		GtkWidget* box;
-		if (by_date) {
-			auto& due = *ref.reminder->due_date;
-			box =
-				group_for(due < day ? "Overdue" : relative_date(due, day), "");
-		} else if (flat) {
-			box = group_for("", "");
-		} else {
-			box = group_for(store_->label(*ref.list), ref.list->color());
-		}
-		gtk_list_box_append(GTK_LIST_BOX(box),
-							build_reminder_row(ref, by_date || flat));
-	}
-
+	// Each view groups its reminders: by date, by list, or in one group.
 	auto* page = vbox(24);
 	std::vector<GtkWidget*> listboxes;
-	for (auto& g : groups) {
+	bool show_list = rem::shows_list_name(view_);
+	for (auto& g : rem::grouped(*store_, view_, day)) {
+		auto* box = boxed_list();
+		for (auto& ref : g.refs) {
+			gtk_list_box_append(GTK_LIST_BOX(box),
+								build_reminder_row(ref, show_list));
+		}
+		std::string title =
+			g.kind == rem::RefGroup::Overdue ? "Overdue"
+			: g.kind == rem::RefGroup::Day	 ? relative_date(g.day, day)
+			: g.kind == rem::RefGroup::List	 ? store_->label(*g.list)
+											 : "";
+		std::string color =
+			g.kind == rem::RefGroup::List ? g.list->color() : "";
 		append(page,
-			   {group(g.title,
-					  g.color_name.empty() ? nullptr : g.color_name.c_str(),
-					  g.listbox)});
-		listboxes.push_back(g.listbox);
+			   {group(title, color.empty() ? nullptr : color.c_str(), box)});
+		listboxes.push_back(box);
 	}
 	chain_listboxes(listboxes);
 	return clamp(page);

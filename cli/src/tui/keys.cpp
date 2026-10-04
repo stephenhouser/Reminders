@@ -45,10 +45,9 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
 			if (focus_items_ && !marked_.empty()) {
 				act_on_marked(key);
 			} else if (ref) {
-				auto p = static_cast<rem::Priority>(key - '0');
 				undoable("Priority", [&] {
-					ref->reminder->priority = p;
-					store_.touch(id);
+					rem::set_priority(store_, {id},
+									  static_cast<rem::Priority>(key - '0'));
 				});
 			}
 			return true;
@@ -197,29 +196,10 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
 					// Best match: a name starting with it, else containing it.
 					std::optional<View> best;
 					int best_score = 3;
-					auto findable =
-						sidebar_items();  // plus folded groups' entries
-					if (smart_.folded()) {
-						for (auto& e : smart_entries()) {
-							findable.push_back(e);
-						}
-					}
-					for (auto& s : store_.sources()) {
-						if (folded(rem::SidebarGroup::lists(s.config.name))) {
-							for (auto* l : store_.lists(s.config.name)) {
-								findable.push_back(
-									{{View::List, store_.key_of(*l)},
-									 l->name,
-									 l->color(),
-									 -1});
-							}
-						}
-					}
-					if (tags_.folded() && !tags_.hidden()) {
-						for (auto& t : store_.tags()) {
-							findable.push_back(
-								{{View::Tag, t}, "#" + t, "gray", -1});
-						}
+					std::vector<SidebarEntry>
+						findable;  // folded groups' entries too
+					for (auto& v : sidebar_.all(true)) {
+						findable.push_back(entry_for(v));
 					}
 					for (auto& e : findable) {
 						auto t = term::lower(e.title), s = term::lower(*q);
@@ -380,15 +360,13 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
 	}
 	// Marking, and the keys that then act on every marked reminder.
 	if (!fn && key == 'v' && ref) {
-		if (!marked_.erase(id)) {
-			marked_.insert(id);
-		}
+		marked_.toggle(id);
 		move_selection(1);
 		return true;
 	}
 	if (!fn && key == '*') {
 		auto all = shown_items();
-		marked_ = {all.begin(), all.end()};
+		marked_.select_all(all);
 		if (!all.empty()) {
 			message_ = std::format("{} marked", all.size());
 		}
@@ -406,12 +384,6 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
 	}
 	auto& r = *ref->reminder;
 
-	auto save = [&](const char* label, auto&& change) {
-		undoable(label, [&] {
-			change();
-			store_.touch(id);
-		});
-	};
 	if (fn && key == KEY_DC) {
 		key = kDelete, fn = false;
 	}
@@ -437,7 +409,7 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
 					}
 				}
 				undoable("Complete",
-						 [&] { store_.set_done(id, !r.done, today); });
+						 [&] { rem::complete(store_, {id}, today); });
 				break;
 			}
 		case '\n':
@@ -453,8 +425,8 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
 					prompt("Due (today, tomorrow, fri, +3d, 2026-10-31, none):",
 						   r.due_date ? rem::format_date(*r.due_date) : "")) {
 				if (term::lower(*d) == "none" || d->empty()) {
-					save("Clear Due Date",
-						 [&] { r.due_date.reset(), r.due_time.reset(); });
+					undoable("Clear Due Date",
+							 [&] { rem::set_due(store_, {id}, std::nullopt); });
 				} else {
 					auto words = *d;
 					std::optional<rem::TimeOfDay> time;
@@ -464,11 +436,8 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
 						}
 					}
 					if (auto date = rem::parse_human_date(words, today)) {
-						save("Set Due Date", [&] {
-							r.due_date = date;
-							if (time) {
-								r.due_time = time;
-							}
+						undoable("Set Due Date", [&] {
+							rem::set_due(store_, {id}, date, time);
 						});
 					} else {
 						message_ = std::format("Can't read “{}”", *d);
@@ -477,23 +446,26 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
 			}
 			break;
 		case 't':
-			save("Due Today", [&] { r.due_date = today; });
+			undoable("Due Today", [&] { rem::set_due(store_, {id}, today); });
 			break;
 		case 'T':
-			save("Due Tomorrow", [&] {
-				r.due_date = rem::Date{std::chrono::sys_days{today} +
-									   std::chrono::days{1}};
+			undoable("Due Tomorrow", [&] {
+				rem::set_due(store_, {id},
+							 rem::Date{std::chrono::sys_days{today} +
+									   std::chrono::days{1}});
 			});
 			break;
 		case 'f':
-			save("Flag", [&] { r.flagged = !r.flagged; });
+			undoable("Flag", [&] { rem::toggle_flag(store_, {id}); });
 			break;
 		case '0':
 		case '1':
 		case '2':
 		case '3':
-			save("Priority",
-				 [&] { r.priority = static_cast<rem::Priority>(key - '0'); });
+			undoable("Priority", [&] {
+				rem::set_priority(store_, {id},
+								  static_cast<rem::Priority>(key - '0'));
+			});
 			break;
 		case '#':
 			if (auto t = prompt("Tag (-tag removes):"); t && !t->empty()) {
@@ -505,13 +477,8 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
 				if (tag.starts_with('#')) {
 					tag.erase(0, 1);
 				}
-				save("Tag", [&] {
-					if (remove) {
-						std::erase(r.tags, tag);
-					} else if (std::ranges::find(r.tags, tag) == r.tags.end()) {
-						r.tags.push_back(tag);
-					}
-				});
+				undoable("Tag",
+						 [&] { rem::set_tag(store_, {id}, tag, !remove); });
 			}
 			break;
 		case 'm':
@@ -528,8 +495,9 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
 				}
 				if (!dest) {
 					message_ = std::format("No list called “{}”", *name);
-				} else if (dest != ref->list) {
-					undoable("Move", [&] { store_.move_to_list(id, *dest); });
+				} else {
+					undoable("Move",
+							 [&] { rem::move_to_list(store_, {id}, *dest); });
 				}
 			}
 			break;

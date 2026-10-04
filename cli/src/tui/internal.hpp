@@ -20,10 +20,15 @@
 #include <string>
 #include <vector>
 
+#include "reminders/actions.hpp"
 #include "reminders/dates.hpp"
 #include "reminders/format.hpp"
 #include "reminders/history.hpp"
+#include "reminders/selection.hpp"
 #include "reminders/settings.hpp"
+#include "reminders/sidebar.hpp"
+#include "reminders/view.hpp"
+#include "reminders/view_model.hpp"
 #ifdef REMINDERS_NETWORK
 #include "reminders/sync_runner.hpp"
 #endif
@@ -48,26 +53,7 @@ enum Pair : short {
 	kFirstListColor
 };
 
-struct View {
-		enum Kind {
-			Today,
-			Scheduled,
-			All,
-			Flagged,
-			Completed,
-			AllReminders,
-			List,
-			Tag,
-			Search
-		} kind = Today;
-		std::string name;
-		bool operator==(const View&) const = default;
-};
-
-// The smart lists' names in settings.ini, by View::Kind.
-constexpr std::pair<int, const char*> kViewSettings[] = {
-	{0, "today"},	{1, "scheduled"}, {2, "all"},
-	{3, "flagged"}, {4, "completed"}, {5, "all-reminders"}};
+using View = rem::View;	 // what the interface shows (reminders/view.hpp)
 
 // Alt+Shift+↑ / ↓ (move the sidebar group), as internal keys outside the
 // range of characters.
@@ -129,14 +115,7 @@ class Tui {
 		bool show_key_numbers_ = rem::load_bool_setting("show-key-numbers");
 		std::optional<bool>
 			key_numbers_override_;	// --show-key-numbers / --hide-key-numbers
-		std::vector<rem::SidebarGroup> order_ =
-			rem::load_sidebar_order(source_names());
-		rem::SmartListsLayout smart_ = rem::load_smart_lists_layout();
-		std::map<std::string, rem::GroupLayout>
-			lists_layouts_;	 // by source; loaded as needed
-		rem::GroupLayout tags_ = rem::load_tags_layout();
-		rem::HiddenEntries hidden_ =
-			rem::load_hidden();	 // lists-hidden, tags-hidden, show-hidden
+		rem::Sidebar sidebar_{store_};	// the sidebar's layout (settings.ini)
 		// Extended key codes for the GUI's modified keys, 0 if the terminal
 		// lacks them.
 		int alt_up_ = 0, alt_down_ = 0, alt_shift_up_ = 0, alt_shift_down_ = 0,
@@ -145,7 +124,7 @@ class Tui {
 		std::string item_sel_;	// selected reminder id
 		// Marked reminders (v, * marks all, Esc clears): while any are marked,
 		// the editing keys act on all of them instead of the selected one.
-		std::set<std::string> marked_;
+		rem::Selection marked_;
 		int item_scroll_ = 0;
 		std::string message_;
 		std::map<std::string, std::pair<fs::file_time_type, std::uintmax_t>>
@@ -154,17 +133,10 @@ class Tui {
 		std::vector<SidebarEntry> sidebar();  // every row, headings included
 		std::vector<SidebarEntry>
 		sidebar_items();  // the selectable lists, in order (numbered)
+		SidebarEntry entry_for(
+			const View& v);	 // a row for an entry: title, colour, count
 		std::vector<SidebarEntry>
 		smart_entries();  // the smart lists the settings show
-		std::vector<rem::SidebarGroup> showing_groups();
-		std::vector<std::string> source_names();
-		std::string group_title(
-			const rem::SidebarGroup&
-				group);	 // "My Lists" with one source, else its title
-		std::vector<std::string> list_keys();  // every list, as "source/name"
-		rem::GroupLayout* layout_of(
-			const rem::SidebarGroup& group);  // nullptr for the smart lists
-		bool folded(const rem::SidebarGroup& group);
 		void toggle_fold(const rem::SidebarGroup& group);
 		void move_group(int delta);
 		void move_entry(int delta);
@@ -198,9 +170,6 @@ class Tui {
 		std::vector<std::string>
 		shown_items();	// the reminders in view, top to bottom
 		std::vector<std::string> marked_items();  // marked_, in that order
-		std::vector<std::string> outermost(
-			const std::vector<std::string>&
-				ids);  // without subtasks whose parent is there
 		void step_off(
 			const std::vector<std::string>&
 				going);	 // selects the nearest reminder not in `going`

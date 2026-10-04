@@ -40,23 +40,7 @@ std::vector<std::string> Tui::shown_items() {
 }
 
 std::vector<std::string> Tui::marked_items() {
-	auto out = shown_items();
-	std::erase_if(out, [this](auto& id) { return !marked_.contains(id); });
-	return out;
-}
-
-// For moving and deleting: a subtask goes along with its parent.
-std::vector<std::string> Tui::outermost(const std::vector<std::string>& ids) {
-	std::vector<std::string> out;
-	for (auto& id : ids) {
-		auto ref = store_.find(id);
-		if (ref && ref->parent &&
-			std::ranges::find(ids, ref->parent->id) != ids.end()) {
-			continue;
-		}
-		out.push_back(id);
-	}
-	return out;
+	return marked_.in_order(shown_items());
 }
 
 // Before reminders leave the view: keeps the place by selecting the nearest
@@ -92,68 +76,46 @@ bool Tui::act_on_marked(wint_t key) {
 	}
 	auto today = rem::local_today();
 	auto n = ids.size();
-	auto each = [&](const char* label, auto&& change) {
-		batch(label, [&] {
-			for (auto& id : ids) {
-				if (auto ref = store_.find(id)) {
-					change(*ref->reminder);
-					store_.touch(id);
-				}
-			}
-		});
-	};
-	auto all = [&](auto&& test) {
-		return std::ranges::all_of(ids, [&](auto& id) {
-			auto ref = store_.find(id);
-			return !ref || test(*ref->reminder);
-		});
-	};
 	switch (key) {
 		case 'x':
 		case ' ':
 			{
-				bool done = !all([](auto& r) { return r.done; });
+				bool done = !rem::all_done(store_, ids);
 				bool hides = done && !show_completed_ &&
 							 view_.kind != View::Completed &&
 							 view_.kind != View::AllReminders;
 				if (hides) {
 					step_off(ids);
 				}
-				batch("Complete", [&] {
-					for (auto& id : ids) {
-						store_.set_done(id, done, today);
-					}
-				});
+				batch("Complete", [&] { rem::complete(store_, ids, today); });
 				message_ = std::format("{} {}", n, done ? "done" : "not done");
 				return true;
 			}
 		case 'f':
 			{
-				bool flag = !all([](auto& r) { return r.flagged; });
-				each("Flag", [&](rem::Reminder& r) { r.flagged = flag; });
+				bool flag = false;
+				batch("Flag", [&] { flag = rem::toggle_flag(store_, ids); });
 				message_ =
 					std::format("{} {}", n, flag ? "flagged" : "unflagged");
 				return true;
 			}
 		case 't':
-			each("Due Today", [&](rem::Reminder& r) { r.due_date = today; });
+			batch("Due Today", [&] { rem::set_due(store_, ids, today); });
 			return true;
 		case 'T':
-			{
-				auto tomorrow = rem::Date{std::chrono::sys_days{today} +
-										  std::chrono::days{1}};
-				each("Due Tomorrow",
-					 [&](rem::Reminder& r) { r.due_date = tomorrow; });
-				return true;
-			}
+			batch("Due Tomorrow", [&] {
+				rem::set_due(store_, ids,
+							 rem::Date{std::chrono::sys_days{today} +
+									   std::chrono::days{1}});
+			});
+			return true;
 		case 'd':
 			if (auto d = prompt(std::format("Due date for {} (today, tomorrow, "
 											"fri, +3d, 2026-10-31, none):",
 											n))) {
 				if (term::lower(*d) == "none" || d->empty()) {
-					each("Clear Due Date", [](rem::Reminder& r) {
-						r.due_date.reset(), r.due_time.reset();
-					});
+					batch("Clear Due Date",
+						  [&] { rem::set_due(store_, ids, std::nullopt); });
 				} else {
 					auto words = *d;
 					std::optional<rem::TimeOfDay> time;
@@ -163,12 +125,8 @@ bool Tui::act_on_marked(wint_t key) {
 						}
 					}
 					if (auto date = rem::parse_human_date(words, today)) {
-						each("Set Due Date", [&](rem::Reminder& r) {
-							r.due_date = date;
-							if (time) {
-								r.due_time = time;
-							}
-						});
+						batch("Set Due Date",
+							  [&] { rem::set_due(store_, ids, date, time); });
 					} else {
 						message_ = std::format("Can't read “{}”", *d);
 					}
@@ -179,11 +137,11 @@ bool Tui::act_on_marked(wint_t key) {
 		case '1':
 		case '2':
 		case '3':
-			{
-				auto p = static_cast<rem::Priority>(key - '0');
-				each("Priority", [&](rem::Reminder& r) { r.priority = p; });
-				return true;
-			}
+			batch("Priority", [&] {
+				rem::set_priority(store_, ids,
+								  static_cast<rem::Priority>(key - '0'));
+			});
+			return true;
 		case '#':
 			if (auto t = prompt(std::format("Tag for {} (-tag removes):", n));
 				t && !t->empty()) {
@@ -195,13 +153,7 @@ bool Tui::act_on_marked(wint_t key) {
 				if (tag.starts_with('#')) {
 					tag.erase(0, 1);
 				}
-				each("Tag", [&](rem::Reminder& r) {
-					if (remove) {
-						std::erase(r.tags, tag);
-					} else if (std::ranges::find(r.tags, tag) == r.tags.end()) {
-						r.tags.push_back(tag);
-					}
-				});
+				batch("Tag", [&] { rem::set_tag(store_, ids, tag, !remove); });
 			}
 			return true;
 		case 'm':
@@ -221,31 +173,23 @@ bool Tui::act_on_marked(wint_t key) {
 					message_ = std::format("No list called “{}”", *name);
 					return true;
 				}
-				auto moving = outermost(ids);
 				if (view_.kind == View::List) {
 					step_off(ids);
 				}
-				batch("Move", [&] {
-					for (auto& id : moving) {
-						store_.move_to_list(id, *dest);
-					}
-				});
-				message_ = std::format("Moved {} to “{}”", moving.size(),
-									   store_.label(*dest));
+				int moved = 0;
+				batch("Move",
+					  [&] { moved = rem::move_to_list(store_, ids, *dest); });
+				message_ =
+					std::format("Moved {} to “{}”", moved, store_.label(*dest));
 			}
 			return true;
 		case kDelete:
 			{
-				auto gone = outermost(ids);
 				if (!confirm(std::format("Delete {} reminders?", n))) {
 					return true;
 				}
 				step_off(ids);
-				batch("Delete", [&] {
-					for (auto& id : gone) {
-						store_.remove(id);
-					}
-				});
+				batch("Delete", [&] { rem::remove(store_, ids); });
 				message_ = std::format("Deleted {} (u to undo)", n);
 				return true;
 			}

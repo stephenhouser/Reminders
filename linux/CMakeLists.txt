@@ -36,7 +36,7 @@ add_executable(reminders-gnome
   src/dialogs.cpp
   src/support.cpp
   ${RES_C})
-target_link_libraries(reminders-gnome PRIVATE reminders_core PkgConfig::ADW)
+target_link_libraries(reminders-gnome PRIVATE reminders_app PkgConfig::ADW)
 if(TARGET reminders_net)
   target_link_libraries(reminders-gnome PRIVATE reminders_net)
   target_compile_definitions(reminders-gnome PRIVATE REMINDERS_NETWORK)

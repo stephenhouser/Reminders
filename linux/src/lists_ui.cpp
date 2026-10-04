@@ -108,11 +108,12 @@ void Window::edit_list(const std::string& key) {
 						rem::save_names_setting("lists-order", order);
 					}
 					if (e.name != name &&
-						hidden_.list_hidden(
-							key)) {	 // stays hidden under its new name
+						entry_hidden(
+							View{View::List,
+								 key})) {  // stays hidden under its new name
 						rem::set_list_hidden(key, false);
 						rem::set_list_hidden(new_key, true);
-						hidden_ = rem::load_hidden();
+						sidebar_->reload();
 					}
 					l->doc.set_meta("color", e.color);
 					l->doc.set_meta("icon", e.icon);

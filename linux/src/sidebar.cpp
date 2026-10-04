@@ -41,9 +41,9 @@ void Window::rebuild_sidebar() {
 				if (!same_sidebar_group(dragged, v)) {
 					return false;
 				}
-				auto t = entry_order(v);  // a hidden smart list has no place
-				return t &&
-					   std::ranges::find(t->order, t->name) != t->order.end();
+				// A hidden smart list has no place in the order to drop next
+				// to.
+				return rem::smart_view_name(v.kind).empty() || !entry_hidden(v);
 			},
 			[this, v](View dragged, bool after) {
 				drop_entry(dragged, v, after);
@@ -121,7 +121,7 @@ void Window::rebuild_sidebar() {
 						sidebar_row(list_icon_name(l->icon()), l->color(),
 									l->name, open_count(*l), shortcut(index++));
 					set_row_view(row, View{View::List, key});
-					if (hidden_.list_hidden(key)) {
+					if (entry_hidden(View{View::List, key})) {
 						gtk_widget_add_css_class(row, "hidden-entry");
 					}
 					make_reorderable(row, View{View::List, key});
@@ -156,7 +156,7 @@ void Window::rebuild_sidebar() {
 						sidebar_row(list_icon_name(style.icon), style.color,
 									"#" + t, std::nullopt, shortcut(index++));
 					set_row_view(row, View{View::Tag, t});
-					if (hidden_.tag_hidden(t)) {
+					if (entry_hidden(View{View::Tag, t})) {
 						gtk_widget_add_css_class(row, "hidden-entry");
 					}
 					make_reorderable(row, View{View::Tag, t});
@@ -182,40 +182,11 @@ void Window::rebuild_sidebar() {
 
 // The smart lists the settings show, in their order.
 std::vector<View> Window::smart_views() {
-	std::vector<View> out;
-	if (smart_.display == rem::GroupDisplay::Hidden) {
-		return out;
-	}
-	for (auto& name : smart_.shown) {
-		auto v = view_from_string(name);
-		if (smart_info(v.kind)) {
-			out.push_back(v);
-		}
-	}
-	if (hidden_.show) {	 // the hidden ones after them
-		for (auto& s : kSmart) {
-			if (std::ranges::find(out, View{s.kind, ""}) == out.end()) {
-				out.push_back(View{s.kind, ""});
-			}
-		}
-	}
-	return out;
+	return sidebar_ ? sidebar_->smart_views() : std::vector<View>{};
 }
 
 std::vector<rem::ListFile*> Window::sidebar_lists(const std::string& source) {
-	std::vector<std::string> keys;
-	for (auto* l : store_->lists(source)) {
-		keys.push_back(store_->key_of(*l));
-	}
-	std::vector<rem::ListFile*> out;
-	for (auto& key : rem::order_lists(keys)) {
-		if (hidden_.show || !hidden_.list_hidden(key)) {
-			if (auto* l = store_->list(key)) {
-				out.push_back(l);
-			}
-		}
-	}
-	return out;
+	return sidebar_ ? sidebar_->lists(source) : std::vector<rem::ListFile*>{};
 }
 
 std::vector<std::string> Window::list_keys() {
@@ -242,70 +213,30 @@ rem::ListFile* Window::list_by_label(const std::string& label) {
 	return nullptr;
 }
 
-std::vector<std::string> Window::source_names() {
-	std::vector<std::string> out;
-	if (store_) {
-		for (auto& s : store_->sources()) {
-			out.push_back(s.config.name);
-		}
-	}
-	return out;
-}
-
 std::string Window::group_title(const rem::SidebarGroup& group) {
-	if (group.kind != rem::SidebarGroup::Lists || !store_ ||
-		store_->sources().size() <= 1) {
-		return rem::group_title(group);
-	}
-	for (auto& s : store_->sources()) {
-		if (s.config.name == group.source) {
-			return rem::group_title(group, rem::source_title(s.config));
-		}
-	}
-	return rem::group_title(group);
+	return sidebar_ ? sidebar_->title(group) : rem::group_title(group);
 }
 
 std::vector<std::string> Window::sidebar_tags() {
-	std::vector<std::string> out;
-	for (auto& t : rem::order_tags(store_->tags())) {
-		if (hidden_.show || !hidden_.tag_hidden(t)) {
-			out.push_back(t);
-		}
-	}
-	return out;
+	return sidebar_ ? sidebar_->tags() : std::vector<std::string>{};
 }
 
 bool Window::entry_hidden(const View& v) {
-	if (smart_info(v.kind)) {
-		return std::ranges::find(smart_.shown, view_to_string(v)) ==
-			   smart_.shown.end();
-	}
-	if (v.kind == View::List) {
-		return hidden_.list_hidden(v.name);
-	}
-	if (v.kind == View::Tag) {
-		return hidden_.tag_hidden(v.name);
-	}
-	return false;
+	return sidebar_ && sidebar_->hidden(v);
 }
 
 // Hides or unhides a sidebar entry (saved in settings.ini). Leaving the view
 // that was just hidden goes to Today or the first entry showing.
 void Window::set_entry_hidden(const View& v, bool hidden) {
+	if (!sidebar_) {
+		return;
+	}
 	try {
-		if (smart_info(v.kind)) {
-			rem::set_smart_list_hidden(view_to_string(v), hidden);
-		} else if (v.kind == View::List) {
-			rem::set_list_hidden(v.name, hidden);
-		} else if (v.kind == View::Tag) {
-			rem::set_tag_hidden(v.name, hidden);
-		}
+		sidebar_->set_hidden(v, hidden);
 	} catch (const std::exception& e) {
 		toast(std::format("Couldn't save the setting: {}", e.what()));
 	}
-	smart_ = rem::load_smart_lists_layout();
-	hidden_ = rem::load_hidden();
-	if (hidden && !hidden_.show && view_ == v) {
+	if (hidden && !sidebar_->show_hidden() && view_ == v) {
 		select(home_view());
 	}
 	rebuild_sidebar();
@@ -329,82 +260,24 @@ void Window::edit_tag(const std::string& tag) {
 // Sidebar entries in display order. `include_folded` adds the entries of
 // collapsed groups (Go To finds them; numbers skip them).
 std::vector<View> Window::sidebar_views(bool include_folded) {
-	std::vector<View> out;
-	for (auto g : showing_groups()) {
-		if (group_folded(g) && !include_folded) {
-			continue;
-		}
-		switch (g.kind) {
-			case rem::SidebarGroup::SmartLists:
-				for (auto& v : smart_views()) {
-					out.push_back(v);
-				}
-				break;
-			case rem::SidebarGroup::Lists:
-				for (auto* l : sidebar_lists(g.source)) {
-					out.push_back(View{View::List, store_->key_of(*l)});
-				}
-				break;
-			case rem::SidebarGroup::Tags:
-				for (auto& t : sidebar_tags()) {
-					out.push_back(View{View::Tag, t});
-				}
-				break;
-		}
-	}
-	return out;
+	return sidebar_ ? sidebar_->all(include_folded) : std::vector<View>{};
 }
 
 std::vector<rem::SidebarGroup> Window::showing_groups() {
-	std::vector<rem::SidebarGroup> out;
-	for (auto g : order_) {
-		if (g.kind == rem::SidebarGroup::SmartLists && smart_views().empty()) {
-			continue;
-		}
-		if (g.kind == rem::SidebarGroup::Tags &&
-			(tags_.hidden() || sidebar_tags().empty())) {
-			continue;
-		}
-		out.push_back(g);
-	}
-	return out;
-}
-
-rem::GroupLayout* Window::layout_of(const rem::SidebarGroup& group) {
-	if (group.kind == rem::SidebarGroup::Lists) {
-		auto at = lists_layouts_.find(group.source);
-		if (at == lists_layouts_.end()) {
-			at =
-				lists_layouts_
-					.emplace(group.source, rem::load_lists_layout(group.source))
-					.first;
-		}
-		return &at->second;
-	}
-	if (group.kind == rem::SidebarGroup::Tags) {
-		return &tags_;
-	}
-	return nullptr;
+	return sidebar_ ? sidebar_->groups() : std::vector<rem::SidebarGroup>{};
 }
 
 bool Window::group_foldable(const rem::SidebarGroup& group) {
-	auto* l = layout_of(group);
-	return l ? l->foldable() : smart_.foldable();
+	return sidebar_ && sidebar_->foldable(group);
 }
 
 bool Window::group_folded(const rem::SidebarGroup& group) {
-	auto* l = layout_of(group);
-	return l ? l->folded() : smart_.folded();
+	return sidebar_ && sidebar_->folded(group);
 }
 
 void Window::toggle_fold(const rem::SidebarGroup& group) {
-	auto* l = layout_of(group);
-	bool& collapsed = l ? l->collapsed : smart_.collapsed;
-	collapsed = !collapsed;
-	try {
-		rem::save_group_collapsed(group, collapsed);
-	} catch (const std::exception&) {
-		// Folding still works; it just won't be remembered.
+	if (sidebar_) {
+		sidebar_->toggle_fold(group);
 	}
 	rebuild_sidebar();
 }
@@ -412,12 +285,13 @@ void Window::toggle_fold(const rem::SidebarGroup& group) {
 // Moves a group past its neighbour and saves the order. Focus stays on the
 // row that had it (or the group's first row).
 void Window::move_group(const rem::SidebarGroup& group, int delta) {
-	if (!store_ ||
-		!rem::move_sidebar_group(order_, group, delta, showing_groups())) {
+	if (!sidebar_) {
 		return;
 	}
 	try {
-		rem::save_sidebar_order(order_);
+		if (!sidebar_->move_group(group, delta)) {
+			return;
+		}
 	} catch (const std::exception& e) {
 		toast(std::format("Couldn't save the sidebar order: {}", e.what()));
 	}
@@ -448,70 +322,31 @@ void Window::move_group(const rem::SidebarGroup& group, int delta) {
 
 void Window::drop_group(const rem::SidebarGroup& group,
 						const rem::SidebarGroup& target, bool after) {
-	if (!store_ ||
-		!rem::move_sidebar_group_next_to(order_, group, target, after)) {
+	if (!sidebar_) {
 		return;
 	}
 	try {
-		rem::save_sidebar_order(order_);
+		if (!sidebar_->move_group_next_to(group, target, after)) {
+			return;
+		}
 	} catch (const std::exception& e) {
 		toast(std::format("Couldn't save the sidebar order: {}", e.what()));
 	}
 	rebuild_sidebar();
 }
 
-std::optional<Window::EntryOrder> Window::entry_order(const View& v) {
-	if (!store_) {
-		return std::nullopt;
-	}
-	if (smart_info(v.kind)) {
-		auto order = smart_.shown;	// a hidden smart list has no place to move
-		return EntryOrder{order, order, view_to_string(v)};
-	}
-	if (v.kind == View::Tag) {
-		return EntryOrder{rem::order_tags(store_->tags()), sidebar_tags(),
-						  v.name};
-	}
-	if (v.kind == View::List) {
-		auto* l = store_->list(v.name);
-		if (!l) {
-			return std::nullopt;
-		}
-		std::vector<std::string> showing;  // this list's group
-		for (auto* x : sidebar_lists(store_->source_of(*l)->config.name)) {
-			showing.push_back(store_->key_of(*x));
-		}
-		// every source's, each keeping its place
-		return EntryOrder{rem::order_lists(list_keys()), std::move(showing),
-						  v.name};
-	}
-	return std::nullopt;
-}
-
-void Window::save_entry_order(const View& v,
-							  const std::vector<std::string>& order) {
-	if (smart_info(v.kind)) {
-		rem::save_smart_lists(order);
-		smart_ = rem::load_smart_lists_layout();
-	} else if (v.kind == View::Tag) {
-		rem::save_names_setting("tags-order", order);
-	} else if (v.kind == View::List) {
-		rem::save_names_setting("lists-order", order);
-	}
-}
-
 bool Window::can_move_entry(const View& v, int delta) {
-	auto e = entry_order(v);
-	return e && rem::move_in_order(e->order, e->name, delta, e->showing);
+	return sidebar_ && sidebar_->can_move(v, delta);
 }
 
 void Window::move_entry(const View& v, int delta) {
-	auto e = entry_order(v);
-	if (!e || !rem::move_in_order(e->order, e->name, delta, e->showing)) {
+	if (!sidebar_) {
 		return;
 	}
 	try {
-		save_entry_order(v, e->order);
+		if (!sidebar_->move(v, delta)) {
+			return;
+		}
 	} catch (const std::exception& e) {
 		toast(std::format("Couldn't save the order: {}", e.what()));
 		return;
@@ -523,36 +358,17 @@ void Window::move_entry(const View& v, int delta) {
 // Entries are dragged only within their group: smart lists among smart
 // lists, a source's lists among that source's, tags among tags.
 bool Window::same_sidebar_group(const View& a, const View& b) {
-	if (a == b || !store_) {
-		return false;
-	}
-	if (smart_info(a.kind) || smart_info(b.kind)) {
-		return smart_info(a.kind) && smart_info(b.kind);
-	}
-	if (a.kind != b.kind) {
-		return false;
-	}
-	if (a.kind == View::Tag) {
-		return true;
-	}
-	if (a.kind != View::List) {
-		return false;
-	}
-	auto *la = store_->list(a.name), *lb = store_->list(b.name);
-	return la && lb && store_->source_of(*la) == store_->source_of(*lb);
+	return sidebar_ && sidebar_->same_group(a, b);
 }
 
 void Window::drop_entry(const View& v, const View& target, bool after) {
-	if (!same_sidebar_group(v, target)) {
-		return;
-	}
-	auto e = entry_order(v);
-	auto t = entry_order(target);
-	if (!e || !t || !rem::move_next_to(e->order, e->name, t->name, after)) {
+	if (!sidebar_) {
 		return;
 	}
 	try {
-		save_entry_order(v, e->order);
+		if (!sidebar_->move_next_to(v, target, after)) {
+			return;
+		}
 	} catch (const std::exception& e) {
 		toast(std::format("Couldn't save the order: {}", e.what()));
 		return;
@@ -648,10 +464,8 @@ void Window::sidebar_menu(GtkListBoxRow* row, double x, double y) {
 			return;
 		}
 		menu_group_ = *group;
-		auto showing = showing_groups();
 		auto can = [&](int delta) {
-			auto order = order_;
-			return rem::move_sidebar_group(order, *group, delta, showing);
+			return sidebar_ && sidebar_->can_move_group(*group, delta);
 		};
 		// Every item goes in a section: loose items next to a section make the
 		// popover size itself wrongly (clipped, with scrollbars).

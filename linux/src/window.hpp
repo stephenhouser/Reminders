@@ -19,25 +19,14 @@
 #include "reminders/history.hpp"
 #include "reminders/importer.hpp"
 #include "reminders/library.hpp"
+#include "reminders/selection.hpp"
 #include "reminders/settings.hpp"
+#include "reminders/sidebar.hpp"
+#include "reminders/view.hpp"
 
 namespace ui {
 
-struct View {
-		enum Kind {
-			Today,
-			Scheduled,
-			All,
-			Flagged,
-			Completed,
-			AllReminders,
-			List,
-			Tag,
-			Search
-		} kind = Today;
-		std::string name;  // list name, tag, or search text
-		bool operator==(const View&) const = default;
-};
+using View = rem::View;	 // what the window shows (reminders/view.hpp)
 
 class Window {
 	public:
@@ -133,16 +122,7 @@ class Window {
 		// An entry's place among the others in its group (smart-lists,
 		// lists-order, tags-order): Move Up / Down, Alt+↑/↓, or dragged onto
 		// another entry of the group (`after`: below it).
-		struct EntryOrder {
-				std::vector<std::string>
-					order;	// as saved, hidden ones included
-				std::vector<std::string>
-					showing;	   // the group's entries in the sidebar
-				std::string name;  // the entry's name in `order`
-		};
-		std::optional<EntryOrder> entry_order(const View& v);
-		void save_entry_order(const View& v,
-							  const std::vector<std::string>& order);
+
 		bool can_move_entry(const View& v, int delta);
 		void move_entry(const View& v, int delta);
 		bool same_sidebar_group(const View& a, const View& b);
@@ -153,11 +133,8 @@ class Window {
 			bool include_folded = false);  // in sidebar order
 		std::vector<rem::SidebarGroup>
 		showing_groups();  // the groups with something to show
-		std::vector<std::string> source_names();
 		std::string group_title(
 			const rem::SidebarGroup& group);  // "My Lists" with one source
-		rem::GroupLayout* layout_of(
-			const rem::SidebarGroup& group);  // nullptr for the smart lists
 		bool group_foldable(const rem::SidebarGroup& group);
 		bool group_folded(const rem::SidebarGroup& group);
 		void toggle_fold(const rem::SidebarGroup& group);
@@ -347,25 +324,16 @@ class Window {
 		bool updating_sidebar_ = false;
 		bool show_completed_ = false;
 		bool show_key_numbers_ = false;	 // settings.ini: show-key-numbers
-		std::vector<rem::SidebarGroup> order_;	// settings.ini: sidebar-order
-		rem::SmartListsLayout
-			smart_;	 // settings.ini: smart-lists, -display, -collapsed
-		std::map<std::string, rem::GroupLayout>
-			lists_layouts_;		 // per source: local-lists-display,
-								 // lists-collapsed.NAME
-		rem::GroupLayout tags_;	 // settings.ini: tags-display, tags-collapsed
-		rem::HiddenEntries
-			hidden_;  // settings.ini: lists-hidden, tags-hidden, show-hidden
+		std::unique_ptr<rem::Sidebar>
+			sidebar_;  // its layout (made with store_)
 		GSimpleAction* show_hidden_action_ = nullptr;
 		rem::SidebarGroup menu_group_;	// the sidebar menu's group
 		GSimpleAction* collapsible_action_ =
 			nullptr;  // the sidebar menu's "Collapsible" check item
 		std::set<std::string>
 			collapsed_;	 // reminders whose subtasks are hidden (this session)
-		std::set<std::string>
-			selected_;	// selected reminders (ids), in the view shown
-		std::optional<std::string>
-			anchor_;  // where Shift+click / Shift+↑/↓ extend from
+		rem::Selection selection_;	// selected reminders, in the view shown
+									// (and the anchor)
 		std::optional<std::string>
 			cursor_;  // the reminder row that last had focus
 		std::vector<std::string>

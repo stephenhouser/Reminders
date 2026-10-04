@@ -33,7 +33,7 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
 						   g_free);	 // for paste
 	shown_ids_.push_back(id);
 	reminder_rows_[id] = row;
-	if (selected_.contains(id)) {
+	if (selection_.contains(id)) {
 		gtk_widget_add_css_class(row, "selected-reminder");
 	}
 
@@ -331,10 +331,10 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
 				gtk_widget_grab_focus(row);
 				return;
 			}
-			if (!selected_.contains(id)) {
+			if (!selection_.contains(id)) {
 				clear_selection();
 			}
-			anchor_ = id;
+			selection_.set_anchor(id);
 		});
 	// A plain click (not a drag) on the row's empty space selects just this
 	// row; on its title (which starts editing) or circle, nothing stays
@@ -355,8 +355,7 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
 					return clear_selection();
 				}
 			}
-			selected_ = {id};
-			anchor_ = id;
+			selection_.select_only(id);
 			update_selection();
 		});
 	gtk_widget_add_controller(row, GTK_EVENT_CONTROLLER(pick));
@@ -382,8 +381,7 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
 		focus, "enter", [this, id](GtkEventControllerFocus*) {
 			cursor_ = id;
 			if (follow_focus_) {  // moved here with ↑/↓ from a selection
-				selected_ = {id};
-				anchor_ = id;
+				selection_.select_only(id);
 				update_selection();
 			}
 		});
@@ -413,7 +411,7 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
 							delete_reminders(ids);
 						});
 					case GDK_KEY_space:
-						if (selected_.contains(id)) {
+						if (selection_.contains(id)) {
 							focus_reminder_ = id;
 							return later([this, ids = targets(id)] {
 								complete_reminders(ids);
@@ -434,7 +432,7 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
 					case GDK_KEY_Down:
 						// With a selection, the row the focus moves to becomes
 						// the selection (none, if it's a New Reminder row).
-						if (!selected_.empty()) {
+						if (!selection_.empty()) {
 							clear_selection();
 							follow_focus_ = true;
 							idle([this, id] {
@@ -442,7 +440,7 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
 								// selected.
 								if (follow_focus_ && cursor_ == id &&
 									reminder_rows_.contains(id)) {
-									selected_ = {id};
+									selection_.select_only(id);
 									update_selection();
 								}
 								follow_focus_ = false;
@@ -591,11 +589,10 @@ void Window::clicked(GtkWidget* hit, bool modified) {
 }
 
 void Window::select_for_menu(const std::string& id, GtkPopover* popover) {
-	if (selected_.contains(id)) {
+	if (selection_.contains(id)) {
 		return;	 // the menu acts on the selection
 	}
-	selected_ = {id};
-	anchor_ = id;
+	selection_.select_only(id);
 	menu_selected_ = id;
 	update_selection();
 	if (!popover || g_object_get_data(G_OBJECT(popover), "unselects")) {
@@ -604,7 +601,8 @@ void Window::select_for_menu(const std::string& id, GtkPopover* popover) {
 	g_object_set_data(G_OBJECT(popover), "unselects",
 					  GINT_TO_POINTER(1));	// connected once per popover
 	connect<void(GtkPopover*)>(popover, "closed", [this](GtkPopover*) {
-		if (menu_selected_ && selected_ == std::set{*menu_selected_}) {
+		if (menu_selected_ && selection_.size() == 1 &&
+			selection_.contains(*menu_selected_)) {
 			clear_selection();
 		}
 		menu_selected_.reset();

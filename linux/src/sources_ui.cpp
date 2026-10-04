@@ -353,8 +353,7 @@ void Window::open_sources(std::optional<std::filesystem::path> folder) {
 	store_ = std::move(library);
 	history_.clear();  // steps refer to the old lists
 	update_undo_actions();
-	order_ = rem::load_sidebar_order(source_names());
-	lists_layouts_.clear();
+	sidebar_ = std::make_unique<rem::Sidebar>(*store_);
 	// A folder that isn't a configured source is for this session only: the
 	// saved view belongs to the configured ones.
 	bool remember = !folder || (!store_->sources().empty() &&
@@ -391,23 +390,14 @@ void Window::open_sources(std::optional<std::filesystem::path> folder) {
 	start_sync();
 
 	gtk_stack_set_visible_child_name(GTK_STACK(main_stack_), "main");
-	view_ = remember ? view_from_string(load_last_view()) : home_view();
+	view_ = remember ? rem::view_from_string(load_last_view()) : home_view();
 	if (view_.kind ==
 		View::List) {  // "source/name", or a bare name only one source has
 		auto* l = store_->list(view_.name);
 		view_ = l ? View{View::List, store_->key_of(*l)} : home_view();
 	}
-	if (smart_info(view_.kind)) {  // a smart list the settings hide
-		auto smart = smart_views();
-		if (std::ranges::find(smart, view_) == smart.end()) {
-			view_ = home_view();
-		}
-	}
-	if (view_.kind == View::Tag && tags_.hidden()) {
+	if (sidebar_->gone(view_)) {  // hidden in the sidebar, or not shown there
 		view_ = home_view();
-	}
-	if (!hidden_.show && entry_hidden(view_)) {
-		view_ = home_view();  // hidden in the sidebar
 	}
 	refresh();
 }

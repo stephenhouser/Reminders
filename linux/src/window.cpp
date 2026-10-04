@@ -121,14 +121,13 @@ void Window::reload_settings() {
 	settings_text_ = std::move(text);
 	show_key_numbers_ = key_numbers_override_.value_or(
 		rem::load_bool_setting("show-key-numbers"));
-	order_ = rem::load_sidebar_order(source_names());
-	smart_ = rem::load_smart_lists_layout();
-	lists_layouts_.clear();
-	tags_ = rem::load_tags_layout();
-	hidden_ = rem::load_hidden();
+	if (sidebar_) {
+		sidebar_->reload();
+	}
 	if (show_hidden_action_) {
-		g_simple_action_set_state(show_hidden_action_,
-								  g_variant_new_boolean(hidden_.show));
+		g_simple_action_set_state(
+			show_hidden_action_,
+			g_variant_new_boolean(rem::load_hidden().show));
 	}
 	// Sources added, removed or changed (and this isn't a --folder session):
 	// open them again.
@@ -150,12 +149,7 @@ void Window::reload_settings() {
 		return;
 	}
 	// The view may have just been hidden.
-	auto smart = smart_views();
-	bool gone = (smart_info(view_.kind) &&
-				 std::ranges::find(smart, view_) == smart.end()) ||
-				(view_.kind == View::Tag && tags_.hidden()) ||
-				(!hidden_.show && entry_hidden(view_));
-	if (gone) {
+	if (sidebar_ && sidebar_->gone(view_)) {
 		return select(home_view());
 	}
 	// Rebuilding replaces the sidebar's rows: keep keyboard focus on the same
@@ -207,11 +201,7 @@ void Window::show_reminder(const std::string& id) {
 }
 
 Window::Window(AdwApplication* app, std::optional<std::filesystem::path> folder)
-	: app_(app),
-	  show_key_numbers_(rem::load_bool_setting("show-key-numbers")),
-	  smart_(rem::load_smart_lists_layout()),
-	  tags_(rem::load_tags_layout()),
-	  hidden_(rem::load_hidden()) {
+	: app_(app), show_key_numbers_(rem::load_bool_setting("show-key-numbers")) {
 	build();
 	add_actions();
 	// Ctrl+A and Escape for the reminder selection, wherever the focus is in
@@ -241,7 +231,7 @@ Window::Window(AdwApplication* app, std::optional<std::filesystem::path> folder)
 				select_all();
 				return TRUE;
 			}
-			if (mask == 0 && keyval == GDK_KEY_Escape && !selected_.empty()) {
+			if (mask == 0 && keyval == GDK_KEY_Escape && !selection_.empty()) {
 				clear_selection();
 				return TRUE;
 			}
@@ -784,11 +774,12 @@ void Window::add_actions() {
 	});
 	// Main menu: show the lists, smart lists and tags hidden from the sidebar
 	// (dimmed), so they can be opened or unhidden.
-	show_hidden_action_ =
-		add_toggle(window_, "show-hidden", hidden_.show, [this](bool on) {
-			hidden_.show = on;
+	show_hidden_action_ = add_toggle(
+		window_, "show-hidden", rem::load_hidden().show, [this](bool on) {
 			try {
-				rem::save_show_hidden(on);
+				if (sidebar_) {
+					sidebar_->set_show_hidden(on);
+				}
 			} catch (const std::exception& e) {
 				toast(std::format("Couldn't save the setting: {}", e.what()));
 			}
@@ -804,15 +795,12 @@ void Window::add_actions() {
 	// The sidebar menu's "Collapsible" check item: visible <-> collapsible.
 	collapsible_action_ =
 		add_toggle(window_, "group-collapsible", false, [this](bool on) {
-			auto* l = layout_of(menu_group_);
-			auto& display = l ? l->display : smart_.display;
-			bool& collapsed = l ? l->collapsed : smart_.collapsed;
-			display = on ? rem::GroupDisplay::Collapsible
-						 : rem::GroupDisplay::Visible;
-			collapsed = false;	// a group made collapsible starts unfolded
 			try {
-				rem::save_group_display(menu_group_, display);
-				rem::save_group_collapsed(menu_group_, false);
+				if (sidebar_) {
+					sidebar_->set_foldable(
+						menu_group_,
+						on);  // a group made collapsible starts unfolded
+				}
 			} catch (const std::exception& e) {
 				toast(std::format("Couldn't save the setting: {}", e.what()));
 			}
@@ -912,8 +900,8 @@ void Window::select(View v) {
 		updating_sidebar_ = false;
 	}
 	if (!(v == view_)) {
-		selected_.clear();
-		anchor_.reset();
+		selection_.clear();
+		selection_.set_anchor(std::nullopt);
 	}
 	view_ = std::move(v);
 	if (view_.kind != View::Search && remember_view_) {
@@ -934,12 +922,7 @@ void Window::toast(const std::string& text, const char* button,
 
 // Where to land when there's nothing better: Today, unless it's hidden.
 View Window::home_view() {
-	auto smart = smart_views();
-	if (std::ranges::find(smart, View{View::Today, ""}) != smart.end()) {
-		return View{View::Today, ""};
-	}
-	auto all = sidebar_views(true);
-	return all.empty() ? View{View::Today, ""} : all.front();
+	return sidebar_ ? sidebar_->home() : View{View::Today, ""};
 }
 
 void Window::step_view(int delta) {
