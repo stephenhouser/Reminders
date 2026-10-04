@@ -652,7 +652,7 @@ void Tui::draw_items(int x, int width, int height) {
 
     if (ls.empty()) {
         attron(dim());
-        put(2, x + 2, "Nothing here. Press a to add a reminder.", width - 3);
+        put(2, x + 2, "Nothing here. Press n to add a reminder.", width - 3);
         attroff(dim());
     }
     for (int row = 0; row < rows && item_scroll_ + row < static_cast<int>(ls.size()); ++row) {
@@ -840,55 +840,137 @@ bool Tui::confirm(const std::string& question) {
     return answer && (term::lower(*answer) == "y" || term::lower(*answer) == "yes");
 }
 
+// The keys, one per line, in a box as wide as the text, centred, from 1
+// row below the top of the screen to 2 above the bottom. When the text is
+// taller than the box it scrolls: Up / Down, j / k, Page Up / Down, Space;
+// any other key closes it.
 void Tui::show_help() {
-    static const char* text[] = {
-        "Reminders: keys",
-        "",
-        "Anywhere",
-        "  ↑↓ / j k     move           tab         switch sidebar / reminders",
-        "  1-9, 0       sidebar entry  g / Ctrl+K  go to a list by name",
-        "  enter        on a collapsible group's heading: fold / unfold it",
-        "  J / K        in the sidebar: move the entry down / up (Alt+Shift+↑↓: its group)",
-        "  S            edit settings.ini in your $EDITOR",
-        "  h            hide the selected list, smart list or tag (shows a hidden one)",
-        "  H            show / stop showing hidden lists, smart lists and tags",
-        "  /            search         c           show/hide completed",
-        "  N            new list       u / r       undo / redo",
-        "  ?            this help      q           quit",
-        "",
-        "On a reminder",
-        "  x / space    done / not done  n         new reminder (inline fields work)",
-        "  enter / F2   edit the title in place (esc cancels)",
-        "  e / i        edit every field in your $EDITOR",
-        "  d            due date (today, tomorrow, fri, +3d, 2026-10-31, none)",
-        "  t / T        due today / tomorrow",
-        "  f            flag           0-3         priority none-high",
-        "  #            add tag (-tag removes)     m  move to list",
-        "  J / K        move down/up   ] / [       indent / outdent",
-        "  Delete       delete (asks first)",
-        "",
-        "Several reminders",
-        "  v            mark / unmark (and go to the next)   *  mark all   esc  unmark all",
-        "  While some are marked, x / space, f, t / T, d, 0-3, #, m and Delete",
-        "  act on all of them, as one undo step.",
-        "",
-        "Same as the GNOME app",
-        "  Ctrl+N new   Ctrl+T today   Ctrl+K go to   Ctrl+F search   Ctrl+H completed",
-        "  Ctrl+E subtasks   Ctrl+B sidebar   F2 title",
-        "  Alt+0-3 priority   Alt+↑↓ move   Ctrl+PgUp/PgDn previous/next   Ctrl+Q quit",
-        "",
-        "Press any key to close.",
+    // {key, description}; a heading has no description, a blank line neither.
+    struct Entry {
+        const char* key;
+        const char* text;
     };
-    int h = static_cast<int>(std::size(text)) + 2, w = 72;
-    int y = std::max(0, (LINES - h) / 2), x = std::max(0, (COLS - w) / 2);
-    auto* win = newwin(std::min(h, LINES), std::min(w, COLS), y, x);
-    box_set(win, WACS_VLINE, WACS_HLINE);
-    for (int i = 0; i < static_cast<int>(std::size(text)) && i + 1 < LINES - 1; ++i) mvwaddstr(win, i + 1, 2, text[i]);
-    wrefresh(win);
-    wint_t ch;
-    while (get_wch(&ch) == ERR) {
+    static const Entry entries[] = {
+        {"Anywhere", nullptr},
+        {"Up / Down, j / k", "move"},
+        {"Page Up / Down", "move a page"},
+        {"tab", "switch between the sidebar and the reminders"},
+        {"1-9, 0", "go to sidebar entry 1-10"},
+        {"Ctrl+PgUp / PgDn", "previous / next sidebar entry"},
+        {"g, Ctrl+K", "go to a list by name"},
+        {"/, Ctrl+F", "search"},
+        {"enter", "on a collapsible group's heading: fold / unfold"},
+        {"J / K, Alt+Up / Down", "in the sidebar: move the entry down / up"},
+        {"Alt+Shift+Up / Down", "in the sidebar: move its group"},
+        {"h", "hide the selected list, smart list or tag"},
+        {"H", "show / stop showing hidden ones"},
+        {"c, Ctrl+H", "show / hide completed"},
+        {"Ctrl+E", "show / hide subtasks"},
+        {"Ctrl+B", "show / hide the sidebar"},
+        {"N", "new list"},
+        {"S", "edit settings.ini in your $EDITOR"},
+        {"u", "undo"},
+        {"r", "redo"},
+        {"?, F1", "this help"},
+        {"q, Ctrl+Q", "quit"},
+        {"", ""},
+        {"On a reminder", nullptr},
+        {"x / space", "done / not done"},
+        {"n, Ctrl+N", "new reminder (inline fields work)"},
+        {"enter, F2", "edit the title in place (esc cancels)"},
+        {"e / i", "edit every field in your $EDITOR"},
+        {"d", "due date: today, tomorrow, fri, +3d, 2026-10-31, none"},
+        {"t, Ctrl+T", "due today"},
+        {"T", "due tomorrow"},
+        {"f", "flag / unflag"},
+        {"0-3, Alt+0-3", "priority none / low / medium / high"},
+        {"#", "add a tag (-tag removes it)"},
+        {"m", "move to another list"},
+        {"J / K, Alt+Up / Down", "move down / up in the list"},
+        {"] / [", "indent / outdent"},
+        {"Delete", "delete (asks first)"},
+        {"", ""},
+        {"Several reminders", nullptr},
+        {"v", "mark / unmark, and go to the next"},
+        {"*", "mark all"},
+        {"esc", "unmark all"},
+        {"", "while some are marked, x / space, f, t / T, d, 0-3,"},
+        {"", "#, m and Delete act on all of them (one undo step)"},
+    };
+    // One column: the keys, then their descriptions lined up after them.
+    int key_w = 0;
+    for (auto& e : entries)
+        if (e.text) key_w = std::max(key_w, text_width(widen(e.key)));
+    std::vector<std::string> lines;
+    for (auto& e : entries) {
+        if (!e.text) lines.push_back(e.key);  // a heading
+        else if (!*e.key && !*e.text) lines.emplace_back();
+        else {
+            auto key = std::string("  ") + e.key;
+            key.append(static_cast<std::size_t>(key_w - text_width(widen(e.key)) + 3), ' ');
+            lines.push_back(key + e.text);
+        }
+    }
+    std::vector<const char*> text;
+    for (auto& l : lines) text.push_back(l.c_str());
+    const int n = static_cast<int>(text.size());
+    int text_w = 0;
+    for (auto* line : text) text_w = std::max(text_w, text_width(widen(line)));
+    // As wide as the text (with a space each side), centred; from 1 row
+    // below the top of the screen to 2 rows above the bottom (all of it on a
+    // very short terminal).
+    int w = std::min(COLS, text_w + 4);
+    int above = LINES >= 10 ? 1 : 0, below = LINES >= 10 ? 2 : 0;
+    int h = LINES - above - below, y = above, x = (COLS - w) / 2;
+    int inner = w - 2;                              // between the borders
+    int rows = h - 4;                               // a blank line under the top border and above the bottom
+    int left = std::max(1, (inner - text_w) / 2);   // the text block, centred
+    int top = 0, last = std::max(0, n - rows);
+    auto* win = newwin(h, w, y, x);
+    while (true) {
+        // Every row is written in full, so nothing of what was there before
+        // (the lists behind, an earlier page) is left in the box.
+        for (int i = 1; i < h - 1; ++i) {
+            std::wstring row(static_cast<std::size_t>(inner), L' ');
+            int at = i - 2 + top;
+            if (i >= 2 && i < 2 + rows && at < n) {
+                auto line = widen(text[at]);
+                while (!line.empty() && left + text_width(line) > inner) line.pop_back();
+                row = std::wstring(static_cast<std::size_t>(left), L' ') + line;
+                row.append(static_cast<std::size_t>(std::max(0, inner - left - text_width(line))), L' ');
+            }
+            mvwaddnwstr(win, i, 1, row.c_str(), static_cast<int>(row.size()));
+        }
+        box_set(win, WACS_VLINE, WACS_HLINE);
+        wattron(win, A_BOLD);
+        mvwaddstr(win, 0, 2, " Reminders: keys ");
+        wattroff(win, A_BOLD);
+        auto hint = last > 0 ? std::format(" {}-{} of {}  Up / Down scroll, any other key closes ", top + 1,
+                                           std::min(n, top + rows), n)
+                             : std::string(" Press any key to close ");
+        wattron(win, A_DIM);
+        mvwaddstr(win, h - 1, std::max(1, (w - text_width(widen(hint))) / 2), hint.c_str());
+        wattroff(win, A_DIM);
+        redrawwin(win);  // repaint all of it, not just what ncurses thinks changed
+        wrefresh(win);
+        wint_t ch;
+        int kind;
+        while ((kind = get_wch(&ch)) == ERR) {
+        }
+        bool fn = kind == KEY_CODE_YES;
+        int step = fn && ch == KEY_UP ? -1 : fn && ch == KEY_DOWN ? 1 : fn && ch == KEY_PPAGE ? -rows
+                 : fn && ch == KEY_NPAGE ? rows : !fn && ch == 'k' ? -1 : !fn && ch == 'j' ? 1
+                 : !fn && ch == ' ' ? rows : 0;
+        if (fn && ch == KEY_RESIZE) break;
+        if (step == 0 || last == 0) break;
+        top = std::clamp(top + step, 0, last);
     }
     delwin(win);
+    // The next draw clears the terminal and repaints all of it, rather than
+    // only what ncurses thinks the box changed, which leaves pieces of it
+    // behind when the terminal drew some character wider than ncurses
+    // expected.
+    clearok(stdscr, TRUE);
 }
 
 // Moves the selected sidebar entry's group up (delta < 0) or down, and saves

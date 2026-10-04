@@ -223,7 +223,7 @@ within a second.
 | H | Show / stop showing hidden lists, smart lists and tags (dimmed), like the app's Show Hidden Lists |
 | N | New list |
 | u / r | Undo / redo |
-| ? | Help |
+| ? | Help (scrolls with ↑↓ when the terminal is short; any other key closes it) |
 | q | Quit |
 
 On the selected reminder:
