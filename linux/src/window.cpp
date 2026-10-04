@@ -2114,6 +2114,10 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
     bool can_indent = in_list && !ref.parent && r.subtasks.empty(), can_outdent = in_list && ref.parent;
     auto* actions = g_simple_action_group_new();
     add_action(actions, "details", [this, id] { show_details(id); });
+    add_action(actions, "complete", [this, id] {
+        focus_reminder_ = id;
+        idle([this, ids = targets(id)] { complete_reminders(ids); });
+    });
     add_action(actions, "flag", [this, id] { idle([this, ids = targets(id)] { toggle_flag(ids); }); });
     add_action(actions, "due-today", [this, id] { idle([this, ids = targets(id)] { set_due(ids, 0); }); });
     add_action(actions, "due-tomorrow", [this, id] { idle([this, ids = targets(id)] { set_due(ids, 1); }); });
@@ -2315,6 +2319,10 @@ GMenuModel* Window::reminder_menu(const std::string& id, bool in_list) {
         auto ref = store_->find(i);
         return !ref || ref->reminder->flagged;
     });
+    bool all_done = std::ranges::all_of(ids, [this](auto& i) {
+        auto ref = store_->find(i);
+        return !ref || ref->reminder->done;
+    });
     // Menu items show their shortcut.
     auto item = [](GMenu* m, const std::string& text, const char* action, const char* accel) {
         auto* i = g_menu_item_new(text.c_str(), action);
@@ -2323,6 +2331,7 @@ GMenuModel* Window::reminder_menu(const std::string& id, bool in_list) {
         g_object_unref(i);
     };
     auto* menu = g_menu_new();
+    item(menu, all_done ? "Mark as Not _Completed" : "Mark as _Completed", "reminder.complete", "space");
     if (!several) item(menu, "_Details…", "reminder.details", "<Control>i");
     item(menu, all_flagged ? "_Unflag" : "_Flag", "reminder.flag", "<Control><Shift>f");
     auto* dates = menu_section(menu);

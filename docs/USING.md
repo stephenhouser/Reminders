@@ -158,7 +158,8 @@ Select several reminders to change them all at once:
 Selected rows are tinted and the header says how many ("4 Selected"). The
 usual keys and the **⋮** or right-click menu of a selected reminder then act
 on all of them: Space, Ctrl+Shift+F, Ctrl+T / Ctrl+Shift+T, Alt+0 … Alt+3,
-Ctrl+C, Delete, and **Move To** (in the menu). Dragging a selected reminder
+Ctrl+C, Delete, and in the menu **Mark as Completed** (or Not Completed)
+and **Move To**. Dragging a selected reminder
 drags them all; they land together, in their order. Each change is one step
 for Ctrl+Z.
 

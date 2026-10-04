@@ -707,7 +707,8 @@ settings in a `[source.NAME]` section; later the apps show several at once.
     once. Drag carries `std::vector<std::string>` (type
     RemindersReminderIds) with a count badge (accent pill) and fades all
     dragged rows. The ⋮ menu is made on open (create_popup_func) with
-    plural labels and a new Move To submenu. Shortcuts dialog has a section.
+    plural labels, Mark as (Not) Completed (Space; complete_reminders) and
+    a new Move To submenu. Shortcuts dialog has a section.
     Checked headless through direct calls (selection, menu, each op +
     undo); real Ctrl/Shift clicks and drags need trying by hand.
   - **Marking several reminders in the TUI** (2026-10-04): `v` toggles the
