@@ -149,9 +149,11 @@ Select several reminders to change them all at once:
   one; **Ctrl+Shift+click** adds that range to what's selected.
 - **Shift+↑ / Shift+↓** extends the selection from the keyboard.
 - **Ctrl+A** selects every reminder showing (not hidden completed ones, nor
-  the subtasks of a collapsed reminder).
-- **Escape**, a plain click, or moving with ↑ / ↓ clears it. So does going to
-  another list.
+  the subtasks of a collapsed reminder), wherever the focus is: just after
+  opening a list from the sidebar, too. Only while you're typing (a title,
+  New Reminder, search) does Ctrl+A select text instead.
+- **Escape** (again, unless you're typing), a plain click, or moving with
+  ↑ / ↓ clears it. So does going to another list.
 
 Selected rows are tinted and the header says how many ("4 Selected"). The
 usual keys and the **⋮** or right-click menu of a selected reminder then act

@@ -268,6 +268,7 @@ private:
     std::vector<std::string> shown_ids_;  // the content's reminder rows, top to bottom
     std::map<std::string, GtkWidget*> reminder_rows_;  // by id, until the next rebuild
     std::string count_subtitle_;  // the header's count, shown when nothing is selected
+    bool syncing_checks_ = false;  // setting rows' check buttons to match, not a click
     bool remember_view_ = true;  // false for a folder opened just for this session
     View view_;
     std::optional<std::string> focus_new_row_;

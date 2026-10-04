@@ -790,6 +790,30 @@ Window::Window(AdwApplication* app, std::optional<std::filesystem::path> folder)
       smart_(rem::load_smart_lists_layout()), tags_(rem::load_tags_layout()), hidden_(rem::load_hidden()) {
     build();
     add_actions();
+    // Ctrl+A and Escape for the reminder selection, wherever the focus is in
+    // the window: caught before the focused widget sees them, except by text
+    // being typed (a title, New Reminder, search), menus and dialogs, which
+    // keep their own.
+    auto* selection_keys = gtk_event_controller_key_new();
+    gtk_event_controller_set_propagation_phase(selection_keys, GTK_PHASE_CAPTURE);
+    connect<gboolean(GtkEventControllerKey*, guint, guint, GdkModifierType)>(
+        selection_keys, "key-pressed", [this](GtkEventControllerKey*, guint keyval, guint, GdkModifierType mods) -> gboolean {
+            if (!store_ || adw_application_window_get_visible_dialog(ADW_APPLICATION_WINDOW(window_))) return FALSE;
+            if (auto* f = gtk_root_get_focus(GTK_ROOT(window_));
+                f && (GTK_IS_TEXT(f) || GTK_IS_TEXT_VIEW(f) || gtk_widget_get_ancestor(f, GTK_TYPE_POPOVER)))
+                return FALSE;
+            auto mask = mods & gtk_accelerator_get_default_mod_mask();
+            if (mask == GDK_CONTROL_MASK && gdk_keyval_to_lower(keyval) == GDK_KEY_a && !shown_ids_.empty()) {
+                select_all();
+                return TRUE;
+            }
+            if (mask == 0 && keyval == GDK_KEY_Escape && !selected_.empty()) {
+                clear_selection();
+                return TRUE;
+            }
+            return FALSE;
+        });
+    gtk_widget_add_controller(window_, selection_keys);
     // A file dropped anywhere else is imported, into the list in view.
     make_file_drop_target(window_, false, [this](std::vector<std::filesystem::path> files) {
         if (!store_) return;
@@ -1963,8 +1987,9 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
     gtk_check_button_set_active(GTK_CHECK_BUTTON(check), r.done);
     gtk_widget_set_tooltip_text(check, r.done ? "Mark as Not Completed" : "Mark as Completed");
     connect<void(GtkCheckButton*)>(check, "toggled", [this, id](GtkCheckButton* c) {
-        toggle_done(id, gtk_check_button_get_active(c));
+        if (!syncing_checks_) toggle_done(id, gtk_check_button_get_active(c));
     });
+    g_object_set_data(G_OBJECT(row), "check", check);
 
     auto* text = vbox(2);
     gtk_widget_set_hexpand(text, TRUE);
@@ -2222,10 +2247,6 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
                     case GDK_KEY_F2:
                         gtk_editable_label_start_editing(GTK_EDITABLE_LABEL(title));
                         return TRUE;
-                    case GDK_KEY_Escape:
-                        if (selected_.empty()) break;
-                        clear_selection();
-                        return TRUE;
                     case GDK_KEY_Up:
                     case GDK_KEY_Down:
                         clear_selection();  // the selection doesn't follow the focus
@@ -2236,7 +2257,6 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
                 return TRUE;
             } else if (mask == GDK_CONTROL_MASK) {
                 switch (key) {
-                    case GDK_KEY_a: select_all(); return TRUE;
                     case GDK_KEY_t: return later([this, ids = targets(id)] { set_due(ids, 0); });
                     case GDK_KEY_i: return later([this, id] { show_details(id); });
                     case GDK_KEY_c: copy_reminders(targets(id)); return TRUE;
@@ -2449,6 +2469,15 @@ void Window::complete_reminders(const std::vector<std::string>& ids) {
     batch(ids.size() > 1 ? "Complete Reminders" : "Complete Reminder", [&] {
         for (auto& id : ids) store_->set_done(id, !all_done, today());
     });
+    // Show the change at once, as a click on one circle does; the rows then
+    // linger a moment before the view is rebuilt (and completed ones hide).
+    syncing_checks_ = true;
+    for (auto& [id, row] : reminder_rows_) {
+        auto ref = store_->find(id);
+        auto* check = static_cast<GtkWidget*>(g_object_get_data(G_OBJECT(row), "check"));
+        if (ref && check) gtk_check_button_set_active(GTK_CHECK_BUTTON(check), ref->reminder->done);
+    }
+    syncing_checks_ = false;
     refresh_later(kCompleteDelayMs);
 }
 
@@ -2644,6 +2673,12 @@ void Window::select_all() {
     selected_ = {shown_ids_.begin(), shown_ids_.end()};
     if (!anchor_) anchor_ = shown_ids_.front();
     update_selection();
+    // The keys that act on the selection work from a reminder row: focus the
+    // first one unless one has the focus already (say, just after opening
+    // the list from the sidebar).
+    for (auto* w = gtk_root_get_focus(GTK_ROOT(window_)); w; w = gtk_widget_get_parent(w))
+        if (GTK_IS_LIST_BOX_ROW(w) && g_object_get_data(G_OBJECT(w), "reminder-id")) return;
+    gtk_widget_grab_focus(reminder_rows_[shown_ids_.front()]);
 }
 
 void Window::clear_selection() {

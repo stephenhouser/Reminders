@@ -688,7 +688,11 @@ settings in a `[source.NAME]` section; later the apps show several at once.
     capture-phase click gesture that claims modified clicks so the title /
     check / buttons don't see them; plain click outside clears, on a
     selected row clears on release (so a press-drag drags the selection);
-    Shift+↑/↓ extends, Ctrl+A all, Esc or plain ↑/↓ clears. `.selected-
+    Shift+↑/↓ extends, Ctrl+A all, Esc or plain ↑/↓ clears. Ctrl+A and Esc
+    are a capture-phase key controller on the window (any focus, even none
+    after a rebuild), skipped for GtkText / GtkTextView focus, popovers and
+    AdwDialogs; select_all focuses the first row unless a reminder row has
+    focus, so Delete etc. work next. `.selected-
     reminder` tint; subtitle "N Selected". Every row action goes through
     `targets(id)` (the selection when id is in it, display order) and
     `outermost()` (drops subtasks whose parent is there) for move / delete /
