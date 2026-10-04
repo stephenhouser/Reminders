@@ -368,6 +368,184 @@ void make_file_drop_target(GtkWidget* widget, bool highlight,
     gtk_widget_add_controller(widget, GTK_EVENT_CONTROLLER(target));
 }
 
+// Sidebar entries carry their View when dragged, to be put in another place
+// in their group.
+GType entry_drag_type() {
+    static GType type = g_boxed_type_register_static(
+        "RemSidebarEntry", [](gpointer p) -> gpointer { return new View(*static_cast<View*>(p)); },
+        [](gpointer p) { delete static_cast<View*>(p); });
+    return type;
+}
+
+const View* dragged_entry(const GValue* value) {
+    if (!value || !G_VALUE_HOLDS(value, entry_drag_type())) return nullptr;
+    return static_cast<const View*>(g_value_get_boxed(value));
+}
+
+void make_entry_draggable(GtkWidget* row, const View& view) {
+    auto* source = gtk_drag_source_new();
+    gtk_drag_source_set_actions(source, GDK_ACTION_MOVE);
+    connect<GdkContentProvider*(GtkDragSource*, double, double)>(
+        source, "prepare", [view](GtkDragSource*, double, double) {
+            GValue value = G_VALUE_INIT;
+            g_value_init(&value, entry_drag_type());
+            g_value_set_boxed(&value, &view);
+            auto* provider = gdk_content_provider_new_for_value(&value);
+            g_value_unset(&value);
+            return provider;
+        });
+    connect<void(GtkDragSource*, GdkDrag*)>(source, "drag-begin", [](GtkDragSource* s, GdkDrag*) {
+        auto* row = owner(s);
+        if (!row) return;
+        auto live = Obj<GdkPaintable>::adopt(gtk_widget_paintable_new(row));
+        auto still = Obj<GdkPaintable>::adopt(gdk_paintable_get_current_image(live.get()));
+        gtk_drag_source_set_icon(s, still.get(), 24, 16);
+        gtk_widget_add_css_class(row, "dragging");
+    });
+    connect<void(GtkDragSource*, GdkDrag*, gboolean)>(source, "drag-end", [](GtkDragSource* s, GdkDrag*, gboolean) {
+        if (auto* row = owner(s)) gtk_widget_remove_css_class(row, "dragging");
+    });
+    gtk_widget_add_controller(row, GTK_EVENT_CONTROLLER(source));
+}
+
+// Accepts entries dropped on `row` when `accepts`
+// says they can go next to it, showing a line above or below.
+void make_entry_drop_target(GtkWidget* row, std::function<bool(const View&)> accepts,
+                            std::function<void(View, bool)> on_drop) {
+    auto* target = gtk_drop_target_new(entry_drag_type(), GDK_ACTION_MOVE);
+    gtk_drop_target_set_preload(target, TRUE);
+    auto below = [](GtkWidget* w, double y) { return y > gtk_widget_get_height(w) / 2.0; };
+    auto clear = [](GtkWidget* w) {
+        if (!w) return;
+        for (auto* c : {"drop-above", "drop-below"}) gtk_widget_remove_css_class(w, c);
+    };
+    connect<GdkDragAction(GtkDropTarget*, double, double)>(
+        target, "motion", [accepts, below, clear](GtkDropTarget* t, double, double y) {
+            auto* w = owner(t);
+            if (!w) return GdkDragAction(0);
+            clear(w);
+            auto* v = dragged_entry(gtk_drop_target_get_value(t));
+            if (!v || !accepts(*v)) return GdkDragAction(0);
+            gtk_widget_add_css_class(w, below(w, y) ? "drop-below" : "drop-above");
+            return GDK_ACTION_MOVE;
+        });
+    connect<void(GtkDropTarget*)>(target, "leave", [clear](GtkDropTarget* t) { clear(owner(t)); });
+    connect<gboolean(GtkDropTarget*, const GValue*, double, double)>(
+        target, "drop",
+        [accepts, below, clear, on_drop](GtkDropTarget* t, const GValue* value, double, double y) -> gboolean {
+            auto* w = owner(t);
+            clear(w);
+            auto* v = dragged_entry(value);
+            if (!w || !v || !accepts(*v)) return FALSE;
+            // Rebuilding the sidebar destroys this row; do it after the drop finishes.
+            idle([on_drop, v = *v, after = below(w, y)] { on_drop(v, after); });
+            return TRUE;
+        });
+    gtk_widget_add_controller(row, GTK_EVENT_CONTROLLER(target));
+}
+
+// Groups are dragged by their heading and dropped on any row of another
+// group: above it when over the group's top half, below it when over the
+// bottom half. The rows carry their group (set_row_group).
+GType group_drag_type() {
+    static GType type = g_boxed_type_register_static(
+        "RemSidebarGroup",
+        [](gpointer p) -> gpointer { return new rem::SidebarGroup(*static_cast<rem::SidebarGroup*>(p)); },
+        [](gpointer p) { delete static_cast<rem::SidebarGroup*>(p); });
+    return type;
+}
+
+const rem::SidebarGroup* dragged_group(const GValue* value) {
+    if (!value || !G_VALUE_HOLDS(value, group_drag_type())) return nullptr;
+    return static_cast<const rem::SidebarGroup*>(g_value_get_boxed(value));
+}
+
+// The rows of `group` in the list box holding `row`, top to bottom.
+std::vector<GtkWidget*> group_rows(GtkWidget* row, const rem::SidebarGroup& group) {
+    std::vector<GtkWidget*> out;
+    auto* list = row ? gtk_widget_get_parent(row) : nullptr;
+    if (!list || !GTK_IS_LIST_BOX(list)) return out;
+    for (int i = 0;; ++i) {
+        auto* r = gtk_list_box_get_row_at_index(GTK_LIST_BOX(list), i);
+        if (!r) break;
+        if (row_group(r) == group) out.push_back(GTK_WIDGET(r));
+    }
+    return out;
+}
+
+void make_group_draggable(GtkWidget* heading, const rem::SidebarGroup& group) {
+    auto* source = gtk_drag_source_new();
+    gtk_drag_source_set_actions(source, GDK_ACTION_MOVE);
+    connect<GdkContentProvider*(GtkDragSource*, double, double)>(
+        source, "prepare", [group](GtkDragSource*, double, double) {
+            GValue value = G_VALUE_INIT;
+            g_value_init(&value, group_drag_type());
+            g_value_set_boxed(&value, &group);
+            auto* provider = gdk_content_provider_new_for_value(&value);
+            g_value_unset(&value);
+            return provider;
+        });
+    connect<void(GtkDragSource*, GdkDrag*)>(source, "drag-begin", [group](GtkDragSource* s, GdkDrag*) {
+        auto* row = owner(s);
+        if (!row) return;
+        auto live = Obj<GdkPaintable>::adopt(gtk_widget_paintable_new(row));
+        auto still = Obj<GdkPaintable>::adopt(gdk_paintable_get_current_image(live.get()));
+        gtk_drag_source_set_icon(s, still.get(), 24, 12);
+        for (auto* r : group_rows(row, group)) gtk_widget_add_css_class(r, "dragging");
+    });
+    connect<void(GtkDragSource*, GdkDrag*, gboolean)>(source, "drag-end", [group](GtkDragSource* s, GdkDrag*, gboolean) {
+        for (auto* r : group_rows(owner(s), group)) gtk_widget_remove_css_class(r, "dragging");
+    });
+    gtk_widget_add_controller(heading, GTK_EVENT_CONTROLLER(source));
+}
+
+// Accepts groups dropped on `row`, a row of `group`, showing a line above
+// the group's first row or below its last.
+void make_group_drop_target(GtkWidget* row, const rem::SidebarGroup& group,
+                            std::function<void(rem::SidebarGroup, bool)> on_drop) {
+    auto* target = gtk_drop_target_new(group_drag_type(), GDK_ACTION_MOVE);
+    gtk_drop_target_set_preload(target, TRUE);
+    // Below when the pointer is over the bottom half of the group's rows.
+    auto below = [group](GtkWidget* w, double y) {
+        auto rows = group_rows(w, group);
+        auto at = std::ranges::find(rows, w);
+        if (rows.empty() || at == rows.end()) return false;
+        double h = std::max(1, gtk_widget_get_height(w));
+        return (static_cast<double>(at - rows.begin()) + y / h) / static_cast<double>(rows.size()) >= 0.5;
+    };
+    auto clear = [group](GtkWidget* w) {
+        for (auto* r : group_rows(w, group))
+            for (auto* c : {"drop-above", "drop-below"}) gtk_widget_remove_css_class(r, c);
+    };
+    connect<GdkDragAction(GtkDropTarget*, double, double)>(
+        target, "motion", [group, below, clear](GtkDropTarget* t, double, double y) {
+            auto* w = owner(t);
+            if (!w) return GdkDragAction(0);
+            clear(w);
+            auto* g = dragged_group(gtk_drop_target_get_value(t));
+            if (!g || *g == group) return GdkDragAction(0);
+            auto rows = group_rows(w, group);
+            if (rows.empty()) return GdkDragAction(0);
+            if (below(w, y)) gtk_widget_add_css_class(rows.back(), "drop-below");
+            else gtk_widget_add_css_class(rows.front(), "drop-above");
+            return GDK_ACTION_MOVE;
+        });
+    connect<void(GtkDropTarget*)>(target, "leave", [clear](GtkDropTarget* t) { clear(owner(t)); });
+    connect<gboolean(GtkDropTarget*, const GValue*, double, double)>(
+        target, "drop",
+        [group, below, clear, on_drop](GtkDropTarget* t, const GValue* value, double, double y) -> gboolean {
+            auto* w = owner(t);
+            if (!w) return FALSE;
+            clear(w);
+            auto* g = dragged_group(value);
+            if (!g || *g == group) return FALSE;
+            // Rebuilding the sidebar destroys this row; do it after the drop finishes.
+            idle([on_drop, g = *g, after = below(w, y)] { on_drop(g, after); });
+            return TRUE;
+        });
+    gtk_widget_add_controller(row, GTK_EVENT_CONTROLLER(target));
+}
+
 constexpr std::pair<View::Kind, std::string_view> kViewNames[] = {
     {View::Today, "today"}, {View::Scheduled, "scheduled"}, {View::All, "all"},
     {View::Flagged, "flagged"}, {View::Completed, "completed"}, {View::AllReminders, "all-reminders"},
@@ -1296,23 +1474,42 @@ void Window::rebuild_sidebar() {
     std::size_t index = 0;
     auto shortcut = [this](std::size_t i) { return show_key_numbers_ ? jump_shortcut(i) : std::string(); };
 
+    // Entries are dragged to another place in their group.
+    auto make_reorderable = [this](GtkWidget* row, const View& v) {
+        make_entry_draggable(row, v);
+        make_entry_drop_target(
+            row,
+            [this, v](const View& dragged) {
+                if (!same_sidebar_group(dragged, v)) return false;
+                auto t = entry_order(v);  // a hidden smart list has no place
+                return t && std::ranges::find(t->order, t->name) != t->order.end();
+            },
+            [this, v](View dragged, bool after) { drop_entry(dragged, v, after); });
+    };
+
     // The group at the top has no heading unless it can be folded; the
     // groups below it have one.
     bool first = true;
     for (auto g : showing_groups()) {
+        // Every row of the group takes a dragged group; the heading drags it.
+        auto add = [&](GtkWidget* row) {
+            set_row_group(row, g);
+            make_group_drop_target(row, g, [this, g](rem::SidebarGroup dragged, bool after) {
+                drop_group(dragged, g, after);
+            });
+            gtk_list_box_append(list, row);
+        };
         if (group_foldable(g)) {
-            gtk_list_box_append(list, fold_heading(group_title(g), group_folded(g), g));
+            auto* heading = fold_heading(group_title(g), group_folded(g), g);
+            make_group_draggable(heading, g);
+            add(heading);
         } else if (!first) {
             auto* heading = sidebar_heading(group_title(g));
-            set_row_group(heading, g);
-            gtk_list_box_append(list, heading);
+            make_group_draggable(heading, g);
+            add(heading);
         }
         first = false;
         if (group_folded(g)) continue;
-        auto add = [&](GtkWidget* row) {
-            set_row_group(row, g);
-            gtk_list_box_append(list, row);
-        };
         switch (g.kind) {
             case rem::SidebarGroup::SmartLists:
                 for (auto& v : smart_views()) {
@@ -1330,6 +1527,7 @@ void Window::rebuild_sidebar() {
                     auto* row = sidebar_row(s->icon, s->color, s->title, static_cast<int>(count), shortcut(index++));
                     set_row_view(row, v);
                     if (entry_hidden(v)) gtk_widget_add_css_class(row, "hidden-entry");
+                    make_reorderable(row, v);
                     add(row);
                 }
                 break;
@@ -1339,6 +1537,7 @@ void Window::rebuild_sidebar() {
                     auto* row = sidebar_row(list_icon_name(l->icon()), l->color(), l->name, open_count(*l), shortcut(index++));
                     set_row_view(row, View{View::List, key});
                     if (hidden_.list_hidden(key)) gtk_widget_add_css_class(row, "hidden-entry");
+                    make_reorderable(row, View{View::List, key});
                     make_drop_target(row, DropStyle::Into, "", [this, key](std::string dropped, rem::Document::Place) {
                         move_to_list(dropped, key);
                     });
@@ -1354,6 +1553,7 @@ void Window::rebuild_sidebar() {
                     auto* row = sidebar_row(list_icon_name(style.icon), style.color, "#" + t, std::nullopt, shortcut(index++));
                     set_row_view(row, View{View::Tag, t});
                     if (hidden_.tag_hidden(t)) gtk_widget_add_css_class(row, "hidden-entry");
+                    make_reorderable(row, View{View::Tag, t});
                     add(row);
                 }
                 break;
@@ -3219,52 +3419,91 @@ void Window::move_group(const rem::SidebarGroup& group, int delta) {
     }
 }
 
-bool Window::can_move_entry(const View& v, int delta) {
-    if (v.kind == View::List) {
-        auto order = rem::order_lists(list_keys());  // every source's, each keeping its place
-        std::vector<std::string> showing;
-        if (auto* l = store_->list(v.name))
-            for (auto* x : sidebar_lists(store_->source_of(*l)->config.name)) showing.push_back(store_->key_of(*x));
-        return rem::move_in_order(order, v.name, delta, showing);
+void Window::drop_group(const rem::SidebarGroup& group, const rem::SidebarGroup& target, bool after) {
+    if (!store_ || !rem::move_sidebar_group_next_to(order_, group, target, after)) return;
+    try {
+        rem::save_sidebar_order(order_);
+    } catch (const std::exception& e) {
+        toast(std::format("Couldn't save the sidebar order: {}", e.what()));
     }
+    rebuild_sidebar();
+}
+
+std::optional<Window::EntryOrder> Window::entry_order(const View& v) {
+    if (!store_) return std::nullopt;
     if (smart_info(v.kind)) {
         auto order = smart_.shown;  // a hidden smart list has no place to move
-        return rem::move_in_order(order, view_to_string(v), delta, order);
+        return EntryOrder{order, order, view_to_string(v)};
     }
-    if (v.kind == View::Tag) {
-        auto order = rem::order_tags(store_->tags());
-        return rem::move_in_order(order, v.name, delta, sidebar_tags());
+    if (v.kind == View::Tag) return EntryOrder{rem::order_tags(store_->tags()), sidebar_tags(), v.name};
+    if (v.kind == View::List) {
+        auto* l = store_->list(v.name);
+        if (!l) return std::nullopt;
+        std::vector<std::string> showing;  // this list's group
+        for (auto* x : sidebar_lists(store_->source_of(*l)->config.name)) showing.push_back(store_->key_of(*x));
+        // every source's, each keeping its place
+        return EntryOrder{rem::order_lists(list_keys()), std::move(showing), v.name};
     }
-    return false;
+    return std::nullopt;
+}
+
+void Window::save_entry_order(const View& v, const std::vector<std::string>& order) {
+    if (smart_info(v.kind)) {
+        rem::save_smart_lists(order);
+        smart_ = rem::load_smart_lists_layout();
+    } else if (v.kind == View::Tag) {
+        rem::save_names_setting("tags-order", order);
+    } else if (v.kind == View::List) {
+        rem::save_names_setting("lists-order", order);
+    }
+}
+
+bool Window::can_move_entry(const View& v, int delta) {
+    auto e = entry_order(v);
+    return e && rem::move_in_order(e->order, e->name, delta, e->showing);
 }
 
 void Window::move_entry(const View& v, int delta) {
-    if (!store_) return;
+    auto e = entry_order(v);
+    if (!e || !rem::move_in_order(e->order, e->name, delta, e->showing)) return;
     try {
-        if (smart_info(v.kind)) {
-            auto order = smart_.shown;
-            if (!rem::move_in_order(order, view_to_string(v), delta, order)) return;
-            rem::save_smart_lists(order);
-            smart_ = rem::load_smart_lists_layout();
-        } else if (v.kind == View::Tag) {
-            auto order = rem::order_tags(store_->tags());
-            if (!rem::move_in_order(order, v.name, delta, sidebar_tags())) return;
-            rem::save_names_setting("tags-order", order);
-        } else if (v.kind == View::List) {
-            auto order = rem::order_lists(list_keys());  // every source's, each keeping its place
-            std::vector<std::string> showing;  // this list's group
-            if (auto* l = store_->list(v.name))
-                for (auto* x : sidebar_lists(store_->source_of(*l)->config.name)) showing.push_back(store_->key_of(*x));
-            if (!rem::move_in_order(order, v.name, delta, showing)) return;
-            rem::save_names_setting("lists-order", order);
-        } else {
-            return;
-        }
+        save_entry_order(v, e->order);
     } catch (const std::exception& e) {
         toast(std::format("Couldn't save the order: {}", e.what()));
         return;
     }
     rebuild_sidebar();
+    focus_entry(v);
+}
+
+// Entries are dragged only within their group: smart lists among smart
+// lists, a source's lists among that source's, tags among tags.
+bool Window::same_sidebar_group(const View& a, const View& b) {
+    if (a == b || !store_) return false;
+    if (smart_info(a.kind) || smart_info(b.kind)) return smart_info(a.kind) && smart_info(b.kind);
+    if (a.kind != b.kind) return false;
+    if (a.kind == View::Tag) return true;
+    if (a.kind != View::List) return false;
+    auto *la = store_->list(a.name), *lb = store_->list(b.name);
+    return la && lb && store_->source_of(*la) == store_->source_of(*lb);
+}
+
+void Window::drop_entry(const View& v, const View& target, bool after) {
+    if (!same_sidebar_group(v, target)) return;
+    auto e = entry_order(v);
+    auto t = entry_order(target);
+    if (!e || !t || !rem::move_next_to(e->order, e->name, t->name, after)) return;
+    try {
+        save_entry_order(v, e->order);
+    } catch (const std::exception& e) {
+        toast(std::format("Couldn't save the order: {}", e.what()));
+        return;
+    }
+    rebuild_sidebar();
+    focus_entry(v);
+}
+
+void Window::focus_entry(const View& v) {
     for (int i = 0;; ++i) {  // keep focus on the entry that moved
         auto* row = gtk_list_box_get_row_at_index(GTK_LIST_BOX(sidebar_list_), i);
         if (!row) break;

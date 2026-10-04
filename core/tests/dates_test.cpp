@@ -74,6 +74,13 @@ TEST(settings_round_trip_keeps_other_lines) {
     CHECK((move_sidebar_group(order, Mine, -1, {Smart, Mine})));  // past Tags, which isn't showing
     CHECK((order == std::vector{Mine, Tags, Smart}));
     CHECK((!move_sidebar_group(order, Smart, 1, {Smart, Mine, Tags})));
+    // Dragged next to another group.
+    CHECK((move_sidebar_group_next_to(order, Smart, Mine, false)));
+    CHECK((order == std::vector{Smart, Mine, Tags}));
+    CHECK((move_sidebar_group_next_to(order, Smart, Tags, true)));
+    CHECK((order == std::vector{Mine, Tags, Smart}));
+    CHECK((!move_sidebar_group_next_to(order, Tags, Smart, false)));  // already there
+    CHECK((!move_sidebar_group_next_to(order, Tags, Tags, true)));
     save_sidebar_order(order);
     CHECK_EQ(load_setting("sidebar-order"), "local-lists, tags, smart-lists");  // one source: local-lists
     CHECK(load_sidebar_order(one) == order);
@@ -165,6 +172,16 @@ TEST(settings_round_trip_keeps_other_lines) {
     CHECK((move_in_order(tag_order, "errands", -1, {"work", "errands"})));  // past hidden bakery
     CHECK((tag_order == std::vector<std::string>{"errands", "bakery", "work"}));
     CHECK((!move_in_order(tag_order, "errands", -1, {"work", "errands"})));
+    // Dragged next to another entry.
+    std::vector<std::string> drag{"a", "b", "c", "d"};
+    CHECK((move_next_to(drag, "a", "c", true)));
+    CHECK((drag == std::vector<std::string>{"b", "c", "a", "d"}));
+    CHECK((move_next_to(drag, "d", "b", false)));
+    CHECK((drag == std::vector<std::string>{"d", "b", "c", "a"}));
+    CHECK((!move_next_to(drag, "b", "c", false)));  // already there
+    CHECK((!move_next_to(drag, "b", "b", true)));
+    CHECK((!move_next_to(drag, "b", "gone", true)));
+    CHECK((drag == std::vector<std::string>{"d", "b", "c", "a"}));
     // List order: lists-order first, then the store's order.
     CHECK((order_lists({"B", "A", "C"}) == std::vector<std::string>{"B", "A", "C"}));
     save_names_setting("lists-order", {"C", "Smith, Jo", "gone"});

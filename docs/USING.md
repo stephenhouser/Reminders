@@ -448,9 +448,13 @@ stands for the sources not named. A group you leave out or misspell goes at
 the end, so a typo can't make your lists disappear. You can also rearrange them without editing
 the file:
 
-- **In the app:** right-click (or long-press) a group's heading in the
-  sidebar and choose Move Up or Move Down, or press Alt+Shift+↑ /
-  Alt+Shift+↓ on any of its entries. The same menu's **Collapsible** item
+- **In the app:** drag a group's heading with the mouse and drop it on
+  another group: on that group's top half to go above it, its bottom half to
+  go below (a line shows where). Or right-click (or long-press) a group's
+  heading and choose Move Up or Move Down, or press Alt+Shift+↑ /
+  Alt+Shift+↓ on any of its entries. The group at the top has no heading
+  unless it's collapsible, so move it by dragging another group above it
+  (or with the keys). The same menu's **Collapsible** item
   switches the group between `visible` and `collapsible`.
 - **In the terminal client:** select a sidebar entry and press Alt+Shift+↑ /
   Alt+Shift+↓ (or `K` / `J` on the group's heading).
@@ -507,7 +511,11 @@ client:
 | Alt+Shift+↑ / Alt+Shift+↓ | Its whole group |
 
 In the app, the right-click menu's **Move Up** / **Move Down** do the same
-for an entry, and on a heading for its group. The order is kept in
+for an entry, and on a heading for its group. You can also drag an entry
+with the mouse to another place in its group: a line shows where it will
+go. Entries stay in their own group (a list can't be dragged into another
+source's group, or among the tags); dropping a reminder on a list still
+moves the reminder into it. The order is kept in
 settings.ini, for this computer only: smart lists in `smart-lists`, your
 lists in `lists-order` and tags in `tags-order`. Lists and tags not named
 there follow the others (lists in their usual order, tags alphabetically).

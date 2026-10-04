@@ -72,6 +72,11 @@ std::string group_title(const SidebarGroup& group, const std::string& lists_titl
 // first or last.
 bool move_sidebar_group(std::vector<SidebarGroup>& order, const SidebarGroup& group, int delta,
                         const std::vector<SidebarGroup>& showing);
+// Moves `group` to just before `target` (after it, with `after`), as when
+// it's dragged there. False if either isn't in `order`, they're the same,
+// or it's already there.
+bool move_sidebar_group_next_to(std::vector<SidebarGroup>& order, const SidebarGroup& group,
+                                const SidebarGroup& target, bool after);
 
 // The smart lists (Today, Scheduled, All, Flagged, Completed), from the
 // settings file:
@@ -154,6 +159,11 @@ std::vector<std::string> order_lists(const std::vector<std::string>& names);
 // after it, skipping entries not showing. False if it's already at that end.
 bool move_in_order(std::vector<std::string>& order, const std::string& name, int delta,
                    const std::vector<std::string>& showing);
+
+// Moves `name` to just before `target` (or after it, with `after`), as when
+// it's dragged there; the rest keep their order. False if either isn't in
+// `order`, they're the same, or it's already there.
+bool move_next_to(std::vector<std::string>& order, const std::string& name, const std::string& target, bool after);
 
 // A tag's colour and icon in the sidebar (one of kColors / kIcons):
 //   tag-color.errands=orange    tag-icon.errands=cart

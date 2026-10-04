@@ -534,11 +534,15 @@ settings in a `[source.NAME]` section; later the apps show several at once.
   sidebar list, and dragging reminders out as text. Dropping files is done
   (they're imported); dragging within the app already works. Added
   2026-10-03.
+- **Selecting several reminders**: Ctrl/Shift-click and Ctrl+A to select
+  reminders in a list, then act on them together: drag them into another
+  list (or a place in this one), delete, complete, flag, set a date, etc.,
+  as one undo step. Also in the TUI if it fits. Asked for 2026-10-04.
 - **Query language**, SQL-like, for the CLI (`reminders query "…"`) and for
   defining your own smart lists (saved queries in the sidebar). Wanted by the
   user 2026-10-02; design not started.
 
-## Where things stand (2026-10-03)
+## Where things stand (2026-10-04)
 
 - **Done:**
   - **Core library** (C++23): the file format with byte-for-byte round
@@ -658,6 +662,22 @@ settings in a `[source.NAME]` section; later the apps show several at once.
     opens the import alert for each file in turn (`then` chains them),
     with `into` chosen under Into; folders and unreadable files get a
     toast.
+  - **Dragging sidebar entries** (2026-10-04): smart lists, lists and tags
+    are dragged with the mouse to another place in their own group (a
+    source's lists stay in that source's group). `make_entry_draggable` /
+    `make_entry_drop_target` (boxed type RemSidebarEntry carrying the View;
+    drop-above / drop-below line, faded row) beside the reminder and file
+    drop targets on list rows. Core `move_next_to(order, name, target,
+    after)`; `Window::entry_order` / `save_entry_order` are shared with
+    Move Up / Down; `drop_entry`, `same_sidebar_group`. Checked headless
+    through `drop_entry` (a real mouse drag can't be made headless).
+    Groups too: a group is dragged by its heading (`make_group_draggable`,
+    type RemSidebarGroup; the whole group fades) and dropped on any row of
+    another group (`make_group_drop_target`): above it over the group's top
+    half, below over its bottom half (line on the group's first / last
+    row). Core `move_sidebar_group_next_to`; `Window::drop_group` saves
+    sidebar-order. The top group has no heading unless collapsible, so it's
+    moved by dropping another above it. Checked headless via `drop_group`.
   - **Docs:** README, docs/FORMAT.md, docs/USING.md, docs/TERMINAL.md,
     docs/settings.example.ini.
 - **Known gaps:**

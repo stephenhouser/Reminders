@@ -19,6 +19,19 @@ namespace rem {
 
 namespace {
 
+// Moves `item` to just before or after `target` in `order`.
+template <class T>
+bool place_next_to(std::vector<T>& order, const T& item, const T& target, bool after) {
+    if (item == target) return false;
+    auto from = std::ranges::find(order, item);
+    if (from == order.end() || std::ranges::find(order, target) == order.end()) return false;
+    auto before = order;
+    order.erase(from);
+    auto at = std::ranges::find(order, target);
+    order.insert(after ? at + 1 : at, item);
+    return order != before;
+}
+
 std::vector<std::string> read_lines(const fs::path& p) {
     std::vector<std::string> lines;
     std::ifstream in(p);
@@ -280,6 +293,11 @@ void save_sidebar_order(const std::vector<SidebarGroup>& order) {
     save_setting("sidebar-order", value);
 }
 
+bool move_sidebar_group_next_to(std::vector<SidebarGroup>& order, const SidebarGroup& group,
+                                const SidebarGroup& target, bool after) {
+    return place_next_to(order, group, target, after);
+}
+
 bool move_sidebar_group(std::vector<SidebarGroup>& order, const SidebarGroup& group, int delta,
                         const std::vector<SidebarGroup>& showing) {
     auto at = std::ranges::find(order, group);
@@ -423,6 +441,10 @@ bool move_in_order(std::vector<std::string>& order, const std::string& name, int
         return true;
     }
     return false;
+}
+
+bool move_next_to(std::vector<std::string>& order, const std::string& name, const std::string& target, bool after) {
+    return place_next_to(order, name, target, after);
 }
 
 void save_show_hidden(bool show) { save_setting("show-hidden", show ? "true" : "false"); }

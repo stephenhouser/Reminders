@@ -99,9 +99,21 @@ private:
     std::vector<std::string> sidebar_tags();
     bool entry_hidden(const View& v);  // hidden by the settings (shown or not)
     void set_entry_hidden(const View& v, bool hidden);
-    // A smart list's or tag's place among the others (smart-lists, tags-order).
+    // An entry's place among the others in its group (smart-lists,
+    // lists-order, tags-order): Move Up / Down, Alt+↑/↓, or dragged onto
+    // another entry of the group (`after`: below it).
+    struct EntryOrder {
+        std::vector<std::string> order;    // as saved, hidden ones included
+        std::vector<std::string> showing;  // the group's entries in the sidebar
+        std::string name;                  // the entry's name in `order`
+    };
+    std::optional<EntryOrder> entry_order(const View& v);
+    void save_entry_order(const View& v, const std::vector<std::string>& order);
     bool can_move_entry(const View& v, int delta);
     void move_entry(const View& v, int delta);
+    bool same_sidebar_group(const View& a, const View& b);
+    void drop_entry(const View& v, const View& target, bool after);
+    void focus_entry(const View& v);
     void edit_tag(const std::string& tag);
     std::vector<View> sidebar_views(bool include_folded = false);  // in sidebar order
     std::vector<rem::SidebarGroup> showing_groups();  // the groups with something to show
@@ -112,6 +124,7 @@ private:
     bool group_folded(const rem::SidebarGroup& group);
     void toggle_fold(const rem::SidebarGroup& group);
     void move_group(const rem::SidebarGroup& group, int delta);
+    void drop_group(const rem::SidebarGroup& group, const rem::SidebarGroup& target, bool after);  // dragged there
     std::vector<std::string> list_keys();  // every list, as "source/name"
     std::string list_label(const rem::ListFile& list);  // its name, or "source/name" if names clash
     rem::ListFile* list_by_label(const std::string& label);
