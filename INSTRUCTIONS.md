@@ -680,7 +680,8 @@ whenever these change (user's request 2026-10-04).
     to_clipboard_text, also used by Copy); actions MOVE|COPY (in-app targets
     take MOVE, other apps copy; nothing deleted). Reminder drop targets run
     in the capture phase so a row's text field (New Reminder, a title being
-    edited) doesn't take an in-app drag as text. User-tested: text from an
+    edited) doesn't take an in-app drag as text (user-tested: a reminder
+    dropped on New Reminder moves to the section's end). User-tested: text from an
     editor in, reminders out to Files (a file named after the reminder).
     Firefox drops showed the line but added nothing (GtkDropTarget's
     G_TYPE_STRING read failed), so text drops are now a GtkDropTargetAsync
@@ -707,7 +708,9 @@ whenever these change (user's request 2026-10-04).
     brackets dropped) in a pasted / dropped title also fill `url`
     (`take_url`; the address stays the title when it's all there is, else
     it's removed and the title tidied); in One mode an address alone on a
-    notes line becomes the url when the title has none.
+    notes line becomes the url when the title has none. Confirmed by the
+    user 2026-10-04: several lines pasted / dropped, a pasted link
+    and a Firefox link dropped.
   - **Dropping files imports them** (2026-10-03): `make_file_drop_target`
     (GDK_TYPE_FILE_LIST, COPY) on the window (into: the list in view) and
     on each sidebar list row (highlighted with drop-into; into: that
@@ -723,14 +726,15 @@ whenever these change (user's request 2026-10-04).
     drop targets on list rows. Core `move_next_to(order, name, target,
     after)`; `Window::entry_order` / `save_entry_order` are shared with
     Move Up / Down; `drop_entry`, `same_sidebar_group`. Checked headless
-    through `drop_entry` (a real mouse drag can't be made headless).
+    through `drop_entry`; list dragging confirmed by the user 2026-10-04.
     Groups too: a group is dragged by its heading (`make_group_draggable`,
     type RemSidebarGroup; the whole group fades) and dropped on any row of
     another group (`make_group_drop_target`): above it over the group's top
     half, below over its bottom half (line on the group's first / last
     row). Core `move_sidebar_group_next_to`; `Window::drop_group` saves
     sidebar-order. The top group has no heading unless collapsible, so it's
-    moved by dropping another above it. Checked headless via `drop_group`.
+    moved by dropping another above it. Checked headless via `drop_group`;
+    confirmed by the user 2026-10-04.
   - **Selecting several reminders** (GNOME app, 2026-10-04): implicit,
     no selection mode. `Window::selected_` (ids) is separate from the focus
     (`cursor_`); `anchor_` for ranges; `shown_ids_` / `reminder_rows_`
@@ -743,7 +747,7 @@ whenever these change (user's request 2026-10-04).
     are a capture-phase key controller on the window (any focus, even none
     after a rebuild), skipped for GtkText / GtkTextView focus, popovers and
     AdwDialogs; select_all focuses the first row unless a reminder row has
-    focus, so Delete etc. work next. `.selected-
+    focus, so Delete etc. work next. Confirmed by the user 2026-10-04. `.selected-
     reminder` tint; subtitle "N Selected". Every row action goes through
     `targets(id)` (the selection when id is in it, display order) and
     `outermost()` (drops subtasks whose parent is there) for move / delete /
@@ -788,6 +792,19 @@ whenever these change (user's request 2026-10-04).
     in tmux.
   - **Docs:** README, docs/FORMAT.md, docs/USING.md, docs/TERMINAL.md,
     docs/settings.example.ini.
+- **Tried by hand by the user (2026-10-04), all working:** GNOME app:
+  dragging lists and groups in the sidebar; selecting reminders (Ctrl /
+  Shift+click, plain click, ↑/↓ follow, Ctrl+A, Escape); the right-click
+  menu at the pointer (with the row selected while it's open); clicking
+  outside a title (saves) or the reminders (clears the selection); text
+  dragged in from a text editor and from Firefox (after the async reader),
+  a Firefox link dropped; reminders dragged out to Files (a file named
+  after the reminder); a reminder dropped on New Reminder (moves to the
+  section's end, the field stays empty); pasting / dropping several lines
+  (split or one, Split / Combine, Ctrl+Shift+V); pasting a link. Not
+  explicitly confirmed (no problems reported): ⋮ → Mark as Completed, the
+  TUI's marking (tested here in tmux) and its help box after the last
+  fixes. TODO.md "Needs trying by hand" is empty.
 - **Known gaps:**
   - CalDAV and WebDAV haven't been tried against a real server yet (only
     the fake one); git only against local repositories (not GitHub or

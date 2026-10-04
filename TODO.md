@@ -61,21 +61,32 @@ Not designed yet.
 
 ## Needs trying by hand
 
-These were checked by calling the code directly, because real mouse clicks,
-drags and key presses can't be sent in the headless test setup:
+Things that can only be checked with a real mouse and keyboard (the
+automatic tests here can't send clicks, drags or key presses).
 
-- Dragging lists and groups in the sidebar.
-- Ctrl+A and Escape from anywhere in the window.
-- **Pasting or dropping several lines:** a bulleted or numbered list
-  should become a reminder each, anything else one reminder with notes, and
-  the message's Split / Combine button should switch it. Also Ctrl+Shift+V
-  (Paste Special), which asks.
-- **Pasting or dropping a link:** a bare address, and a link dragged from
-  Firefox, should both show the address as a clickable link under the
-  title.
-- Dragging a reminder onto the New Reminder field: it should move there,
-  not type its text in.
+Nothing is waiting for a check. Not tried by you yet, but no problems
+reported:
+- **⋮ → Mark as Completed** on a selection of reminders.
+- **The terminal app:** marking reminders (`v`, `*`, Esc) and acting on
+  them, and the help screen (`?`) after its last fixes. Both were tested
+  here in a terminal session.
 
-Confirmed by you (4 October): selecting reminders, the right-click menu,
-clicking outside a title, dragging text in from a text editor and from
-Firefox, and dragging reminders out to Files.
+### Tried by you and working (4 October)
+
+GNOME app:
+- Dragging lists, and whole groups, in the sidebar.
+- Selecting reminders: Ctrl+click, Shift+click, a plain click, and
+  Ctrl+A / Escape from anywhere.
+- The right-click menu, opening where you click.
+- Clicking outside a title being edited (saves it) or outside the reminders
+  (clears the selection).
+- Dragging text in from a text editor and from Firefox, including a Firefox
+  link.
+- Dragging reminders out to Files (it makes a file named after the
+  reminder).
+- Dropping a reminder on a section's New Reminder row: it moves to the end
+  of that section, and the field stays empty.
+- Pasting or dropping several lines: a list splits, anything else becomes
+  one reminder with notes; the Split / Combine button and Ctrl+Shift+V
+  (Paste Special).
+- Pasting a link: it shows as a clickable link.
