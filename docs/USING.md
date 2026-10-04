@@ -118,7 +118,8 @@ Subtasks are one level deep, as in Apple Reminders.
 - **Drop a file** from another app to import its reminders (see [Importing
   reminders](#importing-reminders)).
 - **Drop text** from another app (an editor, a browser, a chat) to make
-  reminders of it, read as pasted text is (see [Copying and
+  reminders of it (a link from a browser becomes its page title and
+  address), read as pasted text is (see [Copying and
   pasting](#copying-and-pasting)): on a reminder in a list, above or below
   it (a line shows where); on a list in the sidebar, at its end; anywhere
   else, at the end of the list being shown (in a smart list, into your
@@ -137,13 +138,29 @@ Subtasks are one level deep, as in Apple Reminders.
 - **Ctrl+V** while not typing in a text field pastes reminders:
   - **A copied reminder** (or any `- [ ] …` checklist lines) comes back with
     every field, notes and subtasks.
-  - **Plain text** becomes one reminder per line, titled with the line;
-    inline fields such as `#tag` or `📅 2026-10-05` apply, as when typing.
+  - **A list**, lines with bullets (`- `, `* `, `• `) or numbers (`1. `,
+    `2) `), becomes a reminder per line (a heading line above them too).
+  - **Any other text** becomes one reminder: its first line the title, the
+    rest the notes. Inline fields such as `#tag` or `📅 2026-10-05` in a
+    title apply, as when typing.
+  - **A web address** (`http://` or `https://`) in a title goes in the
+    reminder's URL too, so it shows as a link. Pasted on its own it stays
+    the title as well; with other words around it ("Example Page
+    https://…", as a link dragged from a browser gives), it's taken out of
+    the title. For one reminder with notes, an address alone on a line of
+    the notes becomes the URL.
+  - **The message after several lines** offers the other way: **Split into
+    N** (a reminder per line) or **Combine into One**. It undoes the paste
+    and adds them again, as one step.
   - **Where they go:** after the selected reminder, in its list and section;
     otherwise at the end of the list being shown. In a smart list they go
     into your first list, and are made to show there: due today in Today or
     Scheduled, flagged in Flagged, tagged in a tag's view.
   - Undo with Ctrl+Z.
+- **Ctrl+Shift+V** (Paste Special) asks first, when the text has several
+  lines: **One Reminder** or **N Reminders**.
+- **Dropped text** from another app is read the same way, with the same
+  message (see [Moving and reordering](#moving-and-reordering)).
 - **In a text field** (a title being edited, New Reminder, search), Ctrl+C and
   Ctrl+V copy and paste text as usual.
 
@@ -339,6 +356,7 @@ Press Ctrl+? in the app for this list.
 | Alt+↑ / Alt+↓ | Move up / down |
 | Ctrl+C | Copy (as Markdown) |
 | Ctrl+V | Paste reminders (outside a text field) |
+| Ctrl+Shift+V | Paste Special: one reminder, or one per line |
 | Delete | Delete |
 
 **Selecting several reminders** (see [Selecting several reminders](#selecting-several-reminders))
@@ -810,5 +828,6 @@ title=Notes
 | A Markdown file doesn't appear as a list | It needs `reminders: 1` in its front matter. Use the banner's **Review…**, or add it by hand. |
 | Changes from another device don't appear | Check that Syncthing is running and the folder is up to date (Syncthing's web UI at http://127.0.0.1:8384). Reminders reloads as soon as files change. |
 | A `.sync-conflict-` file stays in the folder | Reminders merges conflict copies of lists only. Copies of other files are left for you. |
+| Text dropped from another app says "Couldn't read the dropped text" | Start Reminders from a terminal with `REMINDERS_DEBUG_DND=1 Reminders`, drop again, and look at what it prints: the formats the other app offered and what could be read from each. |
 | A reminder came back after you deleted it | Without a merge base (for example the first sync on a new computer), conflict merges keep reminders rather than risk losing them. Delete it again. |
 | Settings | See [The settings file](#the-settings-file). |

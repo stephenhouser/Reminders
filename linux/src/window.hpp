@@ -15,6 +15,7 @@
 #ifdef REMINDERS_NETWORK
 #include "reminders/sync_runner.hpp"
 #endif
+#include "reminders/clipboard.hpp"
 #include "reminders/history.hpp"
 #include "reminders/settings.hpp"
 #include "reminders/importer.hpp"
@@ -177,9 +178,13 @@ private:
     // The same menu at the pointer (x, y in `row`), for a right-click or long-press.
     void reminder_context_menu(GtkWidget* row, const std::string& id, bool in_list, double x, double y);
     void paste_reminders();
-    void add_pasted(const std::string& text);
+    void add_pasted(const std::string& text, rem::TextSplit split = rem::TextSplit::Auto, bool offer_switch = true);
+    void paste_special();  // Ctrl+Shift+V: asks whether to split the lines
+    // Pasted or dropped text. `offer_switch`: the message after several
+    // lines offers to add them the other way (split / combined).
     void add_text(const std::string& text, const char* label, const std::string& list_key,
-                  const std::optional<std::string>& anchor, rem::Document::Place place);  // pasted or dropped
+                  const std::optional<std::string>& anchor, rem::Document::Place place,
+                  rem::TextSplit split = rem::TextSplit::Auto, bool offer_switch = true);
     std::string reminders_text(const std::vector<std::string>& ids);  // as Markdown, for copying and dragging out
     void show_details(const std::string& id);
     void new_list(std::string source = {});

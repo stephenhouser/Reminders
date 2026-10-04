@@ -680,9 +680,34 @@ whenever these change (user's request 2026-10-04).
     to_clipboard_text, also used by Copy); actions MOVE|COPY (in-app targets
     take MOVE, other apps copy; nothing deleted). Reminder drop targets run
     in the capture phase so a row's text field (New Reminder, a title being
-    edited) doesn't take an in-app drag as text. Checked headless via
-    add_text and the drag source's prepare; a real drag between apps needs
-    trying by hand.
+    edited) doesn't take an in-app drag as text. User-tested: text from an
+    editor in, reminders out to Files (a file named after the reminder).
+    Firefox drops showed the line but added nothing (GtkDropTarget's
+    G_TYPE_STRING read failed), so text drops are now a GtkDropTargetAsync
+    reading formats in turn (kTextMimes: text/plain;charset=utf-8,
+    UTF8_STRING, text/plain, STRING, TEXT, text/x-moz-url, text/uri-list,
+    text/html) with `text_from` (UTF-16 by BOM / zero bytes, Latin-1 if not
+    UTF-8; moz-url → "title url"; HTML tags stripped); refuses in-app drops
+    (gdk_drop_get_drag) and file managers' (`is_file_drop`: a file list
+    without text/x-moz-url or text/html; the file target uses the same
+    test so browser links aren't "imported"); "Couldn't read the dropped
+    text" toast; REMINDERS_DEBUG_DND=1 prints offers and reads. Decoding
+    checked headless; Firefox confirmed working by the user.
+  - **Pasted / dropped lines: split or one** (2026-10-04): core
+    `TextSplit {Auto, Lines, One}` for from_clipboard_text; Auto splits
+    only a list (`is_list_text`: checklist lines, or bulleted / numbered
+    lines at least half of the non-empty ones), else One (first line the
+    title, the rest notes, checklist lines as ☐/☑). `add_text(…, split,
+    offer_switch)`: with 2+ lines the toast offers "Split into N" /
+    "Combine into One" (undo, then add_text the other way, if still the
+    latest step). Ctrl+Shift+V `paste_special`: AdwAlertDialog One Reminder
+    / N Reminders, default the Auto choice. Checked headless (drop, both
+    buttons, Paste Special's dialog). Then: web addresses (`find_url`:
+    http(s)://, at a word start, trailing sentence punctuation and unopened
+    brackets dropped) in a pasted / dropped title also fill `url`
+    (`take_url`; the address stays the title when it's all there is, else
+    it's removed and the title tidied); in One mode an address alone on a
+    notes line becomes the url when the title has none.
   - **Dropping files imports them** (2026-10-03): `make_file_drop_target`
     (GDK_TYPE_FILE_LIST, COPY) on the window (into: the list in view) and
     on each sidebar list row (highlighted with drop-into; into: that
@@ -770,6 +795,10 @@ whenever these change (user's request 2026-10-04).
   - CalDAV: moves and section changes made in other CalDAV clients aren't
     merged (local order wins); RRULEs beyond FORMAT.md's rules are kept but
     not shown.
+  - A notes line written like a checklist item ("- [ ] …") is read back
+    as a subtask: the format has no escape for it (typing one into Details'
+    notes does it too). Combining pasted text into one reminder writes such
+    lines as "☐ …" / "☑ …" to avoid it.
   - Only the Linux clients exist (see Future features).
 - **Next step:** not chosen yet; ask the user. The Future features above
   are the candidates.

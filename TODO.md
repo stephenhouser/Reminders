@@ -51,6 +51,11 @@ Not designed yet.
   order wins.
 - **Unusual repeat rules from CalDAV.** Repeat rules beyond the ones in
   FORMAT.md are kept, but not shown.
+- **Notes lines that look like checklist items.** A notes line written as
+  "- [ ] something" is read back as a subtask, because the file format has
+  no way to mark it as plain text. Typing one into a reminder's notes in
+  Details does this. (Combining pasted lines into one reminder avoids it by
+  writing such lines as "☐ something".)
 - **Linux only.** The GNOME app and the terminal client are the only
   versions so far (see Other platforms).
 
@@ -60,15 +65,17 @@ These were checked by calling the code directly, because real mouse clicks,
 drags and key presses can't be sent in the headless test setup:
 
 - Dragging lists and groups in the sidebar.
-- Selecting reminders: Ctrl+click, Shift+click, dragging a selection, ↑/↓
-  moving the selection.
-- Right-click on a reminder: the menu opens at the pointer, and the title
-  doesn't start editing.
-- Clicking outside a title being edited saves it; clicking outside the
-  reminders clears the selection.
 - Ctrl+A and Escape from anywhere in the window.
-- Dragging text in from another app (an editor, a browser): onto a reminder,
-  a sidebar list, or anywhere else. Also check that dragging a reminder onto
-  the New Reminder field moves it rather than typing its text in.
-- Dragging reminders out to another app (an editor, Files): they should
-  arrive as Markdown text and stay in the app.
+- **Pasting or dropping several lines:** a bulleted or numbered list
+  should become a reminder each, anything else one reminder with notes, and
+  the message's Split / Combine button should switch it. Also Ctrl+Shift+V
+  (Paste Special), which asks.
+- **Pasting or dropping a link:** a bare address, and a link dragged from
+  Firefox, should both show the address as a clickable link under the
+  title.
+- Dragging a reminder onto the New Reminder field: it should move there,
+  not type its text in.
+
+Confirmed by you (4 October): selecting reminders, the right-click menu,
+clicking outside a title, dragging text in from a text editor and from
+Firefox, and dragging reminders out to Files.

@@ -51,6 +51,7 @@ void show_shortcuts(GtkApplication* app) {
                           {"Move Down", "<Alt>Down"},
                           {"Copy", "<Control>c"},
                           {"Paste as New Reminders", "<Control>v"},
+                          {"Paste Special (One or One per Line)", "<Control><Shift>v"},
                           {"Delete", "Delete"}});
     {
         // Clicks can't be shown as keys, so they're told in a subtitle.

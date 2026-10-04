@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <format>
 #include <chrono>
+#include <cstring>
 #include <fstream>
 #include <map>
 #include <sstream>
@@ -375,6 +376,8 @@ void make_drop_target(GtkWidget* row, DropStyle style, std::string self,
     gtk_widget_add_controller(row, GTK_EVENT_CONTROLLER(target));
 }
 
+bool is_file_drop(GdkDrop* drop);  // below
+
 // The local files in a drop, if it holds files.
 std::vector<std::filesystem::path> dropped_files(const GValue* value) {
     std::vector<std::filesystem::path> out;
@@ -392,6 +395,9 @@ std::vector<std::filesystem::path> dropped_files(const GValue* value) {
 void make_file_drop_target(GtkWidget* widget, bool highlight,
                            std::function<void(std::vector<std::filesystem::path>)> on_drop) {
     auto* target = gtk_drop_target_new(GDK_TYPE_FILE_LIST, GDK_ACTION_COPY);
+    connect<gboolean(GtkDropTarget*, GdkDrop*)>(target, "accept", [](GtkDropTarget*, GdkDrop* drop) -> gboolean {
+        return is_file_drop(drop);  // a browser's link is text
+    });
     if (highlight) {
         connect<GdkDragAction(GtkDropTarget*, double, double)>(target, "motion", [](GtkDropTarget* t, double, double) {
             if (auto* w = owner(t)) gtk_widget_add_css_class(w, "drop-into");
@@ -600,40 +606,217 @@ bool drop_offers(GdkDrop* drop, GType type) {
     return yes;
 }
 
+// REMINDERS_DEBUG_DND=1: report what other apps' drops offer and what was
+// read from them, on stderr.
+bool dnd_debug() {
+    static bool on = g_getenv("REMINDERS_DEBUG_DND") != nullptr;
+    return on;
+}
+
+// The formats text is read from when another app drops it, best first.
+// Browsers offer several, some in UTF-16.
+constexpr const char* kTextMimes[] = {"text/plain;charset=utf-8", "UTF8_STRING", "text/plain", "STRING", "TEXT",
+                                      "text/x-moz-url", "text/uri-list", "text/html"};
+
+std::string from_utf16(std::string_view data) {
+    if (data.size() >= 2 && static_cast<unsigned char>(data[0]) == 0xFF && static_cast<unsigned char>(data[1]) == 0xFE)
+        data.remove_prefix(2);  // the byte-order mark (little-endian, as browsers send)
+    std::u16string units(data.size() / 2, u'\0');
+    std::memcpy(units.data(), data.data(), units.size() * 2);
+    auto* utf8 = g_utf16_to_utf8(reinterpret_cast<const gunichar2*>(units.data()), static_cast<glong>(units.size()),
+                                 nullptr, nullptr, nullptr);
+    return take_string(utf8);
+}
+
+// Text in UTF-8 from a drop's bytes: UTF-16 when it looks like it (a
+// byte-order mark, or a zero byte in every other place), Latin-1 when it
+// isn't valid UTF-8.
+std::string decode_text(std::string data) {
+    auto looks_utf16 = data.size() >= 2 && ((static_cast<unsigned char>(data[0]) == 0xFF &&
+                                             static_cast<unsigned char>(data[1]) == 0xFE) ||
+                                            (data[1] == '\0' && data[0] != '\0'));
+    if (looks_utf16) data = from_utf16(data);
+    while (!data.empty() && data.back() == '\0') data.pop_back();
+    if (!g_utf8_validate(data.data(), static_cast<gssize>(data.size()), nullptr))
+        data = take_string(g_convert(data.data(), static_cast<gssize>(data.size()), "UTF-8", "ISO-8859-1", nullptr,
+                                     nullptr, nullptr));
+    return data;
+}
+
+// HTML as plain text: line breaks for block ends, tags dropped, the common
+// entities decoded.
+std::string html_text(const std::string& html) {
+    std::string out;
+    for (std::size_t i = 0; i < html.size();) {
+        if (html[i] == '<') {
+            auto end = html.find('>', i);
+            if (end == std::string::npos) break;
+            auto tag = html.substr(i + 1, end - i - 1);
+            for (auto& c : tag) c = static_cast<char>(g_ascii_tolower(c));
+            for (auto* block : {"br", "/p", "/li", "/div", "/h1", "/h2", "/h3", "/tr"})
+                if (tag.starts_with(block)) out += '\n';
+            i = end + 1;
+        } else if (html[i] == '&') {
+            auto end = html.find(';', i);
+            auto name = end == std::string::npos ? std::string() : html.substr(i + 1, end - i - 1);
+            const char* as = name == "amp" ? "&" : name == "lt" ? "<" : name == "gt" ? ">" : name == "quot" ? "\""
+                           : name == "#39" || name == "apos" ? "'" : name == "nbsp" ? " " : nullptr;
+            if (as) {
+                out += as;
+                i = end + 1;
+            } else {
+                out += html[i++];
+            }
+        } else {
+            out += html[i++];
+        }
+    }
+    return out;
+}
+
+// The text in a drop's data of type `mime`, or "" if there's none.
+std::string text_from(std::string_view mime, std::string data) {
+    auto text = decode_text(std::move(data));
+    if (mime == "text/x-moz-url") {  // the address, then the page's title
+        auto nl = text.find('\n');
+        auto url = trim(text.substr(0, nl)), title = nl == std::string::npos ? std::string() : trim(text.substr(nl + 1));
+        return title.empty() ? url : title + " " + url;
+    }
+    if (mime == "text/uri-list") {  // one address a line; # starts a comment
+        std::string out;
+        std::istringstream in(text);
+        for (std::string line; std::getline(in, line);)
+            if (auto t = trim(line); !t.empty() && t[0] != '#') out += t + "\n";
+        return out;
+    }
+    if (mime == "text/html") return html_text(text);
+    return text;
+}
+
+// Reads the text of another app's drop, trying its formats in turn (some
+// apps offer a format they then can't deliver), then calls `done` with it,
+// or with nullopt if none gave any.
+struct TextDropRead {
+    Obj<GdkDrop> drop;
+    std::vector<std::string> mimes;
+    std::size_t next = 0;
+    Obj<GOutputStream> sink;
+    std::function<void(std::optional<std::string>)> done;
+};
+
+void read_next_text(TextDropRead* job) {
+    if (job->next >= job->mimes.size()) {
+        gdk_drop_finish(job->drop.get(), GdkDragAction(0));
+        auto done = std::move(job->done);
+        delete job;
+        done(std::nullopt);
+        return;
+    }
+    const char* types[] = {job->mimes[job->next].c_str(), nullptr};
+    gdk_drop_read_async(
+        job->drop.get(), types, G_PRIORITY_DEFAULT, nullptr,
+        [](GObject* source, GAsyncResult* result, gpointer data) {
+            auto* job = static_cast<TextDropRead*>(data);
+            GError* error = nullptr;
+            auto* in = gdk_drop_read_finish(GDK_DROP(source), result, nullptr, &error);
+            if (!in) {
+                if (dnd_debug()) g_printerr("drop: %s unreadable: %s\n", job->mimes[job->next].c_str(), error->message);
+                g_clear_error(&error);
+                ++job->next;
+                return read_next_text(job);
+            }
+            job->sink = Obj<GOutputStream>::adopt(g_memory_output_stream_new_resizable());
+            g_output_stream_splice_async(
+                job->sink.get(), in,
+                GOutputStreamSpliceFlags(G_OUTPUT_STREAM_SPLICE_CLOSE_SOURCE | G_OUTPUT_STREAM_SPLICE_CLOSE_TARGET),
+                G_PRIORITY_DEFAULT, nullptr,
+                [](GObject* sink, GAsyncResult* result, gpointer data) {
+                    auto* job = static_cast<TextDropRead*>(data);
+                    auto& mime = job->mimes[job->next];
+                    std::string text;
+                    if (g_output_stream_splice_finish(G_OUTPUT_STREAM(sink), result, nullptr) >= 0) {
+                        auto* bytes = g_memory_output_stream_steal_as_bytes(G_MEMORY_OUTPUT_STREAM(sink));
+                        gsize n = 0;
+                        auto* p = static_cast<const char*>(g_bytes_get_data(bytes, &n));
+                        text = text_from(mime, std::string(p ? p : "", n));
+                        g_bytes_unref(bytes);
+                        if (dnd_debug()) g_printerr("drop: read %zu bytes of %s: “%s”\n", n, mime.c_str(), text.c_str());
+                    }
+                    if (trim(text).empty()) {
+                        ++job->next;
+                        return read_next_text(job);
+                    }
+                    gdk_drop_finish(job->drop.get(), GDK_ACTION_COPY);
+                    auto done = std::move(job->done);
+                    delete job;
+                    done(std::move(text));
+                },
+                job);
+            g_object_unref(in);
+        },
+        job);
+}
+
+// A file manager's drop (imported by make_file_drop_target), as against a
+// browser's, which offers links as a URI list too.
+bool is_file_drop(GdkDrop* drop) {
+    auto* formats = gdk_drop_get_formats(drop);
+    return drop_offers(drop, GDK_TYPE_FILE_LIST) && !gdk_content_formats_contain_mime_type(formats, "text/x-moz-url") &&
+           !gdk_content_formats_contain_mime_type(formats, "text/html");
+}
+
 // Accepts text dragged from another app (not reminders dragged within this
 // one, which carry text too, nor files, which are imported) on `widget`,
 // showing where it would land: Halves (above / below a reminder) or Into
-// (a sidebar list); Above shows nothing (the window itself).
+// (a sidebar list); Above shows nothing (the window itself). `on_drop`
+// gets the text, or nullopt if it couldn't be read.
 void make_text_drop_target(GtkWidget* widget, DropStyle style,
-                           std::function<void(std::string, rem::Document::Place)> on_drop) {
-    auto* target = gtk_drop_target_new(G_TYPE_STRING, GDK_ACTION_COPY);
-    connect<gboolean(GtkDropTarget*, GdkDrop*)>(target, "accept", [](GtkDropTarget*, GdkDrop* drop) -> gboolean {
-        return drop_offers(drop, G_TYPE_STRING) && !drop_offers(drop, reminder_drag_type()) &&
-               !drop_offers(drop, GDK_TYPE_FILE_LIST);
+                           std::function<void(std::optional<std::string>, rem::Document::Place)> on_drop) {
+    auto* formats = gdk_content_formats_new(const_cast<const char**>(kTextMimes), G_N_ELEMENTS(kTextMimes));
+    auto* target = gtk_drop_target_async_new(formats, GDK_ACTION_COPY);  // takes the formats
+    connect<gboolean(GtkDropTargetAsync*, GdkDrop*)>(target, "accept", [](GtkDropTargetAsync*, GdkDrop* drop) -> gboolean {
+        if (gdk_drop_get_drag(drop)) return FALSE;  // from this app: reminders, moved by their own targets
+        auto* offered = gdk_drop_get_formats(drop);
+        if (dnd_debug()) {
+            char* f = gdk_content_formats_to_string(offered);
+            g_printerr("drop offers: %s\n", f);
+            g_free(f);
+        }
+        if (is_file_drop(drop)) return FALSE;
+        for (auto* m : kTextMimes)
+            if (gdk_content_formats_contain_mime_type(offered, m)) return TRUE;
+        return FALSE;
     });
     auto below = [style](GtkWidget* w, double y) { return style == DropStyle::Halves && y > gtk_widget_get_height(w) / 2.0; };
     auto clear = [](GtkWidget* w) {
         if (!w) return;
         for (auto* c : {"drop-above", "drop-below", "drop-into"}) gtk_widget_remove_css_class(w, c);
     };
-    connect<GdkDragAction(GtkDropTarget*, double, double)>(
-        target, "motion", [style, below, clear](GtkDropTarget* t, double, double y) {
+    auto motion = [style, below, clear](GtkDropTargetAsync* t, GdkDrop*, double, double y) {
+        auto* w = owner(t);
+        if (!w) return GdkDragAction(0);
+        clear(w);
+        if (style == DropStyle::Into) gtk_widget_add_css_class(w, "drop-into");
+        else if (style == DropStyle::Halves) gtk_widget_add_css_class(w, below(w, y) ? "drop-below" : "drop-above");
+        return GDK_ACTION_COPY;
+    };
+    connect<GdkDragAction(GtkDropTargetAsync*, GdkDrop*, double, double)>(target, "drag-enter", motion);
+    connect<GdkDragAction(GtkDropTargetAsync*, GdkDrop*, double, double)>(target, "drag-motion", motion);
+    connect<void(GtkDropTargetAsync*, GdkDrop*)>(target, "drag-leave",
+                                                 [clear](GtkDropTargetAsync* t, GdkDrop*) { clear(owner(t)); });
+    connect<gboolean(GtkDropTargetAsync*, GdkDrop*, double, double)>(
+        target, "drop", [below, clear, on_drop](GtkDropTargetAsync* t, GdkDrop* drop, double, double y) -> gboolean {
             auto* w = owner(t);
-            if (!w) return GdkDragAction(0);
             clear(w);
-            if (style == DropStyle::Into) gtk_widget_add_css_class(w, "drop-into");
-            else if (style == DropStyle::Halves) gtk_widget_add_css_class(w, below(w, y) ? "drop-below" : "drop-above");
-            return GDK_ACTION_COPY;
-        });
-    connect<void(GtkDropTarget*)>(target, "leave", [clear](GtkDropTarget* t) { clear(owner(t)); });
-    connect<gboolean(GtkDropTarget*, const GValue*, double, double)>(
-        target, "drop", [below, clear, on_drop](GtkDropTarget* t, const GValue* value, double, double y) -> gboolean {
-            auto* w = owner(t);
-            clear(w);
-            if (!w || !value || !G_VALUE_HOLDS_STRING(value) || !g_value_get_string(value)) return FALSE;
-            auto place = below(w, y) ? rem::Document::Place::After : rem::Document::Place::Before;
-            // Adding rebuilds the view; do it after the drop finishes.
-            idle([on_drop, text = std::string(g_value_get_string(value)), place] { on_drop(text, place); });
+            auto place = w && below(w, y) ? rem::Document::Place::After : rem::Document::Place::Before;
+            auto* job = new TextDropRead{Obj<GdkDrop>::ref(drop), {}, 0, {}, [on_drop, place](std::optional<std::string> text) {
+                                             // Adding rebuilds the view; not from inside the read.
+                                             idle([on_drop, text, place] { on_drop(text, place); });
+                                         }};
+            auto* offered = gdk_drop_get_formats(drop);
+            for (auto* m : kTextMimes)
+                if (gdk_content_formats_contain_mime_type(offered, m)) job->mimes.emplace_back(m);
+            read_next_text(job);
             return TRUE;
         });
     gtk_widget_add_controller(widget, GTK_EVENT_CONTROLLER(target));
@@ -894,8 +1077,9 @@ Window::Window(AdwApplication* app, std::optional<std::filesystem::path> folder)
     });
     // Text from another app dropped anywhere else becomes reminders, at the
     // end of the list in view (in a smart list, as pasting does).
-    make_text_drop_target(window_, DropStyle::Above, [this](std::string text, rem::Document::Place) {
-        if (store_) add_text(text, "Drop", {}, std::nullopt, rem::Document::Place::After);
+    make_text_drop_target(window_, DropStyle::Above, [this](std::optional<std::string> text, rem::Document::Place) {
+        if (!text) toast("Couldn't read the dropped text");
+        else if (store_) add_text(*text, "Drop", {}, std::nullopt, rem::Document::Place::After);
     });
     {
         std::ifstream in(rem::settings_file());  // as read at start-up
@@ -1063,11 +1247,13 @@ void Window::build() {
     auto* paste_keys = gtk_event_controller_key_new();
     connect<gboolean(GtkEventControllerKey*, guint, guint, GdkModifierType)>(
         paste_keys, "key-pressed", [this](GtkEventControllerKey*, guint key, guint, GdkModifierType mods) -> gboolean {
-            if ((mods & gtk_accelerator_get_default_mod_mask()) != GDK_CONTROL_MASK) return FALSE;
+            auto mask = mods & gtk_accelerator_get_default_mod_mask();
+            if (mask != GDK_CONTROL_MASK && mask != (GDK_CONTROL_MASK | GDK_SHIFT_MASK)) return FALSE;
             if (gdk_keyval_to_lower(key) != GDK_KEY_v) return FALSE;
             auto* focus = gtk_root_get_focus(GTK_ROOT(window_));
             if (focus && (GTK_IS_EDITABLE(focus) || GTK_IS_TEXT_VIEW(focus))) return FALSE;
-            paste_reminders();
+            if (mask & GDK_SHIFT_MASK) paste_special();  // Ctrl+Shift+V
+            else paste_reminders();
             return TRUE;
         });
     gtk_widget_add_controller(window_, paste_keys);
@@ -1718,8 +1904,9 @@ void Window::rebuild_sidebar() {
                     make_file_drop_target(row, true, [this, key](std::vector<std::filesystem::path> files) {
                         import_files(std::move(files), key);
                     });
-                    make_text_drop_target(row, DropStyle::Into, [this, key](std::string text, rem::Document::Place) {
-                        add_text(text, "Drop", key, std::nullopt, rem::Document::Place::After);
+                    make_text_drop_target(row, DropStyle::Into, [this, key](std::optional<std::string> text, rem::Document::Place) {
+                        if (!text) toast("Couldn't read the dropped text");
+                        else add_text(*text, "Drop", key, std::nullopt, rem::Document::Place::After);
                     });
                     add(row);
                 }
@@ -2438,8 +2625,9 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
         make_drop_target(row, DropStyle::Halves, id, [this, id](Ids dropped, rem::Document::Place place) {
             move_reminders(dropped, id, place);
         });
-        make_text_drop_target(row, DropStyle::Halves, [this, id](std::string text, rem::Document::Place place) {
-            add_text(text, "Drop", {}, id, place);
+        make_text_drop_target(row, DropStyle::Halves, [this, id](std::optional<std::string> text, rem::Document::Place place) {
+            if (!text) toast("Couldn't read the dropped text");
+            else add_text(*text, "Drop", {}, id, place);
         });
     }
     return row;
@@ -2988,14 +3176,47 @@ void Window::paste_reminders() {
 
 // Ctrl+V: after the focused reminder (in its list and section), else at the
 // end of the list being shown (see add_text).
-void Window::add_pasted(const std::string& text) {
+void Window::add_pasted(const std::string& text, rem::TextSplit split, bool offer_switch) {
     std::optional<std::string> anchor;
     for (auto* w = gtk_root_get_focus(GTK_ROOT(window_)); w; w = gtk_widget_get_parent(w))
         if (auto* id = static_cast<const char*>(g_object_get_data(G_OBJECT(w), "reminder-id"))) {
             anchor = id;
             break;
         }
-    add_text(text, "Paste", {}, anchor, rem::Document::Place::After);
+    add_text(text, "Paste", {}, anchor, rem::Document::Place::After, split, offer_switch);
+}
+
+// Ctrl+Shift+V: for text of several lines, asks whether they're one
+// reminder (the first line its title, the rest its notes) or one each.
+void Window::paste_special() {
+    if (!store_) return;
+    auto keep = Obj<GtkWindow>::ref(GTK_WINDOW(window_));
+    gdk_clipboard_read_text_async(
+        gtk_widget_get_clipboard(window_), nullptr,
+        [](GObject* source, GAsyncResult* result, gpointer data) {
+            auto* holder = static_cast<Obj<GtkWindow>*>(data);
+            auto text = take_string(gdk_clipboard_read_text_finish(GDK_CLIPBOARD(source), result, nullptr));
+            auto* self = Window::from(holder->get());
+            delete holder;
+            if (!self || text.empty()) return;
+            auto lines = rem::from_clipboard_text(text, rem::TextSplit::Lines).size();
+            if (lines < 2) return self->add_pasted(text);
+            auto* dialog = adw_alert_dialog_new(
+                std::format("Paste {} Lines", lines).c_str(),
+                "As one reminder, with the first line its title and the rest its notes, or a reminder for each line?");
+            adw_alert_dialog_add_responses(ADW_ALERT_DIALOG(dialog), "cancel", "_Cancel", "one", "_One Reminder",
+                                           "lines", std::format("{} _Reminders", lines).c_str(), nullptr);
+            // The one Ctrl+V would choose is the default.
+            adw_alert_dialog_set_default_response(ADW_ALERT_DIALOG(dialog), rem::is_list_text(text) ? "lines" : "one");
+            adw_alert_dialog_set_close_response(ADW_ALERT_DIALOG(dialog), "cancel");
+            connect<void(AdwAlertDialog*, const char*)>(dialog, "response", [self, text](AdwAlertDialog*, const char* r) {
+                std::string_view response = r;
+                if (response == "cancel") return;
+                self->add_pasted(text, response == "one" ? rem::TextSplit::One : rem::TextSplit::Lines, false);
+            });
+            adw_dialog_present(ADW_DIALOG(dialog), self->window_);
+        },
+        new Obj<GtkWindow>(std::move(keep)));
 }
 
 // Adds text (pasted, or dropped from another app) as reminders, parsed as
@@ -3005,8 +3226,9 @@ void Window::add_pasted(const std::string& text) {
 // Next to reminder `anchor` (`place`: before or after it; a subtask's
 // parent), else at the end.
 void Window::add_text(const std::string& text, const char* label, const std::string& list_key,
-                      const std::optional<std::string>& anchor_id, rem::Document::Place place) {
-    auto added = rem::from_clipboard_text(text);
+                      const std::optional<std::string>& anchor_id, rem::Document::Place place, rem::TextSplit split,
+                      bool offer_switch) {
+    auto added = rem::from_clipboard_text(text, split);
     if (added.empty() || !store_) return;
     auto anchor = anchor_id ? store_->find(*anchor_id) : std::nullopt;
     bool for_view = list_key.empty();  // made to show in the view
@@ -3027,7 +3249,9 @@ void Window::add_text(const std::string& text, const char* label, const std::str
     std::string after_id = next_to && !before ? next_to->id : "";
 
     auto day = today();
-    undoable(label, [&] {
+    auto count = added.size();
+    auto title = added.front().title;
+    auto step = undoable(label, [&] {
         std::string first;
         try {
             for (auto& r : added) {
@@ -3056,10 +3280,23 @@ void Window::add_text(const std::string& text, const char* label, const std::str
         if (!first.empty()) focus_reminder_ = first;
         refresh();
     });
-    if (added.size() > 1)
-        toast(std::format("{} {} reminders", std::string_view(label) == "Paste" ? "Pasted" : "Added", added.size()));
-    else if (!for_view && (view_.kind != View::List || view_.name != list_key))
+    // Several lines: say how they came in, and offer the other way (it
+    // undoes this and adds them again, split or combined).
+    auto as_lines = rem::from_clipboard_text(text, rem::TextSplit::Lines).size();
+    if (as_lines > 1) {
+        bool combined = count == 1;
+        auto message = combined ? std::format("Added “{}” with notes", title) : std::format("Added {} reminders", count);
+        if (!offer_switch || !step) return toast(message);
+        auto other = combined ? rem::TextSplit::Lines : rem::TextSplit::One;
+        auto button = combined ? std::format("_Split into {}", as_lines) : std::string("_Combine into One");
+        toast(message, button.c_str(), [this, step, text, label = std::string(label), list_key, anchor_id, place, other] {
+            if (history_.next_undo() != step) return;  // something else changed since
+            undo();
+            add_text(text, label.c_str(), list_key, anchor_id, place, other, false);
+        });
+    } else if (!for_view && (view_.kind != View::List || view_.name != list_key)) {
         toast(std::format("Added to “{}”", store_->label(*list)));
+    }
 }
 
 void Window::show_details(const std::string& id) {
