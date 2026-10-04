@@ -34,7 +34,8 @@ std::string load_last_view();
 void save_last_view(const std::string& view);
 
 // This computer's name for its per-device state folder inside the synced
-// folder (<folder>/.reminders/<device>/), e.g. "laptop-3f9a". Stable across runs.
+// folder (<folder>/.reminders/<device>/), e.g. "laptop-3f9a". Stable across
+// runs.
 std::string device_name();
 
 }  // namespace ui

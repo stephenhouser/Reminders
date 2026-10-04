@@ -14,16 +14,16 @@ namespace editfile {
 
 // The editable text for a reminder. `lists` are the lists' labels
 // (Library::label) and `list` this one's.
-std::string render(const rem::Ref& ref, const std::vector<std::string>& lists, const std::string& list,
-                   rem::Date today);
+std::string render(const rem::Ref& ref, const std::vector<std::string>& lists,
+				   const std::string& list);
 
 struct Edited {
-    rem::LineFields fields;
-    std::string notes;
-    std::string list;
-    std::optional<std::string> section;  // nullopt: no section
-    std::vector<std::string> subtasks;   // Markdown lines ("- [ ] Title …")
-    bool has_subtasks = false;           // the file had a subtasks: key
+		rem::LineFields fields;
+		std::string notes;
+		std::string list;
+		std::optional<std::string> section;	 // nullopt: no section
+		std::vector<std::string> subtasks;	 // Markdown lines ("- [ ] Title …")
+		bool has_subtasks = false;			 // the file had a subtasks: key
 };
 
 // Parses edited text; throws std::runtime_error with a message for the user.
@@ -32,7 +32,8 @@ std::optional<Edited> parse(const std::string& text, rem::Date today);
 
 // Applies an edit to reminder `id` (fields, notes, subtasks, list, section,
 // completion). Throws if the list doesn't exist.
-void apply(rem::Library& store, const std::string& id, const Edited& e, rem::Date today);
+void apply(rem::Library& store, const std::string& id, const Edited& e,
+		   rem::Date today);
 
 // Runs $VISUAL / $EDITOR (nano, else vi) on `text`; nullopt if the editor
 // failed. The caller must have released the terminal.
@@ -47,7 +48,8 @@ enum class Outcome { Saved, Unchanged, Reverted };
 // problem, asks on the terminal whether to edit it again (the default) or
 // revert to how the reminder was. `apply_fn` wraps the apply (e.g. to record
 // an undo step). Must run with the terminal in normal (not curses) mode.
-Outcome edit(rem::Library& store, const std::string& id,
-             const std::function<void(const std::function<void()>&)>& apply_fn = {});
+Outcome edit(
+	rem::Library& store, const std::string& id,
+	const std::function<void(const std::function<void()>&)>& apply_fn = {});
 
 }  // namespace editfile

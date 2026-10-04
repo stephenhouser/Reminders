@@ -31,13 +31,14 @@ std::string count_short(CountStyle style, int total, int done = 0);
 namespace fs = std::filesystem;
 
 struct ListFile {
-    std::string name;  // file name without ".md"
-    Document doc;
-    std::string disk_text;  // the file's content as of our last read or write
+		std::string name;  // file name without ".md"
+		Document doc;
+		std::string
+			disk_text;	// the file's content as of our last read or write
 
-    std::string color() const;  // always one of kColors
-    std::string icon() const;   // always one of kIcons
-    std::optional<int> order() const;
+		std::string color() const;	// always one of kColors
+		std::string icon() const;	// always one of kIcons
+		std::optional<int> order() const;
 };
 
 // Every list's file content, by list name.
@@ -46,127 +47,145 @@ using Snapshot = std::map<std::string, std::string>;
 // What undo works on: every list's content by key, and putting one back.
 // A Store's keys are list names; a Library's are "source/name".
 class ListTexts {
-public:
-    virtual ~ListTexts() = default;
-    virtual Snapshot snapshot() const = 0;
-    virtual std::optional<std::string> current_text(const std::string& key) const = 0;
-    // nullopt deletes the list.
-    virtual void restore(const std::string& key, const std::optional<std::string>& text) = 0;
+	public:
+		virtual ~ListTexts() = default;
+		virtual Snapshot snapshot() const = 0;
+		virtual std::optional<std::string> current_text(
+			const std::string& key) const = 0;
+		// nullopt deletes the list.
+		virtual void restore(const std::string& key,
+							 const std::optional<std::string>& text) = 0;
 };
 
 // A reminder found somewhere in the store. Valid until the next change.
 struct Ref {
-    ListFile* list = nullptr;
-    Reminder* reminder = nullptr;
-    Reminder* parent = nullptr;  // set for subtasks
+		ListFile* list = nullptr;
+		Reminder* reminder = nullptr;
+		Reminder* parent = nullptr;	 // set for subtasks
 };
 
 class Store : public ListTexts {
-public:
-    // `state_dir` holds per-device data that must not be synced: the
-    // candidates the user declined, and the back end's own records (for
-    // Syncthing, per list, the merge base and a fingerprint of the last
-    // version this device wrote).
-    Store(fs::path folder, fs::path state_dir, BackendKind backend = BackendKind::Syncthing);
+	public:
+		// `state_dir` holds per-device data that must not be synced: the
+		// candidates the user declined, and the back end's own records (for
+		// Syncthing, per list, the merge base and a fingerprint of the last
+		// version this device wrote).
+		Store(fs::path folder, fs::path state_dir,
+			  BackendKind backend = BackendKind::Syncthing);
 
-    BackendKind backend() const { return backend_->kind(); }
-    Backend& backend_object() { return *backend_; }
-    // Back-end set-up when the source is opened (Syncthing: .stignore).
-    void prepare() { backend_->prepare(folder_); }
+		BackendKind backend() const { return backend_->kind(); }
+		Backend& backend_object() { return *backend_; }
+		// Back-end set-up when the source is opened (Syncthing: .stignore).
+		void prepare() { backend_->prepare(folder_); }
 
-    const fs::path& folder() const { return folder_; }
-    const fs::path& state_dir() const { return state_dir_; }
-    fs::path path_of(std::string_view list_name) const;
+		const fs::path& folder() const { return folder_; }
+		const fs::path& state_dir() const { return state_dir_; }
+		fs::path path_of(std::string_view list_name) const;
 
-    // Scans the folder and loads every list, merging any conflict copies.
-    void load_all();
-    // Re-reads one list after it changed on disk (or a conflict copy for it
-    // appeared). Returns false if nothing changed, e.g. it was our own write.
-    bool reload(const std::string& name);
-    // Maps any file in the folder to the list it would belong to (including
-    // conflict copies), or nullopt if it can't be a list file. Whether it
-    // is one depends on the marker in its front matter.
-    std::optional<std::string> list_name_for(const fs::path& file) const { return backend_->list_name_for(file); }
+		// Scans the folder and loads every list, merging any conflict copies.
+		void load_all();
+		// Re-reads one list after it changed on disk (or a conflict copy for it
+		// appeared). Returns false if nothing changed, e.g. it was our own
+		// write.
+		bool reload(const std::string& name);
+		// Maps any file in the folder to the list it would belong to (including
+		// conflict copies), or nullopt if it can't be a list file. Whether it
+		// is one depends on the marker in its front matter.
+		std::optional<std::string> list_name_for(const fs::path& file) const {
+			return backend_->list_name_for(file);
+		}
 
-    // Markdown files with checklists but no marker, which the user may want
-    // to use as lists. Excludes ones they declined.
-    const std::vector<std::string>& candidates() const { return candidates_; }
-    // Adds the marker to a candidate, making it a list.
-    void adopt(const std::string& name);
-    // Stops suggesting a candidate (remembered per folder on this device).
-    void decline(const std::string& name);
+		// Markdown files with checklists but no marker, which the user may want
+		// to use as lists. Excludes ones they declined.
+		const std::vector<std::string>& candidates() const {
+			return candidates_;
+		}
+		// Adds the marker to a candidate, making it a list.
+		void adopt(const std::string& name);
+		// Stops suggesting a candidate (remembered per folder on this device).
+		void decline(const std::string& name);
 
-    // In sidebar order: by "order", then by name.
-    std::vector<ListFile*> lists();
-    ListFile* list(std::string_view name);
+		// In sidebar order: by "order", then by name.
+		std::vector<ListFile*> lists();
+		ListFile* list(std::string_view name);
 
-    // Writes the list to disk if its content changed.
-    void save(ListFile& list);
-    // Holds saves until release_saves(), so an edit of many reminders writes
-    // each list file once: save() only notes the list meanwhile. Nests.
-    void hold_saves() { ++held_; }
-    // Ends a hold_saves(); the outermost one writes the lists noted. Throws
-    // if a write fails (after trying the others).
-    void release_saves();
+		// Writes the list to disk if its content changed.
+		void save(ListFile& list);
+		// Holds saves until release_saves(), so an edit of many reminders
+		// writes each list file once: save() only notes the list meanwhile.
+		// Nests.
+		void hold_saves() { ++held_; }
+		// Ends a hold_saves(); the outermost one writes the lists noted. Throws
+		// if a write fails (after trying the others).
+		void release_saves();
 
-    ListFile& create_list(const std::string& name, std::string_view color, std::string_view icon);
-    bool rename_list(ListFile& list, const std::string& new_name);
-    // Deletes the file (callers wanting the trash should move it there first).
-    void delete_list(const std::string& name);
+		ListFile& create_list(const std::string& name, std::string_view color,
+							  std::string_view icon);
+		bool rename_list(ListFile& list, const std::string& new_name);
+		// Deletes the file (callers wanting the trash should move it there
+		// first).
+		void delete_list(const std::string& name);
 
-    std::optional<Ref> find(std::string_view id);
+		std::optional<Ref> find(std::string_view id);
 
-    // For undo: the content of every list, and putting a list back to some
-    // content (nullopt deletes the file).
-    Snapshot snapshot() const override;
-    std::optional<std::string> current_text(const std::string& name) const override;
-    void restore(const std::string& name, const std::optional<std::string>& text) override;
+		// For undo: the content of every list, and putting a list back to some
+		// content (nullopt deletes the file).
+		Snapshot snapshot() const override;
+		std::optional<std::string> current_text(
+			const std::string& name) const override;
+		void restore(const std::string& name,
+					 const std::optional<std::string>& text) override;
 
-    // Ids in use elsewhere (a Library's other sources), so new ids are unique
-    // across all of them, not just this folder.
-    void set_other_ids(std::function<std::vector<std::string>()> other) { other_ids_ = std::move(other); }
+		// Ids in use elsewhere (a Library's other sources), so new ids are
+		// unique across all of them, not just this folder.
+		void set_other_ids(std::function<std::vector<std::string>()> other) {
+			other_ids_ = std::move(other);
+		}
 
-    // Edits that save the affected list(s) straight away.
-    Reminder& add(ListFile& list, Reminder r, const Reminder* after = nullptr,
-                  const std::optional<std::string>& section = std::nullopt);
-    // Completing a repeating reminder adds the next occurrence above it.
-    // Completing a reminder also completes its subtasks.
-    void set_done(std::string_view id, bool done, Date today);
-    void remove(std::string_view id);
-    void move_to_list(std::string_view id, ListFile& dest);
-    // Saves after the caller changed a reminder's fields through a Ref.
-    void touch(std::string_view id);
+		// Edits that save the affected list(s) straight away.
+		Reminder& add(ListFile& list, Reminder r,
+					  const Reminder* after = nullptr,
+					  const std::optional<std::string>& section = std::nullopt);
+		// Completing a repeating reminder adds the next occurrence above it.
+		// Completing a reminder also completes its subtasks.
+		void set_done(std::string_view id, bool done, Date today);
+		void remove(std::string_view id);
+		void move_to_list(std::string_view id, ListFile& dest);
+		// Saves after the caller changed a reminder's fields through a Ref.
+		void touch(std::string_view id);
 
-    // Smart lists.
-    std::vector<Ref> today(Date today);  // open, due today or overdue
-    std::vector<Ref> scheduled();        // open with a due date, by date
-    std::vector<Ref> all();              // open
-    std::vector<Ref> everything();       // open and completed ("All Reminders")
-    std::vector<Ref> flagged();          // open and flagged
-    std::vector<Ref> completed();        // done, most recent first
-    std::vector<Ref> tagged(std::string_view tag);
-    std::vector<Ref> search(std::string_view query);
-    std::vector<std::string> tags();     // every tag in use, sorted
+		// Smart lists.
+		std::vector<Ref> today(Date today);	 // open, due today or overdue
+		std::vector<Ref> scheduled();		 // open with a due date, by date
+		std::vector<Ref> all();				 // open
+		std::vector<Ref> everything();	// open and completed ("All Reminders")
+		std::vector<Ref> flagged();		// open and flagged
+		std::vector<Ref> completed();	// done, most recent first
+		std::vector<Ref> tagged(std::string_view tag);
+		std::vector<Ref> search(std::string_view query);
+		std::vector<std::string> tags();  // every tag in use, sorted
 
-private:
-    fs::path folder_;
-    fs::path state_dir_;
-    std::unique_ptr<Backend> backend_;
-    std::function<std::vector<std::string>()> other_ids_;
-    std::vector<std::unique_ptr<ListFile>> lists_;
-    std::vector<std::string> candidates_;
-    int held_ = 0;                      // hold_saves() depth
-    std::vector<ListFile*> held_lists_; // saved while held, in order
+	private:
+		fs::path folder_;
+		fs::path state_dir_;
+		std::unique_ptr<Backend> backend_;
+		std::function<std::vector<std::string>()> other_ids_;
+		std::vector<std::unique_ptr<ListFile>> lists_;
+		std::vector<std::string> candidates_;
+		int held_ = 0;						 // hold_saves() depth
+		std::vector<ListFile*> held_lists_;	 // saved while held, in order
 
-    bool forget(const std::string& name);
-    void update_candidate(const std::string& name, const std::optional<std::string>& text);
-    std::vector<std::string> declined() const;
+		bool forget(const std::string& name);
+		void update_candidate(const std::string& name,
+							  const std::optional<std::string>& text);
+		std::vector<std::string> declined() const;
 
-    template <class Pred> std::vector<Ref> collect(Pred&& pred);
-    std::vector<std::string> taken_ids();
-    void write_file(ListFile& list, const std::string& text);
-    // Holds the back end's write lock, if it has one.
-    std::unique_lock<std::mutex> write_guard();
+		template <class Pred>
+		std::vector<Ref> collect(Pred&& pred);
+		std::vector<std::string> taken_ids();
+		void write_file(ListFile& list, const std::string& text);
+		// Holds the back end's write lock, if it has one.
+		std::unique_lock<std::mutex> write_guard();
 };
 
 }  // namespace rem

@@ -33,7 +33,8 @@ namespace fs = std::filesystem;
 
 // Throws SyncError when git can't be run, the folder isn't a repository
 // (and there's no url= to clone), or the remote can't be reached.
-SyncResult git_sync(const fs::path& folder, const GitSettings& settings, std::mutex& lock, const std::string& device);
+SyncResult git_sync(const fs::path& folder, const GitSettings& settings,
+					std::mutex& lock, const std::string& device);
 
 // Syncs a git source (see sync_source).
 SyncResult sync_git_source(Store& store, const SourceConfig& source);

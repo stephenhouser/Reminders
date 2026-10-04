@@ -10,4 +10,5 @@
 // it opens on the view saved in settings.ini and saves the view as it changes
 // (shared with the GNOME app and the CLI).
 // `key_numbers` overrides the show-key-numbers setting.
-int run_tui(rem::Library& store, bool remember, std::optional<bool> key_numbers = std::nullopt);
+int run_tui(rem::Library& store, bool remember,
+			std::optional<bool> key_numbers = std::nullopt);

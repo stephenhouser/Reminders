@@ -15,100 +15,107 @@
 namespace rem {
 
 class Library : public ListTexts {
-public:
-    // The stores refer back to it (for unique ids), so it stays put.
-    Library() = default;
-    Library(const Library&) = delete;
-    Library& operator=(const Library&) = delete;
+	public:
+		// The stores refer back to it (for unique ids), so it stays put.
+		Library() = default;
+		Library(const Library&) = delete;
+		Library& operator=(const Library&) = delete;
 
-    struct Source {
-        SourceConfig config;
-        std::unique_ptr<Store> store;
-    };
+		struct Source {
+				SourceConfig config;
+				std::unique_ptr<Store> store;
+		};
 
-    // Adds an opened source (see open_source); it's loaded by load_all().
-    // Sources keep the order they were added in.
-    void add(SourceConfig config, std::unique_ptr<Store> store);
-    // Opens a source (open_source; if its back end's set-up fails, opens it
-    // anyway) and adds it.
-    void add(const SourceConfig& config, const std::string& device);
-    void load_all();
+		// Adds an opened source (see open_source); it's loaded by load_all().
+		// Sources keep the order they were added in.
+		void add(SourceConfig config, std::unique_ptr<Store> store);
+		// Opens a source (open_source; if its back end's set-up fails, opens it
+		// anyway) and adds it.
+		void add(const SourceConfig& config, const std::string& device);
+		void load_all();
 
-    const std::vector<Source>& sources() const { return sources_; }
-    Store* store(std::string_view source);
-    // The source a list belongs to.
-    const Source* source_of(const ListFile& list) const;
+		const std::vector<Source>& sources() const { return sources_; }
+		Store* store(std::string_view source);
+		// The source a list belongs to.
+		const Source* source_of(const ListFile& list) const;
 
-    // A list's key: "source/name" (neither may contain "/").
-    static std::string key(std::string_view source, std::string_view list);
-    std::string key_of(const ListFile& list) const;
-    // How to show a list where all sources' lists mix: its name, or
-    // "source/name" when another source has a list of that name too.
-    std::string label(const ListFile& list) const;
-    // Where new lists go: default-source, if it's open, else the first source.
-    std::string default_source() const;
-    // A list by key. A bare name finds the list when only one source has it.
-    ListFile* list(std::string_view key);
-    // Every list: sources in order, each in its own order (by "order", then name).
-    std::vector<ListFile*> lists();
-    std::vector<ListFile*> lists(std::string_view source);
+		// A list's key: "source/name" (neither may contain "/").
+		static std::string key(std::string_view source, std::string_view list);
+		std::string key_of(const ListFile& list) const;
+		// How to show a list where all sources' lists mix: its name, or
+		// "source/name" when another source has a list of that name too.
+		std::string label(const ListFile& list) const;
+		// Where new lists go: default-source, if it's open, else the first
+		// source.
+		std::string default_source() const;
+		// A list by key. A bare name finds the list when only one source has
+		// it.
+		ListFile* list(std::string_view key);
+		// Every list: sources in order, each in its own order (by "order", then
+		// name).
+		std::vector<ListFile*> lists();
+		std::vector<ListFile*> lists(std::string_view source);
 
-    std::optional<Ref> find(std::string_view id);
+		std::optional<Ref> find(std::string_view id);
 
-    // The list key a file in one of the sources' folders belongs to (see
-    // Store::list_name_for), or nullopt.
-    std::optional<std::string> key_for_path(const fs::path& file);
-    // Re-reads a list after its file changed (Store::reload).
-    bool reload(std::string_view key);
-    fs::path path_of(std::string_view key);
+		// The list key a file in one of the sources' folders belongs to (see
+		// Store::list_name_for), or nullopt.
+		std::optional<std::string> key_for_path(const fs::path& file);
+		// Re-reads a list after its file changed (Store::reload).
+		bool reload(std::string_view key);
+		fs::path path_of(std::string_view key);
 
-    // Files that could be lists, across sources (keys), and Store's
-    // adopt / decline for one.
-    std::vector<std::string> candidates();
-    void adopt(std::string_view key);
-    void decline(std::string_view key);
+		// Files that could be lists, across sources (keys), and Store's
+		// adopt / decline for one.
+		std::vector<std::string> candidates();
+		void adopt(std::string_view key);
+		void decline(std::string_view key);
 
-    // As Store's, on the list's own source.
-    void save(ListFile& list);
-    // Store::hold_saves / release_saves on every source.
-    void hold_saves();
-    void release_saves();
-    ListFile& create_list(std::string_view source, const std::string& name, std::string_view color,
-                          std::string_view icon);
-    bool rename_list(ListFile& list, const std::string& new_name);
-    void delete_list(std::string_view key);
-    Reminder& add(ListFile& list, Reminder r, const Reminder* after = nullptr,
-                  const std::optional<std::string>& section = std::nullopt);
-    void set_done(std::string_view id, bool done, Date today);
-    void remove(std::string_view id);
-    void touch(std::string_view id);
-    // Moves a reminder (with its subtasks) to the end of another list, which
-    // may be in another source.
-    void move_to_list(std::string_view id, ListFile& dest);
+		// As Store's, on the list's own source.
+		void save(ListFile& list);
+		// Store::hold_saves / release_saves on every source.
+		void hold_saves();
+		void release_saves();
+		ListFile& create_list(std::string_view source, const std::string& name,
+							  std::string_view color, std::string_view icon);
+		bool rename_list(ListFile& list, const std::string& new_name);
+		void delete_list(std::string_view key);
+		Reminder& add(ListFile& list, Reminder r,
+					  const Reminder* after = nullptr,
+					  const std::optional<std::string>& section = std::nullopt);
+		void set_done(std::string_view id, bool done, Date today);
+		void remove(std::string_view id);
+		void touch(std::string_view id);
+		// Moves a reminder (with its subtasks) to the end of another list,
+		// which may be in another source.
+		void move_to_list(std::string_view id, ListFile& dest);
 
-    // Smart lists, across every source (same order rules as Store's).
-    std::vector<Ref> today(Date today);
-    std::vector<Ref> scheduled();
-    std::vector<Ref> all();
-    std::vector<Ref> everything();
-    std::vector<Ref> flagged();
-    std::vector<Ref> completed();
-    std::vector<Ref> tagged(std::string_view tag);
-    std::vector<Ref> search(std::string_view query);
-    std::vector<std::string> tags();
+		// Smart lists, across every source (same order rules as Store's).
+		std::vector<Ref> today(Date today);
+		std::vector<Ref> scheduled();
+		std::vector<Ref> all();
+		std::vector<Ref> everything();
+		std::vector<Ref> flagged();
+		std::vector<Ref> completed();
+		std::vector<Ref> tagged(std::string_view tag);
+		std::vector<Ref> search(std::string_view query);
+		std::vector<std::string> tags();
 
-    // Undo (keys are "source/name").
-    Snapshot snapshot() const override;
-    std::optional<std::string> current_text(const std::string& key) const override;
-    void restore(const std::string& key, const std::optional<std::string>& text) override;
+		// Undo (keys are "source/name").
+		Snapshot snapshot() const override;
+		std::optional<std::string> current_text(
+			const std::string& key) const override;
+		void restore(const std::string& key,
+					 const std::optional<std::string>& text) override;
 
-private:
-    std::vector<Source> sources_;
+	private:
+		std::vector<Source> sources_;
 
-    Source* owner(const ListFile& list);
-    // "source/name" → the source's store and the name; nullptr if unknown.
-    std::pair<Store*, std::string> split(std::string_view key);
-    template <class Query> std::vector<Ref> gather(Query&& query);
+		Source* owner(const ListFile& list);
+		// "source/name" → the source's store and the name; nullptr if unknown.
+		std::pair<Store*, std::string> split(std::string_view key);
+		template <class Query>
+		std::vector<Ref> gather(Query&& query);
 };
 
 // Every configured source, opened (not loaded). A source whose folder is
@@ -117,6 +124,7 @@ std::unique_ptr<Library> open_library(const std::string& device);
 
 // What the apps open: with `folder` (from the command line), just that
 // folder's source (source_for_folder); otherwise every configured source.
-std::unique_ptr<Library> open_library(const std::optional<fs::path>& folder, const std::string& device);
+std::unique_ptr<Library> open_library(const std::optional<fs::path>& folder,
+									  const std::string& device);
 
 }  // namespace rem

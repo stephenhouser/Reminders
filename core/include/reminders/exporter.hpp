@@ -28,7 +28,6 @@
 #include <optional>
 #include <string>
 #include <string_view>
-
 #include <vector>
 
 #include "reminders/library.hpp"
@@ -49,32 +48,37 @@ std::optional<ExportFormat> export_format_for(const std::string& file_name);
 std::string_view export_extension(ExportFormat format);
 
 struct ExportOptions {
-    bool completed = false;  // plain text: completed reminders too
-    std::chrono::sys_seconds now{};                // iCalendar timestamps; zero: now
-    const std::chrono::time_zone* zone = nullptr;  // null: the local zone
+		bool completed = false;			 // plain text: completed reminders too
+		std::chrono::sys_seconds now{};	 // iCalendar timestamps; zero: now
+		const std::chrono::time_zone* zone = nullptr;  // null: the local zone
 };
 
 std::string export_markdown(const Document& doc);
 std::string export_text(const Document& doc, bool completed);
-std::string export_ics(const Document& doc, std::string_view name, const ExportOptions& options = {});
+std::string export_ics(const Document& doc, std::string_view name,
+					   const ExportOptions& options = {});
 std::string export_todotxt(const Document& doc);
 // `list_name` fills the List column.
 std::string export_csv(const Document& doc, std::string_view list_name);
 
 // A list in the given format.
-std::string export_list(const ListFile& list, ExportFormat format, const ExportOptions& options = {});
+std::string export_list(const ListFile& list, ExportFormat format,
+						const ExportOptions& options = {});
 
 // Lists into `folder` (made if missing), a file each: NAME.EXT, or
 // SOURCE-NAME.EXT where two sources have a list of that name. Existing
 // files are replaced. Returns the files written.
-std::vector<fs::path> export_lists(Library& library, const std::vector<ListFile*>& lists, const fs::path& folder,
-                                   ExportFormat format, const ExportOptions& options = {});
+std::vector<fs::path> export_lists(Library& library,
+								   const std::vector<ListFile*>& lists,
+								   const fs::path& folder, ExportFormat format,
+								   const ExportOptions& options = {});
 // The same lists as one .zip archive (the files as export_lists names
 // them, compressed when the library has zlib), to write where you like.
-std::string export_zip(Library& library, const std::vector<ListFile*>& lists, ExportFormat format,
-                       const ExportOptions& options = {});
+std::string export_zip(Library& library, const std::vector<ListFile*>& lists,
+					   ExportFormat format, const ExportOptions& options = {});
 // Every list of the library, into a folder.
-std::vector<fs::path> export_all(Library& library, const fs::path& folder, ExportFormat format,
-                                 const ExportOptions& options = {});
+std::vector<fs::path> export_all(Library& library, const fs::path& folder,
+								 ExportFormat format,
+								 const ExportOptions& options = {});
 
 }  // namespace rem

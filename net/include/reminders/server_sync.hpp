@@ -14,10 +14,10 @@ namespace rem {
 std::string run_password_command(const std::string& command);
 
 // Syncs a CalDAV, WebDAV or git source with its server (sync_caldav_source,
-// sync_webdav_source, sync_git_source). Only reads the Store's folder, state folder and back
-// end, so it can run on another thread while the Store is in use: the lists
-// it writes come back to the app as outside changes. Throws SyncError when
-// the server can't be reached.
+// sync_webdav_source, sync_git_source). Only reads the Store's folder, state
+// folder and back end, so it can run on another thread while the Store is in
+// use: the lists it writes come back to the app as outside changes. Throws
+// SyncError when the server can't be reached.
 SyncResult sync_source(Store& store, const SourceConfig& source);
 
 }  // namespace rem

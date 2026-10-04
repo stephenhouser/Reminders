@@ -45,16 +45,17 @@
 namespace rem {
 
 struct Import {
-    enum class Kind { Ics, Markdown, Text, Todotxt, Csv };
-    Kind kind = Kind::Text;
-    std::string name;   // the calendar's name (X-WR-CALNAME), may be empty
-    std::string color;  // the app colour of the calendar or list, may be empty
-    struct Item {
-        Reminder reminder;  // with its id (may be empty) and subtasks
-        std::optional<std::string> section;
-    };
-    std::vector<Item> items;  // top-level, in order
-    int skipped = 0;          // .ics: events and other components that aren't tasks
+		enum class Kind { Ics, Markdown, Text, Todotxt, Csv };
+		Kind kind = Kind::Text;
+		std::string name;  // the calendar's name (X-WR-CALNAME), may be empty
+		std::string
+			color;	// the app colour of the calendar or list, may be empty
+		struct Item {
+				Reminder reminder;	// with its id (may be empty) and subtasks
+				std::optional<std::string> section;
+		};
+		std::vector<Item> items;  // top-level, in order
+		int skipped = 0;  // .ics: events and other components that aren't tasks
 };
 
 // Reads an .ics file's text. Throws std::runtime_error if it isn't iCalendar.
@@ -75,10 +76,13 @@ std::string_view kind_name(Import::Kind kind);
 // name (.csv; todo.txt, done.txt, *.todo.txt; .md); then by content:
 // Markdown with checklist lines, CSV with a title column in its header,
 // todo.txt when most lines look like it, else plain text.
-Import::Kind detect_kind(std::string_view text, std::string_view file_name = {});
-Import read_as(std::string_view text, Import::Kind kind, const std::chrono::time_zone* local);
+Import::Kind detect_kind(std::string_view text,
+						 std::string_view file_name = {});
+Import read_as(std::string_view text, Import::Kind kind,
+			   const std::chrono::time_zone* local);
 // read_as(text, detect_kind(text, file_name)).
-Import read_import(std::string_view text, const std::chrono::time_zone* local, std::string_view file_name = {});
+Import read_import(std::string_view text, const std::chrono::time_zone* local,
+				   std::string_view file_name = {});
 
 // A reminder id for a task's UID: the UID itself when it's usable as an id
 // (6 or more lower-case letters and digits), else one derived from it.
@@ -88,14 +92,16 @@ std::string id_for_uid(std::string_view uid);
 int reminder_count(const Import& import);
 
 struct ImportResult {
-    int added = 0;    // reminders added, subtasks included
-    int already = 0;  // skipped (with their subtasks): already in the library (by id) or the list (by title)
+		int added = 0;	  // reminders added, subtasks included
+		int already = 0;  // skipped (with their subtasks): already in the
+						  // library (by id) or the list (by title)
 };
 
 // Adds the reminders to the end of `list` (in their sections), skipping
 // ones already there (see above), and saves it once. Reminders without an
 // id get a new one. With `duplicates`, none are skipped: ones already here
 // are added again as copies, with new ids.
-ImportResult import_into(Library& library, ListFile& list, const Import& import, bool duplicates = false);
+ImportResult import_into(Library& library, ListFile& list, const Import& import,
+						 bool duplicates = false);
 
 }  // namespace rem

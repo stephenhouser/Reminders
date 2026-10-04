@@ -16,7 +16,8 @@ namespace rem {
 // The calendar home is found on first use: from url= itself, its
 // current-user-principal, or /.well-known/caldav. With a `cache_file`, it's
 // remembered there for next time (and found again if it stops working).
-std::unique_ptr<Remote> make_caldav_remote(const DavSettings& settings, const fs::path& cache_file = {});
+std::unique_ptr<Remote> make_caldav_remote(const DavSettings& settings,
+										   const fs::path& cache_file = {});
 
 // Syncs a CalDAV source's folder with its server; the calendar home is
 // cached in $XDG_CACHE_HOME/reminders/caldav/NAME.home. Only reads the Store's

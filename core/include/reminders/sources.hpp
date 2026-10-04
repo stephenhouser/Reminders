@@ -49,32 +49,37 @@ namespace fs = std::filesystem;
 
 // A CalDAV or WebDAV source's server settings.
 struct DavSettings {
-    std::string url;               // CalDAV: the server, or its calendar home; WebDAV: the folder
-    std::string username;
-    std::string password_command;  // run by the shell; the first line it prints is the password
-    int interval = 15;             // minutes between syncs
+		std::string url;  // CalDAV: the server, or its calendar home; WebDAV:
+						  // the folder
+		std::string username;
+		std::string password_command;  // run by the shell; the first line it
+									   // prints is the password
+		int interval = 15;			   // minutes between syncs
 
-    bool operator==(const DavSettings&) const = default;
+		bool operator==(const DavSettings&) const = default;
 };
 
 // A git source's settings. Signing in is git's business (SSH keys, a
 // credential helper), as on the command line.
 struct GitSettings {
-    std::string url;     // to clone from when the folder isn't a repository yet
-    std::string remote;  // empty: origin
-    std::string branch;  // empty: the branch checked out
-    int interval = 15;   // minutes between syncs
+		std::string
+			url;  // to clone from when the folder isn't a repository yet
+		std::string remote;	 // empty: origin
+		std::string branch;	 // empty: the branch checked out
+		int interval = 15;	 // minutes between syncs
 
-    bool operator==(const GitSettings&) const = default;
+		bool operator==(const GitSettings&) const = default;
 };
 
 struct SourceConfig {
-    std::string name;  // [source.NAME]; empty for a folder used only this session
-    BackendKind backend = BackendKind::Syncthing;
-    fs::path folder;
-    std::string title;  // title=, shown on its sidebar group; empty: from the name
-    DavSettings dav = {};  // CalDAV and WebDAV only (has_server)
-    GitSettings git = {};  // git only
+		std::string
+			name;  // [source.NAME]; empty for a folder used only this session
+		BackendKind backend = BackendKind::Syncthing;
+		fs::path folder;
+		std::string
+			title;	// title=, shown on its sidebar group; empty: from the name
+		DavSettings dav = {};  // CalDAV and WebDAV only (has_server)
+		GitSettings git = {};  // git only
 };
 
 // Minutes between a source's syncs (CalDAV, WebDAV, git).
@@ -93,7 +98,8 @@ fs::path default_copy_folder(BackendKind backend, const std::string& name);
 // $XDG_STATE_HOME/reminders/DEVICE/NAME, or …/DEVICE/folder-HASH for a
 // folder that isn't a configured source. The device is part of the path
 // because a folder is shared between devices, and a home folder can be.
-fs::path source_state_dir(const SourceConfig& source, const std::string& device);
+fs::path source_state_dir(const SourceConfig& source,
+						  const std::string& device);
 
 // The source's title: title=, else its name capitalised ("personal" →
 // "Personal"), else the folder's name.
@@ -144,6 +150,7 @@ void remove_source(const std::string& name);
 // (for a source other than Syncthing, moved there from <folder>/.reminders/,
 // where older versions kept it), and the back end set up (Syncthing:
 // .stignore). Doesn't load the lists.
-std::unique_ptr<Store> open_source(const SourceConfig& source, const std::string& device);
+std::unique_ptr<Store> open_source(const SourceConfig& source,
+								   const std::string& device);
 
 }  // namespace rem

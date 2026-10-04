@@ -34,7 +34,8 @@ namespace fs = std::filesystem;
 
 enum class BackendKind { Syncthing, Local, Caldav, Webdav, Git };
 
-// "syncthing" / "local" / "caldav" / "webdav" / "git"; parse_backend is case-insensitive.
+// "syncthing" / "local" / "caldav" / "webdav" / "git"; parse_backend is
+// case-insensitive.
 std::string_view backend_name(BackendKind kind);
 std::optional<BackendKind> parse_backend(std::string_view name);
 // CalDAV and WebDAV: the folder is a local copy of what's on a server.
@@ -45,45 +46,54 @@ bool syncs(BackendKind kind);
 
 // A network or server failure; the sync stops and is retried later.
 struct SyncError : std::runtime_error {
-    using std::runtime_error::runtime_error;
+		using std::runtime_error::runtime_error;
 };
 
 // What a sync with a server did.
 struct SyncResult {
-    std::vector<std::string> changed;  // lists whose file was written, created or deleted
-    std::vector<std::string> errors;   // per list; the rest still synced
+		std::vector<std::string>
+			changed;  // lists whose file was written, created or deleted
+		std::vector<std::string> errors;  // per list; the rest still synced
 };
 
 class Backend {
-public:
-    virtual ~Backend() = default;
-    virtual BackendKind kind() const = 0;
+	public:
+		virtual ~Backend() = default;
+		virtual BackendKind kind() const = 0;
 
-    // Run once when the source is opened (Syncthing: keep the per-device
-    // state out of the sync).
-    virtual void prepare(const fs::path& folder) { (void)folder; }
+		// Run once when the source is opened (Syncthing: keep the per-device
+		// state out of the sync).
+		virtual void prepare([[maybe_unused]] const fs::path& folder) {}
 
-    // The list a file in the folder belongs to, or nullopt if it can't be a
-    // list file. (Syncthing: a conflict copy belongs to its list.)
-    virtual std::optional<std::string> list_name_for(const fs::path& file) const;
-    // Other files with changes for list `name`, to merge into it.
-    virtual std::vector<fs::path> conflict_copies(const fs::path& folder, std::string_view name) const;
+		// The list a file in the folder belongs to, or nullopt if it can't be a
+		// list file. (Syncthing: a conflict copy belongs to its list.)
+		virtual std::optional<std::string> list_name_for(
+			const fs::path& file) const;
+		// Other files with changes for list `name`, to merge into it.
+		virtual std::vector<fs::path> conflict_copies(
+			const fs::path& folder, std::string_view name) const;
 
-    // The version to merge conflicting changes against, and recognising this
-    // device's own writes when they come back.
-    virtual std::optional<std::string> read_base(std::string_view name) const;
-    virtual void write_base(std::string_view name, const std::string& text) const;
-    virtual void remember_written(std::string_view name, const std::string& text) const;
-    virtual bool is_own_write(std::string_view name, const std::string& text) const;
-    // A list was renamed or deleted: its records follow.
-    virtual void move_state(std::string_view from, std::string_view to) const;
-    virtual void drop_state(std::string_view name) const;
-    // The user deleted a list in the app (not: its file disappeared).
-    virtual void deleted_by_user(std::string_view name) const { (void)name; }
+		// The version to merge conflicting changes against, and recognising
+		// this device's own writes when they come back.
+		virtual std::optional<std::string> read_base(
+			std::string_view name) const;
+		virtual void write_base(std::string_view name,
+								const std::string& text) const;
+		virtual void remember_written(std::string_view name,
+									  const std::string& text) const;
+		virtual bool is_own_write(std::string_view name,
+								  const std::string& text) const;
+		// A list was renamed or deleted: its records follow.
+		virtual void move_state(std::string_view from,
+								std::string_view to) const;
+		virtual void drop_state(std::string_view name) const;
+		// The user deleted a list in the app (not: its file disappeared).
+		virtual void deleted_by_user(
+			[[maybe_unused]] std::string_view name) const {}
 
-    // Held while the Store writes, renames or deletes a list file, when the
-    // back end changes files from another thread (CalDAV sync).
-    virtual std::mutex* write_lock() { return nullptr; }
+		// Held while the Store writes, renames or deletes a list file, when the
+		// back end changes files from another thread (CalDAV sync).
+		virtual std::mutex* write_lock() { return nullptr; }
 };
 
 // The back end of a source the app syncs (CalDAV, WebDAV, git): plain files,
@@ -95,21 +105,23 @@ public:
 // Syncing writes the folder from another thread, so the Store's writes and
 // the sync's take turns under write_lock().
 class ServerBackend : public Backend {
-public:
-    ServerBackend(BackendKind kind, fs::path state_dir) : kind_(kind), state_dir_(std::move(state_dir)) {}
-    BackendKind kind() const override { return kind_; }
-    std::mutex* write_lock() override { return &lock_; }
-    void move_state(std::string_view from, std::string_view to) const override;
-    void deleted_by_user(std::string_view name) const override;
+	public:
+		ServerBackend(BackendKind kind, fs::path state_dir)
+			: kind_(kind), state_dir_(std::move(state_dir)) {}
+		BackendKind kind() const override { return kind_; }
+		std::mutex* write_lock() override { return &lock_; }
+		void move_state(std::string_view from,
+						std::string_view to) const override;
+		void deleted_by_user(std::string_view name) const override;
 
-    std::mutex& lock() { return lock_; }
-    const fs::path& state_dir() const { return state_dir_; }
-    fs::path records_dir() const;
+		std::mutex& lock() { return lock_; }
+		const fs::path& state_dir() const { return state_dir_; }
+		fs::path records_dir() const;
 
-private:
-    BackendKind kind_;
-    fs::path state_dir_;
-    mutable std::mutex lock_;
+	private:
+		BackendKind kind_;
+		fs::path state_dir_;
+		mutable std::mutex lock_;
 };
 
 // `state_dir` is the per-device folder (Syncthing's records live there).

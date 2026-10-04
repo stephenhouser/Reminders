@@ -15,34 +15,36 @@
 namespace rem {
 
 struct IcalProperty {
-    std::string name;  // upper case
-    std::vector<std::pair<std::string, std::string>> params;  // names upper case, values unquoted
-    std::string value;  // as written (still escaped); see ical_text()
+		std::string name;  // upper case
+		std::vector<std::pair<std::string, std::string>>
+			params;			// names upper case, values unquoted
+		std::string value;	// as written (still escaped); see ical_text()
 
-    std::optional<std::string> param(std::string_view name) const;
+		std::optional<std::string> param(std::string_view name) const;
 };
 
 struct IcalComponent {
-    std::string name;  // "VCALENDAR", "VTODO", …
-    std::vector<IcalProperty> props;
-    std::vector<IcalComponent> children;
+		std::string name;  // "VCALENDAR", "VTODO", …
+		std::vector<IcalProperty> props;
+		std::vector<IcalComponent> children;
 
-    const IcalProperty* prop(std::string_view name) const;
-    std::vector<const IcalProperty*> all(std::string_view name) const;
-    // Replaces every property called `name` with one holding `value`, in
-    // the first one's place (else at the end).
-    void set(std::string_view name, std::string value,
-             std::vector<std::pair<std::string, std::string>> params = {});
-    void remove(std::string_view name);
+		const IcalProperty* prop(std::string_view name) const;
+		std::vector<const IcalProperty*> all(std::string_view name) const;
+		// Replaces every property called `name` with one holding `value`, in
+		// the first one's place (else at the end).
+		void set(std::string_view name, std::string value,
+				 std::vector<std::pair<std::string, std::string>> params = {});
+		void remove(std::string_view name);
 
-    IcalComponent* child(std::string_view name);
-    const IcalComponent* child(std::string_view name) const;
+		IcalComponent* child(std::string_view name);
+		const IcalComponent* child(std::string_view name) const;
 };
 
 // The top component (VCALENDAR) of an iCalendar object, or nullopt if it
 // isn't one. Accepts LF as well as CRLF line ends.
 std::optional<IcalComponent> parse_ical(std::string_view text);
-// CRLF line ends, lines folded at 75 octets without splitting a UTF-8 character.
+// CRLF line ends, lines folded at 75 octets without splitting a UTF-8
+// character.
 std::string serialize_ical(const IcalComponent& c);
 
 // TEXT values: unescaping (\n \, \; \\) and escaping.
@@ -54,10 +56,11 @@ std::vector<std::string> ical_text_list(std::string_view value);
 // A DATE or DATE-TIME property in local time: UTC ("…Z") and TZID times are
 // converted to `local`; floating times are taken as they are.
 struct IcalWhen {
-    Date date;
-    std::optional<TimeOfDay> time;  // nullopt for a DATE
+		Date date;
+		std::optional<TimeOfDay> time;	// nullopt for a DATE
 };
-std::optional<IcalWhen> ical_when(const IcalProperty& p, const std::chrono::time_zone* local);
+std::optional<IcalWhen> ical_when(const IcalProperty& p,
+								  const std::chrono::time_zone* local);
 
 // "20261003T173000Z": a UTC timestamp for DTSTAMP, LAST-MODIFIED, COMPLETED.
 std::string ical_utc(std::chrono::sys_seconds t);

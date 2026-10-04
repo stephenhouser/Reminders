@@ -17,9 +17,9 @@ std::string to_clipboard_text(const Reminder& r);
 
 // How pasted or dropped text of several lines becomes reminders.
 enum class TextSplit {
-    Auto,   // a reminder per line when it's a list (is_list_text), else One
-    Lines,  // a reminder per line
-    One,    // one reminder: the first line is its title, the rest its notes
+	Auto,	// a reminder per line when it's a list (is_list_text), else One
+	Lines,	// a reminder per line
+	One,	// one reminder: the first line is its title, the rest its notes
 };
 
 // Reminders for pasted text, without ids (Store::add assigns them).
@@ -35,7 +35,8 @@ enum class TextSplit {
 //   notes, as they are (blank lines at either end dropped), except that
 //   checklist lines become "☐ …" / "☑ …" so they stay notes when read back.
 // One line of text is one reminder whichever way.
-std::vector<Reminder> from_clipboard_text(std::string_view text, TextSplit split = TextSplit::Auto);
+std::vector<Reminder> from_clipboard_text(std::string_view text,
+										  TextSplit split = TextSplit::Auto);
 
 // Whether text is a list (Auto splits it): checklist lines, or bulleted or
 // numbered lines making up at least half of its non-empty lines (so a
