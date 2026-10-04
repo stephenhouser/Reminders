@@ -14,6 +14,7 @@
 #include <fstream>
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -110,7 +111,7 @@ short xterm256(term::Rgb c) {
     return static_cast<short>(16 + 36 * level(c.r) + 6 * level(c.g) + level(c.b));
 }
 
-enum Pair : short { kDim = 1, kRed, kSelected, kHeading, kStatus, kFirstListColor };
+enum Pair : short { kDim = 1, kRed, kSelected, kHeading, kStatus, kMarked, kFirstListColor };
 
 std::map<std::string, short> g_color_pairs;
 
@@ -123,6 +124,7 @@ void setup_colors() {
     init_pair(kSelected, -1, COLORS >= 256 ? 237 : COLOR_BLUE);
     init_pair(kHeading, -1, -1);
     init_pair(kStatus, COLORS >= 256 ? 250 : COLOR_WHITE, COLORS >= 256 ? 236 : COLOR_BLACK);
+    init_pair(kMarked, COLORS >= 256 ? 75 : COLOR_CYAN, -1);  // the * beside a marked reminder
     short next = kFirstListColor;
     for (auto c : rem::kColors) {
         auto rgb = term::color_rgb(c);
@@ -154,6 +156,7 @@ constexpr std::pair<int, const char*> kViewSettings[] = {
 // Alt+Shift+↑ / ↓ (move the sidebar group), as internal keys outside the
 // range of characters.
 constexpr wint_t kGroupUp = 0x110010, kGroupDown = 0x110011;
+constexpr wint_t kDelete = 0x110000;  // the Delete key, outside the range of characters
 
 struct SidebarEntry {
     View view;
@@ -210,6 +213,9 @@ private:
         ctrl_page_up_ = 0;
     int side_sel_ = 0;
     std::string item_sel_;  // selected reminder id
+    // Marked reminders (v, * marks all, Esc clears): while any are marked,
+    // the editing keys act on all of them instead of the selected one.
+    std::set<std::string> marked_;
     int item_scroll_ = 0;
     std::string message_;
     std::map<std::string, std::pair<fs::file_time_type, std::uintmax_t>> seen_;  // folder signature
@@ -249,6 +255,11 @@ private:
     // Edits every field of a reminder in the user's editor.
     void edit_in_editor(const std::string& id);
     bool handle_key(wint_t key, bool is_function_key, bool alt = false);
+    std::vector<std::string> shown_items();   // the reminders in view, top to bottom
+    std::vector<std::string> marked_items();  // marked_, in that order
+    std::vector<std::string> outermost(const std::vector<std::string>& ids);  // without subtasks whose parent is there
+    void step_off(const std::vector<std::string>& going);  // selects the nearest reminder not in `going`
+    bool act_on_marked(wint_t key);  // false: not a key that applies to marks
     void step_sidebar(int delta);
     void move_selection(int delta);
     void select_view(const View& v);
@@ -265,6 +276,23 @@ private:
             message_ = std::format("Error: {}", e.what());
         }
         history_.record(label, before, store_.snapshot());
+    }
+    // An edit of several reminders: one undo step, each list written once.
+    template <class F>
+    void batch(const char* label, F&& f) {
+        undoable(label, [&] {
+            store_.hold_saves();
+            try {
+                f();
+            } catch (...) {
+                try {
+                    store_.release_saves();
+                } catch (...) {
+                }
+                throw;
+            }
+            store_.release_saves();
+        });
     }
 };
 
@@ -568,6 +596,10 @@ void Tui::draw_sidebar(int width, int height) {
 void Tui::draw_items(int x, int width, int height) {
     title_y_ = -1;
     auto ls = lines();
+    // Marks only on reminders in view (completed ones hidden, gone elsewhere).
+    std::erase_if(marked_, [&](const std::string& id) {
+        return std::ranges::none_of(ls, [&](const Line& l) { return l.kind == Line::Item && l.id == id; });
+    });
     // Title
     std::string title;
     if (view_.kind == View::List) {
@@ -590,6 +622,7 @@ void Tui::draw_items(int x, int width, int height) {
     // The count, dimmed, against the right edge: "6 Reminders / 3 Complete",
     // or "6/3" if that doesn't fit beside the title, or nothing.
     auto [full, brief] = view_count();
+    if (!marked_.empty()) full = brief = std::format("{} marked", marked_.size());
     for (auto& count : {full, brief}) {
         int w = static_cast<int>(count.size());  // ASCII
         if (used + 2 + w > room) continue;
@@ -603,6 +636,7 @@ void Tui::draw_items(int x, int width, int height) {
     std::vector<int> items;
     for (int i = 0; i < static_cast<int>(ls.size()); ++i)
         if (ls[static_cast<std::size_t>(i)].kind == Line::Item) items.push_back(i);
+
     auto sel = std::ranges::find_if(items, [&](int i) { return ls[static_cast<std::size_t>(i)].id == item_sel_; });
     if (sel == items.end()) item_sel_ = items.empty() ? "" : ls[static_cast<std::size_t>(items.front())].id;
     int sel_line = -1;
@@ -659,6 +693,10 @@ void Tui::draw_items(int x, int width, int height) {
                 part(l.due, l.overdue && !selected && has_colors() ? COLOR_PAIR(kRed) : l.done ? faint : base);
                 part(l.after, faint);
                 part(l.where, faint);
+                if (marked_.contains(l.id)) {  // a * in the margin
+                    attrset((selected ? base : A_NORMAL) | A_BOLD | (has_colors() && !selected ? COLOR_PAIR(kMarked) : 0));
+                    mvaddstr(y, x, "*");
+                }
                 attrset(A_NORMAL);
                 break;
             }
@@ -670,10 +708,12 @@ void Tui::draw_status() {
     int h = LINES;
     attron(COLOR_PAIR(kStatus));
     mvhline(h - 1, 0, ' ', COLS);
-    auto text = message_.empty()
-                    ? std::string(focus_items_ ? " x done  n new  enter title  e edit  d due  f flag  del delete  u undo  ? help  q quit"
-                                               : " ↑↓ choose  enter open  tab switch  g go to  n new  N new list  ? help  q quit")
-                    : " " + message_;
+    auto text = !message_.empty() ? " " + message_
+                : !marked_.empty()
+                    ? std::format(" {} marked: x done  f flag  t/T/d due  0-3 priority  # tag  m move  del delete  esc unmark",
+                                  marked_.size())
+                : focus_items_ ? std::string(" x done  v mark  n new  enter title  e edit  d due  f flag  del delete  u undo  ? help  q quit")
+                               : std::string(" ↑↓ choose  enter open  tab switch  g go to  n new  N new list  ? help  q quit");
     put(h - 1, 0, text, COLS);
     attroff(COLOR_PAIR(kStatus));
 }
@@ -826,6 +866,11 @@ void Tui::show_help() {
         "  #            add tag (-tag removes)     m  move to list",
         "  J / K        move down/up   ] / [       indent / outdent",
         "  Delete       delete (asks first)",
+        "",
+        "Several reminders",
+        "  v            mark / unmark (and go to the next)   *  mark all   esc  unmark all",
+        "  While some are marked, x / space, f, t / T, d, 0-3, #, m and Delete",
+        "  act on all of them, as one undo step.",
         "",
         "Same as the GNOME app",
         "  Ctrl+N new   Ctrl+T today   Ctrl+K go to   Ctrl+F search   Ctrl+H completed",
@@ -1082,6 +1127,7 @@ void Tui::remember_view() {
 }
 
 void Tui::select_view(const View& v) {
+    if (!(v == view_)) marked_.clear();
     view_ = v;
     remember_view();
     item_scroll_ = 0;
@@ -1176,7 +1222,9 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
     // letter keys.)
     if (alt) {
         if (!fn && key >= '0' && key <= '3') {  // Alt+0…3: priority
-            if (ref) {
+            if (focus_items_ && !marked_.empty()) {
+                act_on_marked(key);
+            } else if (ref) {
                 auto p = static_cast<rem::Priority>(key - '0');
                 undoable("Priority", [&] {
                     ref->reminder->priority = p;
@@ -1231,6 +1279,15 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
         return true;
     }
 
+    // Esc on its own unmarks everything.
+    if (!fn && key == 27) {
+        if (!marked_.empty()) {
+            marked_.clear();
+            message_ = "Unmarked";
+        }
+        return true;
+    }
+
     // Keys that work anywhere.
     if (!fn) switch (key) {
             case 'q': return false;
@@ -1254,6 +1311,7 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
             }
             case '/':
                 if (auto q = prompt("Search:"); q && !q->empty()) {
+                    marked_.clear();
                     view_ = {View::Search, *q};
                     item_sel_.clear();
                     focus_items_ = true;
@@ -1372,6 +1430,23 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
         });
         return true;
     }
+    // Marking, and the keys that then act on every marked reminder.
+    if (!fn && key == 'v' && ref) {
+        if (!marked_.erase(id)) marked_.insert(id);
+        move_selection(1);
+        return true;
+    }
+    if (!fn && key == '*') {
+        auto all = shown_items();
+        marked_ = {all.begin(), all.end()};
+        if (!all.empty()) message_ = std::format("{} marked", all.size());
+        return true;
+    }
+    if (!marked_.empty()) {
+        auto k = fn && key == KEY_DC ? kDelete : key;
+        if ((!fn || k == kDelete) && act_on_marked(k)) return true;
+    }
+
     if (!ref) return true;
     auto& r = *ref->reminder;
 
@@ -1381,7 +1456,6 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
             store_.touch(id);
         });
     };
-    constexpr wint_t kDelete = 0x110000;  // the Delete key, outside the range of characters
     if (fn && key == KEY_DC) key = kDelete, fn = false;
     if (fn && key == KEY_ENTER) key = '\n', fn = false;
     if (fn) return true;
@@ -1489,6 +1563,163 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
             break;
     }
     return true;
+}
+
+std::vector<std::string> Tui::shown_items() {
+    std::vector<std::string> out;
+    for (auto& l : lines())
+        if (l.kind == Line::Item) out.push_back(l.id);
+    return out;
+}
+
+std::vector<std::string> Tui::marked_items() {
+    auto out = shown_items();
+    std::erase_if(out, [this](auto& id) { return !marked_.contains(id); });
+    return out;
+}
+
+// For moving and deleting: a subtask goes along with its parent.
+std::vector<std::string> Tui::outermost(const std::vector<std::string>& ids) {
+    std::vector<std::string> out;
+    for (auto& id : ids) {
+        auto ref = store_.find(id);
+        if (ref && ref->parent && std::ranges::find(ids, ref->parent->id) != ids.end()) continue;
+        out.push_back(id);
+    }
+    return out;
+}
+
+// Before reminders leave the view: keeps the place by selecting the nearest
+// one staying, below the selection if there is one, else above.
+void Tui::step_off(const std::vector<std::string>& going) {
+    if (std::ranges::find(going, item_sel_) == going.end()) return;
+    auto all = shown_items();
+    auto at = std::ranges::find(all, item_sel_);
+    if (at == all.end()) return;
+    auto stays = [&](const std::string& id) { return std::ranges::find(going, id) == going.end(); };
+    if (auto next = std::find_if(at, all.end(), stays); next != all.end()) item_sel_ = *next;
+    else if (auto prev = std::find_if(std::make_reverse_iterator(at), all.rend(), stays); prev != all.rend())
+        item_sel_ = *prev;
+}
+
+// The editing keys while reminders are marked, on all of them, as one undo
+// step. Completing and flagging set them all alike: done (flagged), or not
+// if they all were already.
+bool Tui::act_on_marked(wint_t key) {
+    auto ids = marked_items();
+    if (ids.empty()) return false;
+    auto today = rem::local_today();
+    auto n = ids.size();
+    auto each = [&](const char* label, auto&& change) {
+        batch(label, [&] {
+            for (auto& id : ids)
+                if (auto ref = store_.find(id)) {
+                    change(*ref->reminder);
+                    store_.touch(id);
+                }
+        });
+    };
+    auto all = [&](auto&& test) {
+        return std::ranges::all_of(ids, [&](auto& id) {
+            auto ref = store_.find(id);
+            return !ref || test(*ref->reminder);
+        });
+    };
+    switch (key) {
+        case 'x':
+        case ' ': {
+            bool done = !all([](auto& r) { return r.done; });
+            bool hides = done && !show_completed_ && view_.kind != View::Completed && view_.kind != View::AllReminders;
+            if (hides) step_off(ids);
+            batch("Complete", [&] {
+                for (auto& id : ids) store_.set_done(id, done, today);
+            });
+            message_ = std::format("{} {}", n, done ? "done" : "not done");
+            return true;
+        }
+        case 'f': {
+            bool flag = !all([](auto& r) { return r.flagged; });
+            each("Flag", [&](rem::Reminder& r) { r.flagged = flag; });
+            message_ = std::format("{} {}", n, flag ? "flagged" : "unflagged");
+            return true;
+        }
+        case 't': each("Due Today", [&](rem::Reminder& r) { r.due_date = today; }); return true;
+        case 'T': {
+            auto tomorrow = rem::Date{std::chrono::sys_days{today} + std::chrono::days{1}};
+            each("Due Tomorrow", [&](rem::Reminder& r) { r.due_date = tomorrow; });
+            return true;
+        }
+        case 'd':
+            if (auto d = prompt(std::format("Due date for {} (today, tomorrow, fri, +3d, 2026-10-31, none):", n))) {
+                if (term::lower(*d) == "none" || d->empty()) {
+                    each("Clear Due Date", [](rem::Reminder& r) { r.due_date.reset(), r.due_time.reset(); });
+                } else {
+                    auto words = *d;
+                    std::optional<rem::TimeOfDay> time;
+                    if (auto sp = words.rfind(' '); sp != std::string::npos)
+                        if ((time = rem::parse_time(words.substr(sp + 1)))) words.resize(sp);
+                    if (auto date = rem::parse_human_date(words, today))
+                        each("Set Due Date", [&](rem::Reminder& r) {
+                            r.due_date = date;
+                            if (time) r.due_time = time;
+                        });
+                    else message_ = std::format("Can't read “{}”", *d);
+                }
+            }
+            return true;
+        case '0':
+        case '1':
+        case '2':
+        case '3': {
+            auto p = static_cast<rem::Priority>(key - '0');
+            each("Priority", [&](rem::Reminder& r) { r.priority = p; });
+            return true;
+        }
+        case '#':
+            if (auto t = prompt(std::format("Tag for {} (-tag removes):", n)); t && !t->empty()) {
+                auto tag = *t;
+                bool remove = tag.starts_with('-');
+                if (remove) tag.erase(0, 1);
+                if (tag.starts_with('#')) tag.erase(0, 1);
+                each("Tag", [&](rem::Reminder& r) {
+                    if (remove) std::erase(r.tags, tag);
+                    else if (std::ranges::find(r.tags, tag) == r.tags.end()) r.tags.push_back(tag);
+                });
+            }
+            return true;
+        case 'm':
+            if (auto name = prompt(std::format("Move {} to list:", n)); name && !name->empty()) {
+                rem::ListFile* dest = nullptr;
+                for (auto* l : store_.lists())
+                    if (term::lower(store_.label(*l)).starts_with(term::lower(*name)) ||
+                        term::lower(store_.key_of(*l)).starts_with(term::lower(*name))) {
+                        dest = l;
+                        break;
+                    }
+                if (!dest) {
+                    message_ = std::format("No list called “{}”", *name);
+                    return true;
+                }
+                auto moving = outermost(ids);
+                if (view_.kind == View::List) step_off(ids);
+                batch("Move", [&] {
+                    for (auto& id : moving) store_.move_to_list(id, *dest);
+                });
+                message_ = std::format("Moved {} to “{}”", moving.size(), store_.label(*dest));
+            }
+            return true;
+        case kDelete: {
+            auto gone = outermost(ids);
+            if (!confirm(std::format("Delete {} reminders?", n))) return true;
+            step_off(ids);
+            batch("Delete", [&] {
+                for (auto& id : gone) store_.remove(id);
+            });
+            message_ = std::format("Deleted {} (u to undo)", n);
+            return true;
+        }
+    }
+    return false;
 }
 
 int Tui::run() {

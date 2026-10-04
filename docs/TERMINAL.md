@@ -244,6 +244,24 @@ On the selected reminder:
 | ] / [ | Indent / outdent (in a list) |
 | Delete | Delete (asks first; undo with u) |
 
+**Several reminders at once.** Mark them, then use the keys above:
+
+| Key | Action |
+|---|---|
+| v | Mark / unmark the selected reminder, and go to the next |
+| * | Mark every reminder showing |
+| Esc | Unmark them all |
+
+Marked reminders have a `*` in the margin, and the title line says how many
+("3 marked"). While any are marked, x / Space, f, t / T, d, 0–3 (and
+Alt+0–3), #, m and Delete act on all of them, each as one undo step (u).
+Completing and flagging set them all alike: all done (or all not done, when
+they all already were); likewise flagged. A marked reminder's subtasks go
+with it when moving or deleting. The other keys (Enter, e, J / K, ] / [)
+still work on the selected reminder. Going to another list unmarks them, as
+does completing them when completed reminders are hidden. The same as
+selecting several in the GNOME app, with v instead of Ctrl+click.
+
 **Editing text**, whether a title in place or a prompt at the bottom (add,
 search, go to, due date):
 

@@ -534,12 +534,6 @@ settings in a `[source.NAME]` section; later the apps show several at once.
   sidebar list, and dragging reminders out as text. Dropping files is done
   (they're imported); dragging within the app already works. Added
   2026-10-03.
-- **Selecting several reminders in the terminal client**: Space or `v`
-  marks the reminder under the cursor, `*` marks all showing, and the
-  existing keys (complete, flag, priority, date, move, delete, copy) act on
-  everything marked, as one undo step, using the same core functions as
-  the GNOME app's selection. Next after the GNOME app's; asked for
-  2026-10-04.
 - **Query language**, SQL-like, for the CLI (`reminders query "…"`) and for
   defining your own smart lists (saved queries in the sidebar). Wanted by the
   user 2026-10-02; design not started.
@@ -709,6 +703,16 @@ settings in a `[source.NAME]` section; later the apps show several at once.
     plural labels and a new Move To submenu. Shortcuts dialog has a section.
     Checked headless through direct calls (selection, menu, each op +
     undo); real Ctrl/Shift clicks and drags need trying by hand.
+  - **Marking several reminders in the TUI** (2026-10-04): `v` toggles the
+    mark and moves down, `*` marks every reminder showing, Esc (anywhere)
+    unmarks. `Tui::marked_`, pruned to the reminders in view each draw and
+    cleared on a view change; `*` in the margin (kMarked colour), "N marked"
+    in the title and the status line. While any are marked, `act_on_marked`
+    takes x / Space, f, t / T, d, 0–3 / Alt+0–3, #, m and Delete for all of
+    them (`batch()` = undoable + hold_saves, so one undo step and one write
+    per list); same rules as the GNOME app (complete / flag all alike,
+    outermost for move / delete, step_off keeps the cursor's place). Tested
+    in tmux.
   - **Docs:** README, docs/FORMAT.md, docs/USING.md, docs/TERMINAL.md,
     docs/settings.example.ini.
 - **Known gaps:**
