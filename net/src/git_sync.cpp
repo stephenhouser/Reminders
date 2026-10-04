@@ -200,15 +200,18 @@ private:
         return git(dir, args);
     }
 
-    // The working tree and the folder's place in it; cloned from url= if
-    // the folder isn't in one yet.
+    // The working tree and the folder's place in it. A folder that isn't in
+    // one yet is cloned from url=, or without one becomes a new repository
+    // of its own (history only, until a remote is given).
     void open_repository() {
         std::error_code ec;
         fs::create_directories(folder_, ec);
         auto top = git(folder_, {"rev-parse", "--show-toplevel"});
         if (!top.ok()) {
-            if (settings_.url.empty()) throw SyncError(std::format("{} isn't in a git repository", folder_.string()));
-            if (fs::is_empty(folder_, ec)) {
+            if (settings_.url.empty()) {
+                auto init = git(folder_, {"init", "-q"});
+                if (!init.ok()) throw SyncError(std::format("couldn't make a git repository: {}", message(init)));
+            } else if (fs::is_empty(folder_, ec)) {
                 auto clone = git(folder_, {"clone", "-q", settings_.url, "."});
                 if (!clone.ok()) throw SyncError(std::format("couldn't clone {}: {}", settings_.url, message(clone)));
             } else {
@@ -226,6 +229,12 @@ private:
         }
         top_ = trimmed(top.out);
         prefix_ = trimmed(git(folder_, {"rev-parse", "--show-prefix"}).out);
+        // url= given to a repository without that remote (say, one made here
+        // first): add it. One already there keeps its own address.
+        if (!settings_.url.empty() && !git(folder_, {"remote", "get-url", remote_name()}).ok()) {
+            auto add = git(folder_, {"remote", "add", remote_name(), settings_.url});
+            if (!add.ok()) throw SyncError(message(add));
+        }
     }
 
     std::string remote_name() const { return settings_.remote.empty() ? "origin" : settings_.remote; }

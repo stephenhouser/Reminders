@@ -545,13 +545,13 @@ settings in a `[source.NAME]` section; later the apps show several at once.
     trips, three-way merging of Syncthing conflict copies, undo/redo history,
     settings, the XDG base directories, and sources: several open at once
     (`Library`), each with its own back end (syncthing, local, caldav,
-    webdav, git). Unit tests pass (136).
+    webdav, git). Unit tests pass (137).
   - **CalDAV, WebDAV and git back ends** (net/): CalDAV and WebDAV (libcurl
     + libxml2) keep a local Markdown copy in step with the server, merged
     three-way; git commits, pulls (list conflicts merged by the app) and
     pushes. Synced on open, every `interval=` minutes and shortly after
     edits. Tested against a fake DAV server in Python and local git
-    repositories (14 network tests).
+    repositories (15 network tests).
   - **GNOME app** (`Reminders`): the features in the brief, the keyboard
     shortcuts, drag and drop within the app, the quick switcher,
     configurable sidebar groups (order, visible / collapsible / hidden,
@@ -651,6 +651,13 @@ settings in a `[source.NAME]` section; later the apps show several at once.
     folder in a repository picks Git. Tests: net_test.cpp against bare
     repositories made by the test (GIT_CONFIG_GLOBAL set to a file with
     init.defaultBranch=main, no identity).
+  - **git: new repositories** (2026-10-04): a git source's folder that
+    isn't in a repository and has no url= is `git init`ed on the first sync
+    (was an error); url= on a repository without that remote adds it, so a
+    local-only source can start pushing later. Git folders are made on open
+    like DAV copies (open_source, open_library); the dialog's default folder
+    ($XDG_DATA_HOME/reminders/git/NAME) applies with or without Clone From,
+    and any folder is accepted. Test net_git_new_repository_then_a_remote.
   - **Dropping files imports them** (2026-10-03): `make_file_drop_target`
     (GDK_TYPE_FILE_LIST, COPY) on the window (into: the list in view) and
     on each sidebar list row (highlighted with drop-into; into: that

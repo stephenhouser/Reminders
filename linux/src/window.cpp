@@ -213,9 +213,7 @@ std::string source_problem(const SourceEdit& e, const std::string& self) {
 #ifndef REMINDERS_NETWORK
         return "This copy of Reminders was built without git support";
 #endif
-        if (e.folder.empty()) return "Choose the repository's folder, or give an address to clone from";
-        if (e.git.url.empty() && !rem::in_git_repo(e.folder))
-            return "That folder isn't in a git repository: give an address to clone it from";
+        if (e.folder.empty()) return "Choose a folder";
     } else {
         if (e.folder.empty()) return "Choose a folder";
         if (!std::filesystem::is_directory(e.folder, ec)) return "That folder doesn't exist";
@@ -1734,7 +1732,7 @@ GtkWidget* Window::group(const std::string& title, const char* color, GtkWidget*
 
 // A named section: its heading, with a menu to rename or delete it.
 GtkWidget* Window::section_group(rem::ListFile& l, const std::string& name, int count, GtkWidget* listbox) {
-    auto list = l.name;
+    auto list = store_->key_of(l);  // "source/name": a bare name is ambiguous when two sources have it
     auto* actions = g_simple_action_group_new();
     add_action(actions, "rename", [this, list, name] { rename_section(list, name); });
     add_action(actions, "delete", [this, list, name, count] { delete_section(list, name, count); });
@@ -1868,7 +1866,7 @@ GtkWidget* Window::build_list_view(rem::ListFile& l) {
                 gtk_list_box_append(GTK_LIST_BOX(listbox), build_reminder_row(rem::Ref{&l, &s, r}, false));
             }
         }
-        gtk_list_box_append(GTK_LIST_BOX(listbox), build_new_row(l.name, section.name));
+        gtk_list_box_append(GTK_LIST_BOX(listbox), build_new_row(store_->key_of(l), section.name));
         if (section.name) {
             int count = 0;
             for (auto* r : section.reminders) count += 1 + static_cast<int>(r->subtasks.size());
@@ -2408,7 +2406,10 @@ void Window::add_reminder(const std::string& list, const std::optional<std::stri
                           const std::string& text) {
     undoable("Add Reminder", [&] {
         auto* l = store_->list(list);
-        if (!l) return;
+        if (!l) {
+            toast(std::format("Couldn't find the list “{}”", list));
+            return;
+        }
         rem::Reminder r;
         r.fields() = rem::parse_fields(trim(text));
         r.created = today();

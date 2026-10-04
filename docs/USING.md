@@ -746,14 +746,20 @@ interval=15
 title=Notes
 ```
 
-- **`folder=`** is the folder in a working tree (a clone) that holds the
-  lists: the repository's top, or a folder in it. Only the list files
+- **`folder=`** is the folder that holds the lists: the top of a working
+  tree (a clone), a folder in one, or any folder at all. Only the list files
   directly in it (`*.md`) are committed. Other files in the repository, and
-  the folders under it, are left alone.
-- **`url=`** (Clone From) is optional. When the folder isn't in a
-  repository yet, it's cloned from there on the first sync; without
-  `folder=` the clone goes in `$XDG_DATA_HOME/reminders/git/NAME`
+  the folders under it, are left alone. Without `folder=` (or with no folder
+  chosen in Add Source…) it's `$XDG_DATA_HOME/reminders/git/NAME`
   (`~/.local/share/…` when `$XDG_DATA_HOME` isn't set).
+- **A folder that isn't in a repository yet** (empty, missing, or already
+  holding lists) becomes one on the first sync: cloned from `url=` when
+  there is one, else a new repository of its own (`git init`), whose
+  commits are your lists' history.
+- **`url=`** (Clone From) is optional: the repository to clone, or to push
+  to. Added to a repository that doesn't have that remote yet (for example
+  one Reminders made), it's added as the remote, and the next sync pulls
+  and pushes.
 - **`remote=`** and **`branch=`** are optional: by default `origin` and
   the branch checked out.
 - **Signing in** is git's own business. SSH keys and credential helpers
@@ -770,7 +776,8 @@ title=Notes
   wins. A conflict in a file that isn't a list stops the merge (it's
   undone) and the message names the file: merge it with git.
 - **A repository without a remote** works too: every change is committed,
-  so you get a history of your lists and nothing else.
+  so you get a history of your lists and nothing else. Give it a `url=`
+  (Clone From in Source Info…) later to start pushing.
 - **Removing the source** leaves the folder as it is, even a clone in the
   default place, since it may hold commits that haven't been pushed.
 

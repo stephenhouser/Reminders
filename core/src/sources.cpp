@@ -277,9 +277,9 @@ void remove_source(const std::string& name) {
 }
 
 std::unique_ptr<Store> open_source(const SourceConfig& source, const std::string& device) {
-    // A local copy, or a clone to be: made now, filled by the first sync.
-    if (has_server(source.backend) || (source.backend == BackendKind::Git && !source.git.url.empty()))
-        fs::create_directories(source.folder);
+    // A local copy, or a git folder (a clone or a new repository to be):
+    // made now, filled (or made a repository) by the first sync.
+    if (has_server(source.backend) || source.backend == BackendKind::Git) fs::create_directories(source.folder);
     auto state = source_state_dir(source, device);
     move_misplaced_state(source, device, state);
     auto store = std::make_unique<Store>(source.folder, state, source.backend);

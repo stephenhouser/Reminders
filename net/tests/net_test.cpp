@@ -358,14 +358,29 @@ TEST(net_git_only_the_lists) {
     CHECK(r.errors.empty());
     auto tracked = sh_out("git -C '" + repo.string() + "' ls-files");
     CHECK_EQ(tracked, std::string("todo/Work.md\n"));
-    // Not a repository and nothing to clone: says so.
-    bool threw = false;
-    try {
-        git_sync(dir.path / "plain", GitSettings{}, lock, "dev");
-    } catch (const SyncError& e) {
-        threw = std::string_view(e.what()).find("isn't in a git repository") != std::string_view::npos;
-    }
-    CHECK(threw);
+}
+
+TEST(net_git_new_repository_then_a_remote) {
+    Dir dir;
+    fs::create_directories(dir.path);
+    std::mutex lock;
+    // Not a repository and nothing to clone: it becomes one (made if missing).
+    auto plain = dir.path / "plain";
+    CHECK(git_sync(plain, GitSettings{}, lock, "dev").errors.empty());
+    CHECK(fs::exists(plain / ".git"));
+    std::ofstream(plain / "Home.md") << LIST "- [ ] Paint ^aaaaaa\n";
+    CHECK(git_sync(plain, GitSettings{}, lock, "dev").errors.empty());
+    CHECK_EQ(sh_out("git -C '" + plain.string() + "' ls-files"), std::string("Home.md\n"));
+    // An address given later: the remote is added and the lists pushed.
+    auto bare = dir.path / "remote.git";
+    CHECK_EQ(sh("git init -q --bare '" + bare.string() + "'"), 0);
+    GitSettings s{bare.string(), "", "", 15};
+    CHECK(git_sync(plain, s, lock, "dev").errors.empty());
+    CHECK_EQ(sh_out("git -C '" + plain.string() + "' remote get-url origin"), bare.string() + "\n");
+    auto other = dir.path / "other";
+    std::mutex lock2;
+    CHECK(git_sync(other, s, lock2, "dev2").errors.empty());
+    CHECK_EQ(read(other / "Home.md"), read(plain / "Home.md"));
 }
 
 TEST(net_git_other_conflicts_stop_the_merge) {

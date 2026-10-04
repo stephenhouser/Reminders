@@ -558,8 +558,9 @@ struct SourceDialog {
 
     bool on_server() const { return rem::has_server(edit.backend); }
     bool git() const { return edit.backend == rem::BackendKind::Git; }
-    // The folder can be the app's own: a local copy, or a clone.
-    bool own_folder() const { return on_server() || (git() && !edit.git.url.empty()); }
+    // The folder can be the app's own: a local copy, or a git repository
+    // (cloned, or new).
+    bool own_folder() const { return on_server() || git(); }
 
     void update() {
         if (edit.is_new && !folder_chosen)
@@ -739,7 +740,8 @@ void show_source_dialog(GtkWidget* parent, SourceEdit source, std::function<std:
         "Changed lists are committed and pushed, and changes from elsewhere pulled and merged. Signing in uses your "
         "git set-up (SSH keys, a credential helper).");
     entry("Clone From", &d->edit.git.url,
-          "Optional: the repository to clone when the folder isn't one yet, e.g. git@github.com:you/notes.git",
+          "Optional: the repository to clone (or push to) when the folder isn't one yet, e.g. "
+          "git@github.com:you/notes.git. Without it, a folder that isn't a repository becomes a new one",
           d->repo_group);
     entry("Remote", &d->edit.git.remote, "Optional; origin if empty", d->repo_group);
     entry("Branch", &d->edit.git.branch, "Optional; the branch checked out if empty", d->repo_group);
