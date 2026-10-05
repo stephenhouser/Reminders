@@ -734,6 +734,15 @@ Done so far:
     `row-buttons-always` on the window, at start and in reload_settings;
     CSS shows row buttons at 0.4 then (1 on hover). Documented in USING.md
     and settings.example.ini. Screenshot checked with `always`.
+- **note-lines=N** (2026-10-04, user's request): how many lines of notes the
+  lists show, both apps; 0 / unset / not a number = all. app preferences
+  `load_note_lines()` and `first_lines(text, n)` (adds "…" when lines were
+  left out; tested). GUI: Window::note_lines_ (start + reload_settings,
+  rebuild_content when it changes); the notes label wraps, and with N > 0
+  also ellipsizes at N lines (GTK's lines limit is per paragraph, which is
+  why the old fixed 2 showed every line of a multi-line note). TUI:
+  Tui::note_lines_ (load_layout). Checked: GUI screenshot and TUI capture
+  with note-lines=2.
 
 ## Future features (not started)
 

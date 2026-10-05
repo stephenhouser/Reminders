@@ -172,4 +172,11 @@ void save_tag_style(const std::string& tag, const TagStyle& style);
 // show-sidebar=true | false: whether the sidebar is shown (Ctrl+B), saved by
 // both apps and read at start-up (load_bool_setting("show-sidebar", true)).
 
+// note-lines=N: how many lines of a reminder's notes the lists show; 0 or
+// unset (or not a number) shows them all.
+std::size_t load_note_lines();
+// The first `lines` lines of `text` (all of it when `lines` is 0), with "…"
+// after the last one shown when some were left out.
+std::string first_lines(const std::string& text, std::size_t lines);
+
 }  // namespace rem

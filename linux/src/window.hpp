@@ -320,6 +320,7 @@ class Window {
 		gint64 last_notify_check_ = 0;	// unix seconds
 		bool updating_sidebar_ = false;
 		bool show_completed_ = false;
+		std::size_t note_lines_ = rem::load_note_lines();  // note-lines
 		bool show_key_numbers_ = false;	 // settings.ini: show-key-numbers
 		std::unique_ptr<rem::Sidebar>
 			sidebar_;  // its layout (made with store_)

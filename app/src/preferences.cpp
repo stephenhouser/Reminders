@@ -468,4 +468,35 @@ void save_tag_style(const std::string& tag, const TagStyle& style) {
 	save_setting("tag-icon." + tag, style.icon);
 }
 
+std::size_t load_note_lines() {
+	auto value = trimmed(load_setting("note-lines"));
+	std::size_t n = 0;
+	for (char c : value) {
+		if (!std::isdigit(static_cast<unsigned char>(c))) {
+			return 0;
+		}
+		n = n * 10 + static_cast<std::size_t>(c - '0');
+		if (n > 1000) {
+			return 0;  // as good as all
+		}
+	}
+	return n;
+}
+
+std::string first_lines(const std::string& text, std::size_t lines) {
+	if (lines == 0) {
+		return text;
+	}
+	std::size_t at = 0;
+	for (std::size_t i = 0; i < lines; ++i) {
+		at = text.find('\n', at);
+		if (at == std::string::npos) {
+			return text;
+		}
+		++at;
+	}
+	auto out = text.substr(0, at - 1);
+	return out + "…";
+}
+
 }  // namespace rem

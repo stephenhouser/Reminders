@@ -170,6 +170,18 @@ TEST(preferences_sidebar_and_order) {
 	CHECK_EQ(load_tag_style("errands").color, "orange");
 	CHECK_EQ(load_tag_style("errands").icon, "cart");
 	save_setting("tag-color.errands", "chartreuse");
+
+	// How many lines of notes show: all unless note-lines is a number > 0.
+	CHECK_EQ(load_note_lines(), 0u);
+	save_setting("note-lines", "2");
+	CHECK_EQ(load_note_lines(), 2u);
+	save_setting("note-lines", "two");
+	CHECK_EQ(load_note_lines(), 0u);
+	CHECK_EQ(first_lines("a\nb\nc", 0), "a\nb\nc");
+	CHECK_EQ(first_lines("a\nb\nc", 2), "a\nb…");
+	CHECK_EQ(first_lines("a\nb\nc", 3), "a\nb\nc");
+	CHECK_EQ(first_lines("a\nb\n", 2), "a\nb…");
+	CHECK_EQ(first_lines("one line", 1), "one line");
 	CHECK_EQ(load_tag_style("errands").color, "gray");
 	unsetenv("XDG_CONFIG_HOME");
 	fs::remove_all(dir);

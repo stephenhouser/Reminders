@@ -149,10 +149,16 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
 	}
 
 	if (!r.notes.empty()) {
-		auto* notes = label(r.notes, {"caption", "dim-label"});
+		auto* notes = label(rem::first_lines(r.notes, note_lines_),
+							{"caption", "dim-label"});
 		gtk_label_set_wrap(GTK_LABEL(notes), TRUE);
-		gtk_label_set_ellipsize(GTK_LABEL(notes), PANGO_ELLIPSIZE_END);
-		gtk_label_set_lines(GTK_LABEL(notes), 2);
+		if (note_lines_ > 0) {
+			// A long line wraps to at most as many lines again (GTK's limit
+			// is per line of text, not for the whole label).
+			gtk_label_set_ellipsize(GTK_LABEL(notes), PANGO_ELLIPSIZE_END);
+			gtk_label_set_lines(GTK_LABEL(notes),
+								static_cast<int>(note_lines_));
+		}
 		append(text, {notes});
 	}
 

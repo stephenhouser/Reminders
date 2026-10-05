@@ -241,6 +241,7 @@ void Tui::move_entry(int delta) {
 void Tui::load_layout() {
 	show_key_numbers_ = key_numbers_override_.value_or(
 		rem::load_bool_setting("show-key-numbers"));
+	note_lines_ = rem::load_note_lines();
 	sidebar_.reload();
 }
 

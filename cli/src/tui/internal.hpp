@@ -108,6 +108,7 @@ class Tui {
 		bool hide_sidebar_ = !rem::load_bool_setting(
 			"show-sidebar", true);	// Ctrl+B; shared with the app
 		bool show_key_numbers_ = rem::load_bool_setting("show-key-numbers");
+		std::size_t note_lines_ = rem::load_note_lines();  // note-lines
 		std::optional<bool>
 			key_numbers_override_;	// --show-key-numbers / --hide-key-numbers
 		rem::Sidebar sidebar_{store_};	// the sidebar's layout (settings.ini)

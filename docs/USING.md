@@ -493,6 +493,8 @@ local-lists-display=visible
 tags-display=visible
 # A reminder row's buttons (flag, Details, ⋮): shown on hover, or always (dimmed)
 row-buttons=hover
+# How many lines of a reminder's notes the lists show (0 or unset: all)
+note-lines=0
 # Set by the app when you fold a collapsible group
 smart-lists-collapsed=false
 lists-collapsed.personal=false
@@ -510,6 +512,11 @@ e.g. `(1)Today`, for the keys `1`–`9` and `0`. It accepts `true`, `yes` or `1`
 show in the GNOME app: `hover` (the default) while you point at the row or
 reach it with the keyboard, `always` all the time, dimmed until you point at
 the row. Everything they do is also in the row's right-click menu.
+
+`note-lines` sets how many lines of a reminder's notes show under it in the
+lists, in the GNOME app and the terminal client, with `…` when there are more
+(`note-lines=2`). `0`, or leaving it out, shows them all. Details always shows
+the whole note.
 
 **Sidebar groups.** The sidebar has the smart lists, your lists and tags.
 Your lists are one group per [source](#sources): with one source it's

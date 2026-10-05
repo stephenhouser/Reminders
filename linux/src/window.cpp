@@ -132,6 +132,12 @@ void Window::reload_settings() {
 	show_key_numbers_ = key_numbers_override_.value_or(
 		rem::load_bool_setting("show-key-numbers"));
 	apply_row_buttons();
+	if (auto lines = rem::load_note_lines(); lines != note_lines_) {
+		note_lines_ = lines;
+		if (store_) {
+			rebuild_content();
+		}
+	}
 	if (sidebar_) {
 		sidebar_->reload();
 	}

@@ -53,10 +53,11 @@ std::vector<Line> Tui::lines() {
 		line.done = r.done;
 		line.overdue = term::is_overdue(r, today);
 		out.push_back(std::move(line));
-		for (std::size_t s = 0; !r.notes.empty();) {
-			auto nl = r.notes.find('\n', s);
+		auto notes = rem::first_lines(r.notes, note_lines_);
+		for (std::size_t s = 0; !notes.empty();) {
+			auto nl = notes.find('\n', s);
 			out.push_back(
-				{Line::Note, "", r.notes.substr(s, nl - s), "", depth + 2});
+				{Line::Note, "", notes.substr(s, nl - s), "", depth + 2});
 			if (nl == std::string::npos) {
 				break;
 			}
