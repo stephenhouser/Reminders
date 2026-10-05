@@ -1,6 +1,8 @@
 // The settings file, shared by every front end on a device (GUI, CLI, TUI):
 // reading and writing its keys and sections, keeping every other line as it
-// was; and the device's name for its per-device state folders. What the
+// was; and the device's name for its per-device state folders. The parsed
+// file is kept in memory and read again when it changes on disk (a stat() per
+// call). What the
 // apps keep in it about the sidebar is in app/ preferences.hpp; sources'
 // sections are read by sources.hpp.
 #pragma once

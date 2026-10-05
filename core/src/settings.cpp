@@ -1,5 +1,6 @@
 #include "reminders/settings.hpp"
 
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -7,6 +8,7 @@
 #include <cstdint>
 #include <format>
 #include <fstream>
+#include <mutex>
 #include <vector>
 
 #include "reminders/paths.hpp"
@@ -25,6 +27,58 @@ std::vector<std::string> read_lines(const fs::path& p) {
 		lines.push_back(line);
 	}
 	return lines;
+}
+
+// The settings file's lines, kept between calls. A read checks the file's
+// identity (device, inode, size, change time) and reads it again only when
+// that changed: an edit by hand, or a save by another app (saves replace the
+// file, so its inode changes). A missing file is no lines.
+struct Stamp {
+		dev_t dev = 0;
+		ino_t ino = 0;
+		off_t size = -1;
+		timespec mtime{};
+
+		bool operator==(const Stamp& o) const {
+			return dev == o.dev && ino == o.ino && size == o.size &&
+				   mtime.tv_sec == o.mtime.tv_sec &&
+				   mtime.tv_nsec == o.mtime.tv_nsec;
+		}
+};
+
+Stamp stamp_of(const fs::path& p) {
+	struct stat st{};
+	if (stat(p.c_str(), &st) != 0) {
+		return {};
+	}
+	return {st.st_dev, st.st_ino, st.st_size, st.st_mtim};
+}
+
+struct Cache {
+		std::mutex mutex;
+		fs::path path;	// the file it holds (XDG_CONFIG_HOME can change)
+		Stamp stamp;
+		bool loaded = false;
+		std::vector<std::string> lines;
+};
+
+Cache& cache() {
+	static Cache c;
+	return c;
+}
+
+// The file's lines, from the cache when the file hasn't changed.
+std::vector<std::string> settings_lines(const fs::path& p) {
+	auto& c = cache();
+	std::lock_guard lock(c.mutex);
+	auto now = stamp_of(p);
+	if (!c.loaded || c.path != p || !(c.stamp == now)) {
+		c.lines = read_lines(p);
+		c.path = p;
+		c.stamp = now;
+		c.loaded = true;
+	}
+	return c.lines;
 }
 
 std::string trimmed(std::string_view s) {
@@ -85,7 +139,7 @@ void save_setting(const std::string& key, const std::string& value) {
 
 std::string load_section_setting(const std::string& section,
 								 const std::string& key) {
-	auto lines = read_lines(settings_file());
+	auto lines = settings_lines(settings_file());
 	auto f = find_key(lines, section, key);
 	if (!f.line) {
 		return {};
@@ -98,7 +152,7 @@ std::vector<std::pair<std::string, std::string>> section_settings(
 	const std::string& section) {
 	std::vector<std::pair<std::string, std::string>> out;
 	bool in = false;
-	for (auto& l : read_lines(settings_file())) {
+	for (auto& l : settings_lines(settings_file())) {
 		auto t = trimmed(l);
 		if (t.size() > 2 && t.front() == '[' && t.back() == ']') {
 			in = t.substr(1, t.size() - 2) == section;
@@ -117,7 +171,7 @@ std::vector<std::pair<std::string, std::string>> section_settings(
 
 std::vector<std::string> section_names() {
 	std::vector<std::string> out;
-	for (auto& l : read_lines(settings_file())) {
+	for (auto& l : settings_lines(settings_file())) {
 		auto t = trimmed(l);
 		if (t.size() > 2 && t.front() == '[' && t.back() == ']') {
 			auto name = t.substr(1, t.size() - 2);
@@ -141,6 +195,12 @@ void write_lines(const fs::path& file, const std::vector<std::string>& lines) {
 		}
 	}
 	fs::rename(tmp, file);
+	auto& c = cache();
+	std::lock_guard lock(c.mutex);
+	c.path = file;
+	c.stamp = stamp_of(file);
+	c.lines = lines;
+	c.loaded = true;
 }
 
 }  // namespace
@@ -149,7 +209,7 @@ void remove_section(const std::string& section) {
 	auto file = settings_file();
 	std::vector<std::string> kept;
 	bool in_section = false;
-	for (auto& l : read_lines(file)) {
+	for (auto& l : settings_lines(file)) {
 		auto t = trimmed(l);
 		if (t.starts_with('[')) {
 			in_section = t == "[" + section + "]";
@@ -168,7 +228,7 @@ void remove_section(const std::string& section) {
 void save_section_setting(const std::string& section, const std::string& key,
 						  const std::string& value) {
 	auto file = settings_file();
-	auto lines = read_lines(file);
+	auto lines = settings_lines(file);
 	auto f = find_key(lines, section, key);
 	auto entry = key + "=" + value;
 	if (f.line) {

@@ -719,6 +719,18 @@ Done so far:
     the preferences part to app/tests/preferences_test.cpp.
   - Checked: 8/8 suites, format-check, the local-only build, GUI screenshot
     identical to stage 4's, TUI sidebar with key numbers.
+- **Settings caching** (2026-10-04, stage 5's option (b), at the user's
+  request): core settings.cpp keeps the file's lines in memory (one static
+  cache, mutex-guarded for the sync thread), keyed by path (so a changed
+  XDG_CONFIG_HOME is another file). Each call stat()s the file and reads it
+  again when device, inode, size or mtime (ns) differ: hand edits, and
+  other apps' saves (write_lines renames a temp file in, so the inode
+  changes). Our own saves put their lines straight into the cache. Not
+  caught: an in-place edit of the same size within the same mtime tick
+  (coarse-timestamp filesystems only). `reminders list` opened
+  settings.ini 6 times, now once. Test settings_cache_sees_changes_on_disk
+  (rename in, in-place edit, save, delete, another XDG_CONFIG_HOME); GUI
+  screenshot with row-buttons / note-lines settings applied.
 
 - **GUI flag button** (2026-10-04): the row's flag is a flat circular
   button (reminder_row.cpp): flagged → `flag-icon` (orange, always shown),
@@ -813,9 +825,6 @@ install). Update it whenever these change (user's requests 2026-10-04).
 - **TUI import key**: a key (the user suggested `I`) for the CLI's import
   into the list or source showing, as the GNOME app's ☰ → Import…; core
   read_import / import_into already do the work. Asked for 2026-10-04.
-- **Settings caching** (stage 5's option (b), deferred by the user): keep
-  the parsed settings file in memory in core settings.cpp and reload it when
-  its mtime changes, instead of reading it on every call.
 - **Query language**, SQL-like, for the CLI (`reminders query "…"`) and for
   defining your own smart lists (saved queries in the sidebar). Wanted by the
   user 2026-10-02; design not started.
