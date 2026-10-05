@@ -731,6 +731,18 @@ Done so far:
   settings.ini 6 times, now once. Test settings_cache_sees_changes_on_disk
   (rename in, in-place edit, save, delete, another XDG_CONFIG_HOME); GUI
   screenshot with row-buttons / note-lines settings applied.
+- **TUI sync keys** (2026-10-04, user's request): `s` syncs the selected
+  source (Tui::selected_source(): the selected sidebar entry's source
+  group, else the list showing's, else the default; N uses it too) through
+  SyncRunner::sync_now(source), or says "“X” isn't synced by the app";
+  `S` syncs every source (sync_now()), or "No sources the app syncs".
+  Edit settings moved from S to Ctrl+S (19; IXON is already off; prompts
+  keep Ctrl+S as accept). `sync_asked_` (time of the request): check_sync
+  shows "Synced" once the runner is idle with a last_sync after it (the
+  runner holds its lock between due jobs, so idle means all done), or the
+  error, which clears it. Help box, TERMINAL.md. Tested in tmux with a
+  local and a git source (file remote): s on a git list (both panes), on a
+  local list, on a smart list (default source), S, Ctrl+S.
 
 - **GUI flag button** (2026-10-04): the row's flag is a flat circular
   button (reminder_row.cpp): flagged → `flag-icon` (orange, always shown),
@@ -818,10 +830,6 @@ install). Update it whenever these change (user's requests 2026-10-04).
   without asking.
 - **KDE variant** (possible): a native Qt/Kirigami client for Plasma beside
   the GNOME one, on the same core library. Not decided; added 2026-10-03.
-- **TUI sync keys**: a key to sync the selected source (as the GNOME app's
-  Sync Now on a source heading) and one to sync every source (☰ → Sync
-  All). Only for sources the app syncs (CalDAV, WebDAV, git); uses
-  SyncRunner::sync_now(source) / sync_now(). Asked for 2026-10-04.
 - **TUI import key**: a key (the user suggested `I`) for the CLI's import
   into the list or source showing, as the GNOME app's ☰ → Import…; core
   read_import / import_into already do the work. Asked for 2026-10-04.

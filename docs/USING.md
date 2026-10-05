@@ -460,7 +460,7 @@ the local copy).
 client. Most of it is filled in for you; `show-key-numbers` is only set here.
 In the app, **main menu → Settings…** opens it in your default text editor
 (creating it if needed), and changes apply as soon as you save. In the
-terminal client, `S` opens it in your editor and applies the changes when you
+terminal client, `Ctrl+S` opens it in your editor and applies the changes when you
 quit the editor.
 [settings.example.ini](settings.example.ini) lists every setting with its
 default, ready to copy. Settings go under the `[general]` line, except

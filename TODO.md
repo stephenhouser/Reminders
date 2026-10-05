@@ -3,7 +3,6 @@
 ## Features
 
 - Query language, for the CLI and for saved smart lists.
-- TUI: a key to sync the selected source, and one to sync all sources.
 - TUI: a key to import into the list showing, perhaps I.
 
 ## Known gaps

@@ -19,13 +19,30 @@
 #include "../editfile.hpp"
 #include "../text.hpp"
 #include "internal.hpp"
+#include "reminders/backend_module.hpp"
 #include "reminders/dates.hpp"
 #include "reminders/format.hpp"
 #include "reminders/history.hpp"
 #include "reminders/settings.hpp"
+#include "reminders/sources.hpp"
 #include "reminders/sync_runner.hpp"
 
 namespace tui {
+
+std::string Tui::selected_source() {
+	auto entries = sidebar();
+	if (!focus_items_ && side_sel_ >= 0 &&
+		side_sel_ < static_cast<int>(entries.size()) &&
+		entries[static_cast<std::size_t>(side_sel_)].group.kind ==
+			rem::SidebarGroup::Lists) {
+		return entries[static_cast<std::size_t>(side_sel_)].group.source;
+	}
+	if (auto* l =
+			view_.kind == View::List ? store_.list(view_.name) : nullptr) {
+		return store_.source_of(*l)->config.name;
+	}
+	return store_.default_source();
+}
 
 bool Tui::handle_key(wint_t key, bool fn, bool alt) {
 	message_.clear();
@@ -120,6 +137,9 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
 					// It just won't be remembered.
 				}
 				return true;
+			case 19:  // Ctrl+S: edit settings.ini
+				edit_settings();
+				return true;
 		}
 	}
 
@@ -159,8 +179,37 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
 			case 'c':
 				show_completed_ = !show_completed_;
 				return true;
-			case 'S':
-				edit_settings();
+			case 's':
+				{  // sync the selected source now (Sync Now in the app)
+					auto name = selected_source();
+					const rem::SourceConfig* config = nullptr;
+					for (auto& src : store_.sources()) {
+						if (src.config.name == name) {
+							config = &src.config;
+						}
+					}
+					if (!config) {
+						return true;
+					}
+					auto title = rem::source_title(*config);
+					if (!sync_ || !rem::syncs(*config)) {
+						message_ =
+							std::format("“{}” isn't synced by the app", title);
+						return true;
+					}
+					sync_->sync_now(name);
+					sync_asked_ = std::chrono::system_clock::now();
+					message_ = std::format("Syncing “{}”…", title);
+					return true;
+				}
+			case 'S':  // sync every source now (Sync All in the app)
+				if (!sync_ || !sync_->active()) {
+					message_ = "No sources the app syncs";
+					return true;
+				}
+				sync_->sync_now();
+				sync_asked_ = std::chrono::system_clock::now();
+				message_ = "Syncing all sources…";
 				return true;
 			case 'H':
 				toggle_show_hidden();
@@ -223,19 +272,7 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
 				// one.
 				if (auto name = prompt("New list name:");
 					name && !name->empty()) {
-					auto source = store_.default_source();
-					auto entries = sidebar();
-					if (!focus_items_ && side_sel_ >= 0 &&
-						side_sel_ < static_cast<int>(entries.size()) &&
-						entries[static_cast<std::size_t>(side_sel_)]
-								.group.kind == rem::SidebarGroup::Lists) {
-						source = entries[static_cast<std::size_t>(side_sel_)]
-									 .group.source;
-					} else if (auto* l = view_.kind == View::List
-										   ? store_.list(view_.name)
-										   : nullptr) {
-						source = store_.source_of(*l)->config.name;
-					}
+					auto source = selected_source();
 					if (store_.list(rem::Library::key(source, *name))) {
 						message_ = "A list with that name already exists";
 					} else {

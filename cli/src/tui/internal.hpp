@@ -99,6 +99,11 @@ class Tui {
 		std::unique_ptr<rem::SyncRunner>
 			sync_;	// CalDAV and WebDAV sources, in the background
 		void check_sync();
+		// When s / S asked for a sync, until it's done ("Synced" then).
+		std::optional<std::chrono::system_clock::time_point> sync_asked_;
+		// The source the selection is in: the selected sidebar group's,
+		// else the list showing's, else the default source.
+		std::string selected_source();
 		bool remember_;
 		rem::History history_;
 		View view_;

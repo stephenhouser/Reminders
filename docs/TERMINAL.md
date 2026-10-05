@@ -35,7 +35,8 @@ around each command: before it runs, and after one that changes something.
 `--offline` skips that and works on the local copy. `reminders sync [SOURCE]`
 syncs now and says what changed. The interactive interface syncs in the
 background (on start, every `interval=` minutes, and shortly after a change)
-and shows any problem at the bottom of the screen.
+and shows any problem at the bottom of the screen; `s` syncs the selected
+source now and `S` every source, showing "Synced" when done.
 
 ## Commands
 
@@ -218,7 +219,9 @@ within a second.
 | c | Show / hide completed |
 | J / K, Alt+↓ / Alt+↑ | In the sidebar: move the selected smart list, list or tag down / up in its group (on a heading: the group) |
 | Alt+Shift+↓ / Alt+Shift+↑ | In the sidebar: move the selected entry's group down / up |
-| S | Edit the settings file in your editor (applied when you quit it) |
+| s | Sync the selected source now: the selected list's, else the list showing's, else the default source (CalDAV, WebDAV and git sources; like Sync Now in the app) |
+| S | Sync every source now (like ☰ → Sync All in the app) |
+| Ctrl+S | Edit the settings file in your editor (applied when you quit it) |
 | h | Hide the selected list, smart list or tag from the sidebar; on a hidden one, show it again |
 | H | Show / stop showing hidden lists, smart lists and tags (dimmed), like the app's Show Hidden Lists |
 | N | New list |

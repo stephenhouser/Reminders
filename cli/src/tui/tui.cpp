@@ -35,6 +35,11 @@ void Tui::check_sync() {
 	auto status = sync_->take_status();
 	if (!status.errors.empty()) {
 		message_ = "Sync: " + status.errors.back();
+		sync_asked_.reset();
+	} else if (sync_asked_ && !status.syncing && status.last_sync &&
+			   *status.last_sync > *sync_asked_) {
+		message_ = "Synced";
+		sync_asked_.reset();
 	}
 }
 
