@@ -102,9 +102,9 @@ url=git@github.com:me/notes.git
 |---|---|
 | `syncthing` | The folder is synced by Syncthing; conflict copies are merged (below). Picked automatically for a folder inside a Syncthing folder (one with `.stfolder`). |
 | `local` | Just the folder: files are read and written as they are. Outside edits still show up live. |
-| `caldav` | Task lists on a CalDAV server, one calendar per list. A local copy (Markdown, like the others) is merged three-way with the server's tasks on start, every few minutes and after each change. Properties the app doesn't use are kept. See [CalDAV accounts](docs/USING.md#caldav-accounts). |
-| `webdav` | List files in a folder on a WebDAV server (Nextcloud, ownCloud, a NAS, …), as they are. A local copy is synced file by file: ETag-conditional writes, a three-way merge when both sides changed, renames sent as MOVE. See [WebDAV folders](docs/USING.md#webdav-folders). |
-| `git` | A folder in a git repository: changed lists are committed, then pulled and pushed with the remote by running `git` (so SSH keys and credential helpers work). A list changed on both sides is merged reminder by reminder, not line by line. See [Git repositories](docs/USING.md#git-repositories). |
+| `caldav` | Task lists on a CalDAV server, one calendar per list. A local copy (Markdown, like the others) is merged three-way with the server's tasks on start, every few minutes and after each change. Properties the app doesn't use are kept. See [CalDAV accounts](backends/caldav/README.md). |
+| `webdav` | List files in a folder on a WebDAV server (Nextcloud, ownCloud, a NAS, …), as they are. A local copy is synced file by file: ETag-conditional writes, a three-way merge when both sides changed, renames sent as MOVE. See [WebDAV folders](backends/webdav/README.md). |
+| `git` | A folder in a git repository: changed lists are committed, then pulled and pushed with the remote by running `git` (so SSH keys and credential helpers work). A list changed on both sides is merged reminder by reminder, not line by line. See [Git repositories](backends/git/README.md). |
 
 Lists are named `source/name` where a name alone would be ambiguous (in
 settings, the CLI and the quick switcher).
@@ -141,9 +141,11 @@ Details: [docs/FORMAT.md](docs/FORMAT.md).
 | Debian / Ubuntu (untested; needs a release with GTK 4.20 and libadwaita 1.8) | `sudo apt install g++ cmake ninja-build libgtk-4-dev libadwaita-1-dev libglib2.0-dev-bin libncurses-dev libcurl4-openssl-dev libxml2-dev` |
 
 Each client can be left out: `-DBUILD_GNOME_APP=OFF` builds without GTK, and
-`-DBUILD_TERMINAL_APP=OFF` without ncurses. `-DBUILD_NETWORK=OFF` leaves out
-CalDAV and WebDAV (and libcurl and libxml2). The core library alone needs only a
-C++23 compiler and CMake.
+`-DBUILD_TERMINAL_APP=OFF` without ncurses. Each back end has its own option,
+all on by default: `-DBUILD_BACKEND_SYNCTHING`, `_LOCAL`, `_CALDAV`, `_WEBDAV`
+and `_GIT`. With CalDAV and WebDAV both off, libcurl and libxml2 aren't needed.
+A source naming a back end that isn't built opens as a plain local folder. The
+core library alone needs only a C++23 compiler and CMake.
 
 ### Build, test, run
 
@@ -152,7 +154,9 @@ cmake -S . -B build -G Ninja
 cmake --build build
 ctest --test-dir build            # all the tests (or run them one by one:)
 ./build/core/core_tests          # 136 tests for the core library (core_tests NAME runs the matching ones)
-./build/net/net_tests net/tests/fake_dav.py   # CalDAV and WebDAV against a fake server; git against local repositories
+./build/app/app_tests            # the layer the two apps share
+./build/backends/caldav_tests    # each back end's own tests (syncthing_, webdav_, git_tests, …);
+./build/backends/caldav_server_tests backends/common/tests/fake_dav.py   # the *_server_tests use a fake server
 ./build/linux/Reminders          # the GNOME app (or: ./build/linux/Reminders ~/Sync/Reminders)
 ./build/cli/reminders --help     # the terminal client
 ```
@@ -190,11 +194,13 @@ docs/
   USING.md             User guide for the GNOME app
   TERMINAL.md          Guide to the terminal client (CLI and TUI)
 core/                  Platform-neutral C++23 library (standard library only)
-  include/reminders/   model, format, merge, recurrence, store, library, backend, sources, caldav, webdav, …
+  include/reminders/   model, format, merge, recurrence, store, library, backend registry, sources, …
   src/
   tests/               Unit tests with a tiny built-in harness (no dependencies)
-net/                   CalDAV and WebDAV over HTTP (libcurl, libxml2) and background syncing
-  tests/               Tests against fake_dav.py, a small CalDAV and WebDAV server in Python
+app/                   What the two apps share: views, selection, actions on reminders, the sidebar's model
+backends/              One module per back end, each with its code, tests and README.md
+  common/              WebDAV/CalDAV HTTP (libcurl, libxml2), server settings, fake_dav.py test server
+  local/  syncthing/  caldav/  webdav/  git/
 linux/                 The GNOME client
   src/                 main, window, dialogs, support, gtk_util (RAII + signal helpers)
   data/                style.css, icons, .desktop file, GResource manifest
@@ -213,29 +219,37 @@ INSTRUCTIONS.md        The original brief, and how to recreate this project
 | `store.hpp` | One source's folder: loading, saving, conflict handling, list detection, smart-list queries |
 | `library.hpp` | Every source open at once: lists keyed `source/name`, smart lists, tags and search across sources, moves between them |
 | `sources.hpp` | The `[source.NAME]` sections of settings: loading, saving, the default source, opening one |
-| `backend.hpp` | Back ends (`syncthing`, `local`, `caldav`, `webdav`): what each adds to plain loading and saving |
-| `caldav.hpp` | CalDAV syncing: pull, three-way merge with local edits, push; the server behind a `Remote` interface |
-| `webdav.hpp` | WebDAV syncing, file by file: ETag-conditional writes, three-way merges, renames and deletions; the server behind a `FileRemote` interface |
+| `backend.hpp` | `Backend`: what a back end adds to plain loading and saving; the plain local folder |
+| `backend_module.hpp` | The registry of back ends by string id: title, settings fields, detection, sync, erase notes |
+| `sync_runner.hpp` | `sync_source()`, and background syncing for the apps: on start, every `interval=` minutes, and shortly after a list file changes |
 | `ical.hpp` | iCalendar components and properties, kept close to the text so unknown properties survive |
 | `vtodo.hpp` | VTODO ↔ reminder, changing only the properties whose meaning changed |
 | `importer.hpp` | Importing reminders from `.ics`, Markdown, todo.txt, CSV or plain text files, telling them apart (ids kept, so importing again skips what's there) |
 | `exporter.hpp` | Exporting a list, or every list into a folder, in those formats, in forms the importer reads back |
 | `history.hpp` | Undo/redo as before/after snapshots of list files, merging around changes from other devices |
-| `syncthing.hpp` | Syncthing sources' per-device state location and the `.stignore` entry |
 | `paths.hpp` | The XDG base directories (config, data, state, cache), and `~` / `$VAR` in paths from settings |
 | `settings.hpp` | `$XDG_CONFIG_HOME/reminders/settings.ini`, shared by all clients, sidebar layout, and the device name |
 | `clipboard.hpp` | Copying and pasting reminders as text |
 | `dates.hpp` | Local date, typed dates (`tomorrow`, `fri`, `+3d`), relative labels (`Tomorrow`, `Oct 3`) |
 
-### CalDAV, WebDAV and git (`net/`)
+### Back ends (`backends/`)
 
-| Header | Purpose |
-|---|---|
-| `caldav_client.hpp` | The `Remote` over HTTP: finding the calendars, listing, fetching and storing tasks, making calendars |
-| `webdav_client.hpp` | The `FileRemote` over HTTP: PROPFIND, GET, PUT, DELETE and MOVE on the folder's files, made if missing |
-| `git_sync.hpp` | Git sources: commit, fetch, merge (list files by the app's merge), push, by running `git` |
-| `server_sync.hpp` | `sync_source()` for any of the three; `password-command=` |
-| `sync_runner.hpp` | Background syncing for the apps: on start, every `interval=` minutes, and shortly after a list file changes |
+Each is a library with a `register_<id>_backend()` that adds it to the
+registry; the build generates `register_backends()`, which the apps call at
+start, from the back ends turned on. Nothing outside a back end's folder
+names it.
+
+| Module | Headers | Purpose |
+|---|---|---|
+| `local` | | The plain folder |
+| `syncthing` | `syncthing.hpp` | Conflict copies, per-device state in the folder, the `.stignore` entry |
+| `common` | `dav.hpp`, `dav_source.hpp` | HTTP and multistatus for WebDAV and CalDAV; `url=`, `username=`, `password-command=` |
+| `caldav` | `caldav.hpp`, `caldav_client.hpp` | Pull, three-way merge, push, behind a `Remote`; the `Remote` over HTTP |
+| `webdav` | `webdav.hpp`, `webdav_client.hpp` | File-by-file sync with ETag-conditional writes, behind a `FileRemote`; that over HTTP |
+| `git` | `git_sync.hpp` | Commit, fetch, merge (list files by the app's merge), push, by running `git` |
+
+A new back end is a folder here with a `CMakeLists` entry, a
+`register_<id>_backend()`, and a README.md.
 
 ### The GNOME client
 

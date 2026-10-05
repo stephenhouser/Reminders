@@ -67,39 +67,8 @@ struct SourceConfig {
 		std::string option(const std::string& key) const;
 };
 
-// A CalDAV or WebDAV source's server settings, from its options.
-struct DavSettings {
-		std::string url;  // CalDAV: the server, or its calendar home; WebDAV:
-						  // the folder
-		std::string username;
-		std::string password_command;  // run by the shell; the first line it
-									   // prints is the password
-		int interval = 15;			   // minutes between syncs
-
-		bool operator==(const DavSettings&) const = default;
-};
-DavSettings dav_settings(const SourceConfig& source);
-void set_dav_settings(SourceConfig& source, const DavSettings& settings);
-
-// A git source's settings, from its options. Signing in is git's business
-// (SSH keys, a credential helper), as on the command line.
-struct GitSettings {
-		std::string url;  // to clone from (or push to) when the folder isn't a
-						  // repository yet
-		std::string remote;	 // empty: origin
-		std::string branch;	 // empty: the branch checked out
-		int interval = 15;	 // minutes between syncs
-
-		bool operator==(const GitSettings&) const = default;
-};
-GitSettings git_settings(const SourceConfig& source);
-void set_git_settings(SourceConfig& source, const GitSettings& settings);
-
 // Minutes between a source's syncs: interval=, else 15.
 int sync_interval(const SourceConfig& source);
-
-// Whether `folder` is in a git working tree (a .git at or above it).
-bool in_git_repo(const fs::path& folder);
 
 // Where a CalDAV or WebDAV source keeps its local copy, and a git source
 // its clone, unless folder= says otherwise:

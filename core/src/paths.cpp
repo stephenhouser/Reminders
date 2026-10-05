@@ -101,4 +101,8 @@ std::string contract_path(const fs::path& path) {
 	return "~/" + rel.string();
 }
 
+fs::path state_dir(const fs::path& folder, const std::string& device) {
+	return folder / kStateDirName / device;
+}
+
 }  // namespace rem

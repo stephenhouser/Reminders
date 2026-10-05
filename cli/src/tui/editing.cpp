@@ -16,16 +16,14 @@
 #include <string>
 #include <vector>
 
+#include "../editfile.hpp"
+#include "../text.hpp"
 #include "internal.hpp"
 #include "reminders/dates.hpp"
 #include "reminders/format.hpp"
 #include "reminders/history.hpp"
 #include "reminders/settings.hpp"
-#ifdef REMINDERS_NETWORK
 #include "reminders/sync_runner.hpp"
-#endif
-#include "../editfile.hpp"
-#include "../text.hpp"
 
 namespace tui {
 

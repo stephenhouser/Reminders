@@ -5,24 +5,24 @@ add_library(reminders_core
   src/merge.cpp
   src/store.cpp
   src/history.cpp
-  src/syncthing.cpp
   src/settings.cpp
   src/dates.cpp
   src/clipboard.cpp
   src/backend.cpp
   src/backend_module.cpp
+  src/sync_runner.cpp
   src/sources.cpp
   src/library.cpp
   src/ical.cpp
   src/vtodo.cpp
-  src/caldav.cpp
-  src/webdav.cpp
   src/importer.cpp
   src/exporter.cpp
   src/zip.cpp
   src/paths.cpp
 )
 target_include_directories(reminders_core PUBLIC include)
+find_package(Threads REQUIRED)
+target_link_libraries(reminders_core PUBLIC Threads::Threads)  # SyncRunner
 # zlib compresses exported .zip archives; without it they're stored as is.
 find_package(ZLIB)
 if(ZLIB_FOUND)
@@ -37,14 +37,11 @@ add_executable(core_tests
   tests/merge_test.cpp
   tests/store_test.cpp
   tests/history_test.cpp
-  tests/syncthing_test.cpp
   tests/dates_test.cpp
   tests/clipboard_test.cpp
   tests/sources_test.cpp
   tests/library_test.cpp
   tests/vtodo_test.cpp
-  tests/caldav_test.cpp
-  tests/webdav_test.cpp
   tests/importer_test.cpp
   tests/exporter_test.cpp
   tests/paths_test.cpp

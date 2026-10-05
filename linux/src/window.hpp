@@ -12,9 +12,6 @@
 #include <string>
 
 #include "gtk_util.hpp"
-#ifdef REMINDERS_NETWORK
-#include "reminders/sync_runner.hpp"
-#endif
 #include "reminders/clipboard.hpp"
 #include "reminders/history.hpp"
 #include "reminders/importer.hpp"
@@ -22,6 +19,7 @@
 #include "reminders/selection.hpp"
 #include "reminders/settings.hpp"
 #include "reminders/sidebar.hpp"
+#include "reminders/sync_runner.hpp"
 #include "reminders/view.hpp"
 
 namespace ui {
@@ -287,13 +285,11 @@ class Window {
 		GSimpleAction* show_completed_action_ = nullptr;
 
 		std::unique_ptr<rem::Library> store_;  // every source
-#ifdef REMINDERS_NETWORK
 		std::unique_ptr<rem::SyncRunner>
 			sync_;	// CalDAV and WebDAV sources, synced in the background;
 					// before store_ goes
 		guint sync_timer_ = 0;	// shows its errors
 		std::string last_sync_error_;
-#endif
 		void start_sync();
 		void stop_sync();
 		GSimpleAction* sync_action_ =

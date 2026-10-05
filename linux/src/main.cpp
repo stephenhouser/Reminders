@@ -7,11 +7,9 @@
 #include <vector>
 
 #include "gtk_util.hpp"
+#include "reminders/backend_module.hpp"
 #include "support.hpp"
 #include "window.hpp"
-#ifdef REMINDERS_NETWORK
-#include "reminders/server_sync.hpp"
-#endif
 
 namespace {
 
@@ -212,9 +210,7 @@ int handle_command_line(AdwApplication* app, GApplicationCommandLine* cmd) {
 }
 
 int main(int argc, char** argv) {
-#ifdef REMINDERS_NETWORK
-	rem::register_network_backends();  // caldav, webdav and git sync
-#endif
+	rem::register_backends();  // the back ends built in
 	g_set_application_name("Reminders");
 	auto* app =
 		adw_application_new(ui::kAppId, G_APPLICATION_HANDLES_COMMAND_LINE);

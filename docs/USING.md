@@ -427,24 +427,10 @@ order: 1                  ← optional position in the sidebar
 
 ## Sync, conflicts and what's in the folder
 
-```
-Groceries.md                      ← a list (synced)
-.reminders/<this-computer>/       ← this computer's working state (not synced)
-```
-
-- **Conflicts:** if two devices change the same list before syncing, Syncthing
-  saves a `Groceries.sync-conflict-….md` copy. Reminders merges it into
-  `Groceries.md` and deletes it:
-  - Changes to different reminders, or to different fields of one reminder,
-    are all kept.
-  - If both devices changed the same field, the version Syncthing kept as
-    `Groceries.md` wins.
-- **`.reminders/`** holds, for each list, the last version received from
-  another device (the starting point for merges) and a fingerprint of this
-  computer's last save. Reminders adds `(?d).reminders` to the `.stignore` at
-  the root of your Syncthing folder so that it isn't synced.
-- **Deleting a list** moves its file to the Trash on that computer, and
-  Syncthing deletes it on the others.
+Syncing is up to the source's back end. For a Syncthing folder, Reminders
+merges the conflict copies Syncthing makes and keeps its records in
+`.reminders/` (kept out of the sync); see [the Syncthing back end](../backends/syncthing/README.md).
+Server back ends merge with the server instead; see the pages linked from [Sources](#sources).
 
 ## Where files are kept
 
@@ -631,22 +617,22 @@ folder as `~/…`, so the file works on another computer with a different home.
 
 | Back end | What it does |
 |---|---|
-| `syncthing` | The folder is synced by Syncthing. Conflict copies are merged; per-device records live in `<folder>/.reminders/`, which `.stignore` keeps out of the sync. |
-| `local` | Just the folder: list files are read and saved as they are, and changes made by other programs still show up. |
-| `caldav` | Task lists on a CalDAV server (see [CalDAV accounts](#caldav-accounts)). The folder is a local copy, kept in step with the server. |
-| `webdav` | List files in a folder on a WebDAV server (see [WebDAV folders](#webdav-folders)). The folder is a local copy, kept in step with the server's. |
-| `git` | A folder in a git repository (see [Git repositories](#git-repositories)). Changed lists are committed, and pulled and pushed with the remote. |
+| `syncthing` | The folder is synced by Syncthing. Conflict copies are merged; per-device records live in `<folder>/.reminders/`, which `.stignore` keeps out of the sync (see [Syncthing](../backends/syncthing/README.md)). |
+| `local` | Just the folder: list files are read and saved as they are, and changes made by other programs still show up (see [Local Folder](../backends/local/README.md)). |
+| `caldav` | Task lists on a CalDAV server (see [CalDAV accounts](../backends/caldav/README.md)). The folder is a local copy, kept in step with the server. |
+| `webdav` | List files in a folder on a WebDAV server (see [WebDAV folders](../backends/webdav/README.md)). The folder is a local copy, kept in step with the server's. |
+| `git` | A folder in a git repository (see [Git repositories](../backends/git/README.md)). Changed lists are committed, and pulled and pushed with the remote. |
 
 - **☰ → Sources… → Add Source…** asks for the source's **Name**, its
   **Type** (Syncthing, Local Folder, CalDAV, WebDAV or Git) and its
   **Folder**. Choosing a folder picks the type for you (Syncthing inside a
   Syncthing folder, one with `.stfolder`; Git inside a git repository;
   else Local Folder); you can change it. For Git, a **Repository**
-  section has the rest (see [Git repositories](#git-repositories)). For
+  section has the rest (see [Git repositories](../backends/git/README.md)). For
   CalDAV and WebDAV the folder is the **Local Copy**, which starts out in
   `$XDG_DATA_HOME/reminders/caldav/NAME` (or `webdav/NAME`), and a
   **Server** section asks for the account (see [CalDAV
-  accounts](#caldav-accounts) and [WebDAV folders](#webdav-folders)). The settings
+  accounts](../backends/caldav/README.md) and [WebDAV folders](../backends/webdav/README.md)). The settings
   section is named after the Name (`[source.NAME]`, lower case), else the
   server or the folder.
 - **Choose a source in Sources…** for **Source Info…**: the same rows, its
@@ -688,150 +674,12 @@ folder as `~/…`, so the file works on another computer with a different home.
   longer read. Add the folder again with ☰ → Sources… → Add Source… (or
   `reminders folder PATH`), or write the section above by hand.
 
-### CalDAV accounts
+### CalDAV, WebDAV and Git
 
-A CalDAV source shows the task lists of an account on a CalDAV server
-(Nextcloud, Fastmail, Radicale, iCloud with an app-specific password, …):
-each of its task lists is a list here, and each list made here becomes a task
-list there. Add one with ☰ → Sources… → **Add Source…**, Type **CalDAV**, or by hand:
-
-```ini
-[source.fastmail]
-backend=caldav
-url=https://caldav.fastmail.com/
-username=you@fastmail.com
-password-command=secret-tool lookup service reminders-caldav
-interval=15
-title=Fastmail
-```
-
-- **`url=`** is the server's address. The app finds the calendars from it
-  (through `/.well-known/caldav` and your principal), so the server's root
-  usually works; the address of your calendar home works too.
-- **`password-command=`** is a command that prints the password, so it
-  isn't kept in the settings file. For example, store it in the GNOME
-  keyring once with `secret-tool store --label "Reminders CalDAV" service
-  reminders-caldav`, then use the line above; `pass show caldav` works too.
-  Use an app-specific password where the server offers them.
-- **When it syncs:** when the app opens, every `interval=` minutes (default
-  15), and a couple of seconds after you change something. **☰ → Sync All**
-  syncs every source straight away; **Sync Now** in the menu of the source's
-  sidebar heading (right-click it) syncs just that one. Offline changes wait in the local copy until the
-  next sync.
-- **The local copy** is in `$XDG_DATA_HOME/reminders/caldav/NAME/`
-  (`~/.local/share/…` when `$XDG_DATA_HOME` isn't set; `folder=` moves it): one Markdown file per task list, like any other
-  source, which you can open in an editor.
-- **Changes on both sides** are merged reminder by reminder, field by field,
-  as for Syncthing conflicts; when both sides changed the same field, this
-  device's change wins. Properties the app doesn't use (alarms, start
-  dates, other apps' extras) are kept as they are on the server.
-- **Limits:** the order of reminders and their sections are sent to the
-  server (as `X-APPLE-SORT-ORDER` and `X-REMINDERS-SECTION`), but moves made
-  in another app aren't picked up yet. Repeat rules that the app can't
-  express (say, "the first Monday of the month") are kept but not shown.
-  Deleting a list here deletes its task list on the server.
-- **Problems** (wrong password, server unreachable) show as a message at
-  the bottom of the window; the next sync tries again.
-
-### WebDAV folders
-
-A WebDAV source keeps the list files themselves in a folder on a WebDAV
-server: Nextcloud or ownCloud (their Files), a NAS, Apache's mod_dav, and so
-on. Unlike CalDAV nothing is translated, since the files on the server are
-the same Markdown files. Sections, order and notes all come through, and
-every computer running Reminders can use the same folder. Add one with
-☰ → Sources… → **Add Source…**, Type **WebDAV**, or by hand:
-
-```ini
-[source.cloud]
-backend=webdav
-url=https://cloud.example.com/remote.php/dav/files/you/Reminders/
-username=you
-password-command=secret-tool lookup service reminders-webdav
-interval=15
-title=Cloud
-```
-
-- **`url=`** is the folder on the server. For Nextcloud, take the WebDAV
-  address from Files → Files settings (bottom left) and add a folder name.
-  The folder is made on the first sync if it isn't there, but the folder it
-  goes in must exist. Spaces can be written as they are.
-- **`password-command=`** and **`interval=`** work as for CalDAV (above).
-  On Nextcloud, use an app password (Settings → Security).
-- **What syncs:** the folder's `.md` files, not its subfolders. Every file
-  on the server is copied here, and one that isn't a list yet shows up to
-  review, as in any folder. A file made here goes to the server once it's a
-  list.
-- **Changes on both sides** of a list are merged reminder by reminder,
-  field by field, as for Syncthing conflicts. When both changed the same
-  field, this computer's change wins. Each write is conditional on the
-  server's version (its ETag): a change another device made meanwhile is
-  merged at the next sync, never overwritten. A file that isn't a list and
-  changed on both sides can't be merged, so the server's version wins and
-  this computer's is kept beside it as `NAME (this device).md`.
-- **Renaming a list** renames its file on the server. **Deleting a list**
-  deletes it there too, unless it changed there since; then it comes back.
-  A file deleted on the server goes here too, unless it changed here since;
-  then it's sent again.
-- **The local copy** is in `$XDG_DATA_HOME/reminders/webdav/NAME/`
-  (`~/.local/share/…` when `$XDG_DATA_HOME` isn't set; `folder=` moves it).
-- **Problems** show as a message at the bottom of the window; the next sync
-  tries again.
-
-### Git repositories
-
-A git source keeps its lists in a folder of a git repository, such as a
-notes repository you already have, or one made for the purpose on GitHub,
-GitLab, Gitea or your own server. Each list is a file in the repository,
-as in any folder, so the history of every list is in git. Add one with
-☰ → Sources… → **Add Source…**, Type **Git**, or by hand:
-
-```ini
-[source.notes]
-backend=git
-folder=~/notes/todo
-url=git@github.com:you/notes.git
-interval=15
-title=Notes
-```
-
-- **`folder=`** is the folder that holds the lists: the top of a working
-  tree (a clone), a folder in one, or any folder at all. Only the list files
-  directly in it (`*.md`) are committed. Other files in the repository, and
-  the folders under it, are left alone. Without `folder=` (or with no folder
-  chosen in Add Source…) it's `$XDG_DATA_HOME/reminders/git/NAME`
-  (`~/.local/share/…` when `$XDG_DATA_HOME` isn't set).
-- **A folder that isn't in a repository yet** (empty, missing, or already
-  holding lists) becomes one on the first sync: cloned from `url=` when
-  there is one, else a new repository of its own (`git init`), whose
-  commits are your lists' history.
-- **`url=`** (Clone From) is optional: the repository to clone, or to push
-  to. Added to a repository that doesn't have that remote yet (for example
-  one Reminders made), it's added as the remote, and the next sync pulls
-  and pushes.
-- **`remote=`** and **`branch=`** are optional: by default `origin` and
-  the branch checked out.
-- **Signing in** is git's own business. SSH keys and credential helpers
-  work as they do on the command line. Reminders never asks for a password:
-  a sync that needs one fails with git's message. On a server that wants
-  one, set up a key or a credential helper first.
-- **When it syncs:** when the app opens, every `interval=` minutes (default
-  15), and a couple of seconds after you change something; **☰ → Sync
-  All** syncs every source straight away, and **Sync Now** in the menu of
-  the source's sidebar heading (right-click it) just this one. Each sync commits the lists that changed, as
-  "Reminders (this computer): Groceries, Home", then pulls and pushes.
-- **Changes on both sides** of a list are merged by Reminders, reminder by
-  reminder, field by field, as for Syncthing conflicts, not line by line
-  as git would. When both changed the same field, this computer's change
-  wins. A conflict in a file that isn't a list stops the merge (it's
-  undone) and the message names the file: merge it with git.
-- **A repository without a remote** works too: every change is committed,
-  so you get a history of your lists and nothing else. Give it a `url=`
-  (Clone From in Source Info…) later to start pushing.
-- **Removing the source** leaves the folder as it is, even a clone in the
-  default place, since it may hold commits that haven't been pushed, unless
-  you tick **Erase all source data**, which erases the folder from this
-  computer (the remote keeps everything pushed).
+Each back end has its own page: [Syncthing](../backends/syncthing/README.md),
+[Local Folder](../backends/local/README.md), [CalDAV](../backends/caldav/README.md),
+[WebDAV](../backends/webdav/README.md) and [Git](../backends/git/README.md).
+They give the settings each one takes, when it syncs and how it merges.
 
 ## Troubleshooting
 

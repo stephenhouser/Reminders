@@ -1,6 +1,7 @@
 #include "reminders/vtodo.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <charconv>
 #include <format>
@@ -9,6 +10,24 @@
 namespace rem {
 
 namespace {
+
+struct Rgb {
+		std::string_view name;
+		int r, g, b;
+};
+
+// Close to Apple's system colours, which many CalDAV clients use too.
+constexpr std::array<Rgb, 11> kRgb{{{"red", 0xFF, 0x3B, 0x30},
+									{"orange", 0xFF, 0x95, 0x00},
+									{"yellow", 0xFF, 0xCC, 0x00},
+									{"green", 0x34, 0xC7, 0x59},
+									{"cyan", 0x32, 0xAD, 0xE6},
+									{"blue", 0x00, 0x7A, 0xFF},
+									{"indigo", 0x58, 0x56, 0xD6},
+									{"purple", 0xAF, 0x52, 0xDE},
+									{"pink", 0xFF, 0x2D, 0x55},
+									{"brown", 0xA2, 0x84, 0x5E},
+									{"gray", 0x8E, 0x8E, 0x93}}};
 
 using namespace std::chrono;
 
@@ -440,6 +459,43 @@ IcalComponent new_todo_calendar(const Todo& want, sys_seconds now,
 	}
 	cal.children.push_back(std::move(todo));
 	return cal;
+}
+
+std::string color_from_hex(std::string_view hex) {
+	if (hex.starts_with('#')) {
+		hex.remove_prefix(1);
+	}
+	if (hex.size() < 6) {
+		return "";
+	}
+	auto byte = [&](std::size_t at) {
+		return std::stoi(std::string(hex.substr(at, 2)), nullptr, 16);
+	};
+	int r = 0, g = 0, b = 0;
+	try {
+		r = byte(0), g = byte(2), b = byte(4);
+	} catch (const std::exception&) {
+		return "";
+	}
+	auto best = kRgb[0].name;
+	long best_d = -1;
+	for (auto& c : kRgb) {
+		long d = (r - c.r) * (r - c.r) + (g - c.g) * (g - c.g) +
+				 (b - c.b) * (b - c.b);
+		if (best_d < 0 || d < best_d) {
+			best_d = d, best = c.name;
+		}
+	}
+	return std::string(best);
+}
+
+std::string hex_from_color(std::string_view color) {
+	for (auto& c : kRgb) {
+		if (c.name == color) {
+			return std::format("#{:02X}{:02X}{:02X}", c.r, c.g, c.b);
+		}
+	}
+	return "";
 }
 
 }  // namespace rem

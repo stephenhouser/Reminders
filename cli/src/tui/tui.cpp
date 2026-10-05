@@ -16,22 +16,19 @@
 #include <string>
 #include <vector>
 
+#include "../editfile.hpp"
+#include "../text.hpp"
 #include "internal.hpp"
 #include "reminders/dates.hpp"
 #include "reminders/format.hpp"
 #include "reminders/history.hpp"
 #include "reminders/settings.hpp"
-#ifdef REMINDERS_NETWORK
 #include "reminders/sync_runner.hpp"
-#endif
-#include "../editfile.hpp"
-#include "../text.hpp"
 
 namespace tui {
 
 // Shows what went wrong in the last CalDAV and WebDAV syncs, if anything.
 void Tui::check_sync() {
-#ifdef REMINDERS_NETWORK
 	if (!sync_) {
 		return;
 	}
@@ -39,7 +36,6 @@ void Tui::check_sync() {
 	if (!status.errors.empty()) {
 		message_ = "Sync: " + status.errors.back();
 	}
-#endif
 }
 
 // Reloads when files in the folder change (Syncthing, the GUI, an editor).
@@ -104,9 +100,7 @@ int Tui::run() {
 	ctrl_page_up_ = code("kPRV5");
 	setup_colors();
 	check_folder();
-#ifdef REMINDERS_NETWORK
 	sync_ = std::make_unique<rem::SyncRunner>(store_);
-#endif
 	restore_view();
 	if (hide_sidebar_) {
 		focus_items_ =

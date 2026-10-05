@@ -3,9 +3,7 @@
 using namespace cli;
 
 int main(int argc, char** argv) {
-#ifdef REMINDERS_NETWORK
-	rem::register_network_backends();  // caldav, webdav and git sync
-#endif
+	rem::register_backends();  // the back ends built in
 	std::vector<std::string> args(argv + 1, argv + argc);
 	Global g;
 	g.color = isatty(STDOUT_FILENO) && !std::getenv("NO_COLOR");
@@ -110,10 +108,6 @@ int main(int argc, char** argv) {
 				throw std::runtime_error(
 					"no CalDAV, WebDAV or git sources to sync");
 			}
-#ifndef REMINDERS_NETWORK
-			throw std::runtime_error(
-				"this build has no CalDAV, WebDAV or git support");
-#endif
 			return sync_servers(*library, rest.empty() ? "" : rest[0], !g.json)
 					 ? 0
 					 : 1;

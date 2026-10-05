@@ -14,7 +14,6 @@
 #include "reminders/paths.hpp"
 #include "reminders/settings.hpp"
 #include "reminders/sources.hpp"
-#include "reminders/syncthing.hpp"
 #include "support.hpp"
 #include "window_internal.hpp"
 

@@ -55,4 +55,9 @@ std::optional<std::string> rrule_from_repeat(std::string_view repeat);
 // if nothing usable is left.
 std::string tag_from_category(std::string_view category);
 
+// The nearest of the app's colours to "#RRGGBB" (a calendar's colour), and
+// a colour's "#RRGGBB".
+std::string color_from_hex(std::string_view hex);
+std::string hex_from_color(std::string_view color);
+
 }  // namespace rem

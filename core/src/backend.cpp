@@ -3,8 +3,7 @@
 #include <algorithm>
 #include <fstream>
 
-#include "file_util.hpp"
-#include "reminders/syncthing.hpp"
+#include "reminders/file_util.hpp"
 
 namespace rem {
 
@@ -12,106 +11,9 @@ namespace {
 
 using namespace detail;
 
-constexpr std::string_view kConflictMarker = ".sync-conflict-";
-
 class LocalBackend : public Backend {
 	public:
 		std::string_view id() const override { return "local"; }
-};
-
-class SyncthingBackend : public Backend {
-	public:
-		explicit SyncthingBackend(fs::path state_dir)
-			: state_dir_(std::move(state_dir)) {}
-		std::string_view id() const override { return "syncthing"; }
-
-		void prepare(const fs::path& folder) override {
-			ignore_state_in_syncthing(folder);
-		}
-
-		std::optional<std::string> list_name_for(
-			const fs::path& file) const override {
-			auto name = Backend::list_name_for(file);
-			if (!name) {
-				return name;
-			}
-			if (auto at = name->find(kConflictMarker);
-				at != std::string::npos) {
-				name->resize(at);
-			}
-			if (name->empty()) {
-				return std::nullopt;
-			}
-			return name;
-		}
-
-		std::vector<fs::path> conflict_copies(
-			const fs::path& folder, std::string_view name) const override {
-			std::vector<fs::path> out;
-			std::error_code ec;
-			auto prefix = std::string(name) + std::string(kConflictMarker);
-			for (auto& e : fs::directory_iterator(folder, ec)) {
-				auto fname = e.path().filename().string();
-				if (fname.starts_with(prefix) && fname.ends_with(".md")) {
-					out.push_back(e.path());
-				}
-			}
-			std::ranges::sort(out);
-			return out;
-		}
-
-		// Per list, in the per-device state folder:
-		//   base/<list>.md  the last version that came from another device
-		//   (merge base) written/<list>  a fingerprint of the last version this
-		//   device wrote
-		std::optional<std::string> read_base(
-			std::string_view name) const override {
-			return read_file(base_path(name));
-		}
-
-		void write_base(std::string_view name,
-						const std::string& text) const override {
-			fs::create_directories(base_path(name).parent_path());
-			write_atomic(base_path(name), text);
-		}
-
-		void remember_written(std::string_view name,
-							  const std::string& text) const override {
-			fs::create_directories(written_path(name).parent_path());
-			write_atomic(written_path(name), fingerprint(text));
-		}
-
-		bool is_own_write(std::string_view name,
-						  const std::string& text) const override {
-			return read_file(written_path(name)) == fingerprint(text);
-		}
-
-		void move_state(std::string_view from,
-						std::string_view to) const override {
-			std::error_code ec;
-			for (auto [a, b] :
-				 {std::pair{base_path(from), base_path(to)},
-				  std::pair{written_path(from), written_path(to)}}) {
-				if (fs::exists(a, ec)) {
-					fs::rename(a, b, ec);
-				}
-			}
-		}
-
-		void drop_state(std::string_view name) const override {
-			std::error_code ec;
-			fs::remove(base_path(name), ec);
-			fs::remove(written_path(name), ec);
-		}
-
-	private:
-		fs::path state_dir_;
-		fs::path base_path(std::string_view name) const {
-			return state_dir_ / "base" / (std::string(name) + ".md");
-		}
-		fs::path written_path(std::string_view name) const {
-			return state_dir_ / "written" / std::string(name);
-		}
 };
 
 }  // namespace
@@ -161,10 +63,6 @@ void ServerBackend::deleted_by_user(std::string_view name) const {
 
 std::unique_ptr<Backend> make_local_backend() {
 	return std::make_unique<LocalBackend>();
-}
-
-std::unique_ptr<Backend> make_syncthing_backend(fs::path state_dir) {
-	return std::make_unique<SyncthingBackend>(std::move(state_dir));
 }
 
 }  // namespace rem

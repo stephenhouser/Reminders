@@ -530,7 +530,7 @@ settings in a `[source.NAME]` section; later the apps show several at once.
 Bookmark: tag `before-modular-refactor` (c4c8666). User's decisions: string
 back-end ids with a registry (no BackendKind enum in the end), a build option
 per back end, the shared app layer early, each back end's docs moved into
-its module. Each stage ends green (build, core + net tests, clang-format,
+its module. Each stage ends green (build, all ctest suites, clang-format,
 docs and INSTRUCTIONS updated) and is committed by the user before the next.
 
 1. **Split the big UI files by area, no behaviour change.** window.cpp →
@@ -658,6 +658,47 @@ Done so far:
     Add Source form for Git and CalDAV (headless, through gui-test.sh),
     filled in and added, settings.ini as expected; CLI folder / lists /
     sync.
+- **Stage 4** (2026-10-04, bookmark `before-stage-4`): one module per back
+  end; net/ and every REMINDERS_NETWORK / BUILD_NETWORK are gone.
+  - backends/CMakeLists.txt: options BUILD_BACKEND_SYNCTHING / LOCAL /
+    CALDAV / WEBDAV / GIT (all ON); libraries reminders_backend_<id> (+
+    reminders_backend_dav from common/, built when CalDAV or WebDAV is);
+    a generated `register_backends.cpp` (call_once over each
+    `register_<id>_backend()`) in `reminders_backends`, which the apps link
+    and call at the top of main; `backend_tests(name …)` helper; prints
+    "Back ends: …".
+  - Layout: backends/common (dav.hpp, namespace rem::dav: Http,
+    multistatus, URL escaping; dav_source.hpp: DavSettings, dav_settings /
+    set_dav_settings, run_password_command, server_problem /
+    server_name_hint / server_fields; tests/dav_test.hpp +
+    dav_test_main.cpp + fake_dav.py), local (register only), syncthing
+    (SyncthingBackend moved out of core backend.cpp), caldav (caldav.* +
+    caldav_client.*), webdav (webdav.* + webdav_client.*), git (git_sync.*,
+    GitSettings, in_git_repo, repository_name). Each has its README.md.
+  - Core keeps: backend.hpp (Backend, ServerBackend, LocalBackend,
+    make_local_backend), backend_module (registry only; an unregistered id
+    → a plain-files "local" fallback, make_backend falls back to
+    make_local_backend), folder_problem, sync_runner (+ `sync_source`,
+    which goes through backend_of(source).sync), file_util.hpp (now
+    public), state_dir / kStateDirName in paths, colour helpers in vtodo.
+    read_source keeps unknown back-end ids as written (lowercased), so a
+    build without a module doesn't rewrite the settings.
+  - Tests: core_tests, app_tests, syncthing_tests (+ the store's conflict /
+    state tests), caldav_tests, caldav_server_tests, webdav_tests,
+    webdav_server_tests, git_tests. Each registers its own module
+    (`static const bool registered = (register_X_backend(), true);`);
+    core tests needing Syncthing behaviour use
+    core/tests/stand_in_backends.hpp.
+  - Docs: backends/<id>/README.md hold each back end's user guide (from
+    USING.md) and on-disk / server mapping (from FORMAT.md); USING.md,
+    FORMAT.md, TERMINAL.md and README.md link to them. README.md's layout
+    and build sections describe the modules and options.
+  - Checked: 8/8 suites; a build with only syncthing + local (no curl,
+    3 suites) and one with only local (2 suites, sources open as plain
+    folders); CLI new-list / add / sync (git commit made, .stignore
+    written); GUI screenshot through gui-test.sh with three sources.
+  - Tried by the user: Add Source for local, git, a remote git and
+    syncthing all work. CalDAV / WebDAV Add Source and Source Info not yet.
 
 ## Future features (not started)
 
@@ -696,7 +737,8 @@ install). Update it whenever these change (user's requests 2026-10-04).
     settings, the XDG base directories, and sources: several open at once
     (`Library`), each with its own back end (syncthing, local, caldav,
     webdav, git). Unit tests pass (137).
-  - **CalDAV, WebDAV and git back ends** (net/): CalDAV and WebDAV (libcurl
+  - **CalDAV, WebDAV and git back ends** (backends/, was net/ before
+    refactor stage 4): CalDAV and WebDAV (libcurl
     + libxml2) keep a local Markdown copy in step with the server, merged
     three-way; git commits, pulls (list conflicts merged by the app) and
     pushes. Synced on open, every `interval=` minutes and shortly after

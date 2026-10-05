@@ -8,8 +8,7 @@
 #include <set>
 #include <stdexcept>
 
-#include "file_util.hpp"
-#include "reminders/caldav.hpp"
+#include "reminders/file_util.hpp"
 #include "reminders/format.hpp"
 #include "reminders/ical.hpp"
 #include "reminders/recurrence.hpp"

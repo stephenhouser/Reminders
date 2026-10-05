@@ -5,6 +5,7 @@
 
 #include "reminders/settings.hpp"
 #include "reminders/sources.hpp"
+#include "stand_in_backends.hpp"
 #include "test.hpp"
 
 using namespace rem;
@@ -89,6 +90,7 @@ TEST(paths_expand_and_contract) {
 }
 
 TEST(paths_in_settings_and_state) {
+	test::register_stand_in_syncthing();
 	auto dir = fs::temp_directory_path() / ("reminders-paths-" + new_id());
 	Env env;
 	env.set("HOME", (dir / "home").c_str());
@@ -124,8 +126,8 @@ TEST(paths_in_settings_and_state) {
 	CHECK(!fs::exists(dir / "home" / "Lists" / ".reminders"));
 
 	// A folder that isn't a configured source gets one of its own.
-	auto loose =
-		source_state_dir(SourceConfig{"", "local", dir / "elsewhere", ""}, device);
+	auto loose = source_state_dir(
+		SourceConfig{"", "local", dir / "elsewhere", ""}, device);
 	CHECK(loose.parent_path() == state.parent_path());
 	CHECK(loose.filename().string().starts_with("folder-"));
 

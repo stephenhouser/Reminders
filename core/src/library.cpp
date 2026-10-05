@@ -7,7 +7,6 @@
 
 #include "reminders/backend_module.hpp"
 #include "reminders/settings.hpp"
-#include "reminders/syncthing.hpp"
 
 namespace rem {
 

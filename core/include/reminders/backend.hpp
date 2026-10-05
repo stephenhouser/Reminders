@@ -98,8 +98,8 @@ class ServerBackend : public Backend {
 		mutable std::mutex lock_;
 };
 
-// The back ends every module's make_backend builds on.
+// Plain files: a local folder's back end, and the fallback for one not
+// built in.
 std::unique_ptr<Backend> make_local_backend();
-std::unique_ptr<Backend> make_syncthing_backend(fs::path state_dir);
 
 }  // namespace rem

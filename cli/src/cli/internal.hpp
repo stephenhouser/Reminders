@@ -21,6 +21,9 @@
 #include <string>
 #include <vector>
 
+#include "../editfile.hpp"
+#include "../text.hpp"
+#include "../tui.hpp"
 #include "reminders/backend_module.hpp"
 #include "reminders/dates.hpp"
 #include "reminders/exporter.hpp"
@@ -31,13 +34,7 @@
 #include "reminders/settings.hpp"
 #include "reminders/sources.hpp"
 #include "reminders/store.hpp"
-#include "reminders/syncthing.hpp"
-#ifdef REMINDERS_NETWORK
-#include "reminders/server_sync.hpp"
-#endif
-#include "../editfile.hpp"
-#include "../text.hpp"
-#include "../tui.hpp"
+#include "reminders/sync_runner.hpp"
 
 namespace cli {
 

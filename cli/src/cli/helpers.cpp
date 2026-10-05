@@ -17,12 +17,9 @@ const rem::Library* g_library = nullptr;
 
 // Syncs the library's CalDAV and WebDAV sources (or just `only`); problems
 // are reported on stderr. Returns false if any source failed.
-// The parameters go unused in a build without network support.
-bool sync_servers([[maybe_unused]] rem::Library& library,
-				  [[maybe_unused]] const std::string& only,
-				  [[maybe_unused]] bool verbose) {
+bool sync_servers(rem::Library& library, const std::string& only,
+				  bool verbose) {
 	bool ok = true;
-#ifdef REMINDERS_NETWORK
 	for (auto& s : library.sources()) {
 		if (!rem::syncs(s.config) || !s.store) {
 			continue;
@@ -50,7 +47,6 @@ bool sync_servers([[maybe_unused]] rem::Library& library,
 			ok = false;
 		}
 	}
-#endif
 	return ok;
 }
 

@@ -10,7 +10,6 @@
 #include "reminders/backend_module.hpp"
 #include "reminders/paths.hpp"
 #include "reminders/settings.hpp"
-#include "reminders/syncthing.hpp"
 
 namespace rem {
 
@@ -28,8 +27,14 @@ SourceConfig read_source(const std::string& name) {
 	auto section = section_of(name);
 	for (auto& [key, value] : section_settings(section)) {
 		if (key == "backend") {
-			if (auto* m = find_backend(value)) {
-				s.backend = m->id;
+			// As written (lower case), even for a back end not built in, so
+			// saving the source keeps it.
+			if (!value.empty()) {
+				s.backend.clear();
+				for (char c : value) {
+					s.backend += static_cast<char>(
+						std::tolower(static_cast<unsigned char>(c)));
+				}
 			}
 		} else if (key == "folder") {
 			if (!value.empty()) {
@@ -122,29 +127,6 @@ std::string SourceConfig::option(const std::string& key) const {
 	return at == options.end() ? std::string() : at->second;
 }
 
-DavSettings dav_settings(const SourceConfig& source) {
-	return {source.option("url"), source.option("username"),
-			source.option("password-command"), sync_interval(source)};
-}
-
-void set_dav_settings(SourceConfig& source, const DavSettings& settings) {
-	source.options["url"] = settings.url;
-	source.options["username"] = settings.username;
-	source.options["password-command"] = settings.password_command;
-	source.options["interval"] = std::to_string(settings.interval);
-}
-
-GitSettings git_settings(const SourceConfig& source) {
-	return {source.option("url"), source.option("remote"),
-			source.option("branch"), sync_interval(source)};
-}
-
-void set_git_settings(SourceConfig& source, const GitSettings& settings) {
-	source.options["url"] = settings.url;
-	source.options["remote"] = settings.remote;
-	source.options["branch"] = settings.branch;
-	source.options["interval"] = std::to_string(settings.interval);
-}
 fs::path source_state_dir(const SourceConfig& source,
 						  const std::string& device) {
 	if (backend_of(source).state_in_folder) {
@@ -234,19 +216,6 @@ void save_source(const SourceConfig& source) {
 }
 int sync_interval(const SourceConfig& source) {
 	return minutes(source.option("interval"), 15);
-}
-bool in_git_repo(const fs::path& folder) {
-	std::error_code ec;
-	for (auto p = fs::weakly_canonical(folder, ec); !p.empty();
-		 p = p.parent_path()) {
-		if (fs::exists(p / ".git", ec)) {
-			return true;
-		}
-		if (p == p.parent_path()) {
-			break;
-		}
-	}
-	return false;
 }
 
 std::string detect_backend(const fs::path& folder) {

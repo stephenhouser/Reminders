@@ -14,7 +14,6 @@
 #include "reminders/paths.hpp"
 #include "reminders/settings.hpp"
 #include "reminders/sources.hpp"
-#include "reminders/syncthing.hpp"
 #include "support.hpp"
 #include "window_internal.hpp"
 
@@ -722,10 +721,9 @@ void Window::add_actions() {
 		}
 	});
 	sync_action_ = add_action(window_, "sync-all", [this] {
-#ifdef REMINDERS_NETWORK
-		if (sync_)
+		if (sync_) {
 			sync_->sync_now();
-#endif
+		}
 	});
 	g_simple_action_set_enabled(sync_action_, FALSE);
 	add_action(window_, "settings", [this] { open_settings(); });

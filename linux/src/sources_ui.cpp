@@ -14,7 +14,6 @@
 #include "reminders/paths.hpp"
 #include "reminders/settings.hpp"
 #include "reminders/sources.hpp"
-#include "reminders/syncthing.hpp"
 #include "support.hpp"
 #include "window_internal.hpp"
 
@@ -261,7 +260,6 @@ void Window::add_source() {
 }
 
 void Window::start_sync() {
-#ifdef REMINDERS_NETWORK
 	stop_sync();
 	if (!store_) {
 		return;
@@ -284,17 +282,14 @@ void Window::start_sync() {
 		}
 		return true;
 	});
-#endif
 }
 
 void Window::stop_sync() {
-#ifdef REMINDERS_NETWORK
 	if (sync_timer_) {
 		g_source_remove(sync_timer_);
 	}
 	sync_timer_ = 0;
 	sync_.reset();	// waits for a sync under way
-#endif
 }
 
 void Window::stop_watching() {

@@ -20,6 +20,9 @@
 #include <string>
 #include <vector>
 
+#include "../editfile.hpp"
+#include "../text.hpp"
+#include "../tui.hpp"
 #include "reminders/actions.hpp"
 #include "reminders/dates.hpp"
 #include "reminders/format.hpp"
@@ -27,15 +30,9 @@
 #include "reminders/selection.hpp"
 #include "reminders/settings.hpp"
 #include "reminders/sidebar.hpp"
+#include "reminders/sync_runner.hpp"
 #include "reminders/view.hpp"
 #include "reminders/view_model.hpp"
-#ifdef REMINDERS_NETWORK
-#include "reminders/sync_runner.hpp"
-#endif
-
-#include "../editfile.hpp"
-#include "../text.hpp"
-#include "../tui.hpp"
 
 namespace tui {
 
@@ -99,10 +96,8 @@ class Tui {
 
 	private:
 		rem::Library& store_;  // every source
-#ifdef REMINDERS_NETWORK
 		std::unique_ptr<rem::SyncRunner>
 			sync_;	// CalDAV and WebDAV sources, in the background
-#endif
 		void check_sync();
 		bool remember_;
 		rem::History history_;

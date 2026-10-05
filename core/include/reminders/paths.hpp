@@ -30,6 +30,11 @@ fs::path home_dir();
 fs::path config_dir();
 fs::path data_dir();
 fs::path state_dir();
+
+// Per-device state kept in a source's own folder: <folder>/.reminders/<device>/
+// (Syncthing's; other back ends' was there before 2026-10-03).
+inline constexpr const char* kStateDirName = ".reminders";
+fs::path state_dir(const fs::path& folder, const std::string& device);
 fs::path cache_dir();
 
 // A path from settings.ini or the command line: a leading "~" or "~/" is

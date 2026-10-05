@@ -14,7 +14,6 @@
 #include "reminders/paths.hpp"
 #include "reminders/settings.hpp"
 #include "reminders/sources.hpp"
-#include "reminders/syncthing.hpp"
 #include "support.hpp"
 #include "window_internal.hpp"
 
@@ -506,7 +505,6 @@ void Window::sidebar_menu(GtkListBoxRow* row, double x, double y) {
 			// A source this app syncs (CalDAV, WebDAV, git): Sync Now, for
 			// just this one.
 			bool syncs = false;
-#ifdef REMINDERS_NETWORK
 			for (auto& s : store_->sources()) {
 				if (s.config.name == source && rem::syncs(s.config)) {
 					syncs = sync_ != nullptr;
@@ -517,7 +515,6 @@ void Window::sidebar_menu(GtkListBoxRow* row, double x, double y) {
 					sync_->sync_now(source);
 				}
 			});
-#endif
 			auto* items = menu_section(m);
 			g_menu_append(items, "_New List…", "sidebar-source.new-list");
 			if (syncs) {

@@ -18,11 +18,7 @@ add_executable(reminders-cli
   src/tui/keys.cpp
   src/tui/marks.cpp
   src/tui/util.cpp)
-target_link_libraries(reminders-cli PRIVATE reminders_app PkgConfig::NCURSES)
-if(TARGET reminders_net)
-  target_link_libraries(reminders-cli PRIVATE reminders_net)
-  target_compile_definitions(reminders-cli PRIVATE REMINDERS_NETWORK)
-endif()
+target_link_libraries(reminders-cli PRIVATE reminders_app reminders_backends PkgConfig::NCURSES)
 set_target_properties(reminders-cli PROPERTIES OUTPUT_NAME reminders)
 
 include(GNUInstallDirs)
