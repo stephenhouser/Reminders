@@ -13,6 +13,7 @@
 #include "dialogs.hpp"
 #include "reminders/actions.hpp"
 #include "reminders/backend_module.hpp"
+#include "reminders/import_file.hpp"
 #include "reminders/sources.hpp"
 #include "reminders/view_model.hpp"
 #include "support.hpp"
@@ -73,7 +74,7 @@ GtkWidget* sidebar_heading(const std::string& text);
 GtkWidget* boxed_list();
 GMenu* menu_section(GMenu* menu);
 std::string source_problem(const SourceEdit& e, const std::string& self);
-std::string list_name_error(const std::string& name);
+using rem::list_name_error;
 GType reminder_drag_type();
 const Ids* dragged_ids(const GValue* value);
 GtkWidget* owner(gpointer controller);

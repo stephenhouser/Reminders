@@ -215,7 +215,7 @@ core/                  Platform-neutral C++23 library (standard library only)
   include/reminders/   model, format, merge, recurrence, store, library, backend registry, sources, …
   src/
   tests/               Unit tests with a tiny built-in harness (no dependencies)
-app/                   What the two apps share: views, selection, actions on reminders, the sidebar's model and display preferences
+app/                   What the two apps share: views, selection, actions on reminders, the sidebar's model, display preferences, importing a file
 backends/              One module per back end, each with its code, tests and README.md
   common/              WebDAV/CalDAV HTTP (libcurl, libxml2), server settings, fake_dav.py test server
   local/  syncthing/  caldav/  webdav/  git/

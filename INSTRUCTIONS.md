@@ -743,6 +743,30 @@ Done so far:
   error, which clears it. Help box, TERMINAL.md. Tested in tmux with a
   local and a git source (file remote): s on a git list (both panes), on a
   local list, on a smart list (default source), S, Ctrl+S.
+- **TUI import key `I`** (2026-10-04, user's go-ahead on the advice):
+  app `import_file.hpp/.cpp` (new), shared by the CLI's `import` and the
+  TUI: read_import_file(path, kind?) (throws: unreadable, a folder, no
+  reminders), import_list_name (calendar's, else the file's stem, "/" →
+  "-"), lists_called(library, name, source?) (name or key, case aside),
+  list_name_error (moved from the GNOME app's widgets.cpp; the GUI uses
+  rem::list_name_error now), import_to (into a list, or a new one in a
+  source; a new list nothing was added to is removed), import_summary
+  (the CLI's old output lines). cmd_import uses them; output unchanged
+  (checked: new list, again, --json, --list, bad name, missing file).
+  - TUI (keys.cpp Tui::import_file): prompt "Import file:" (~ / $VAR via
+    expand_path, else relative to the TUI's working folder); errors on the
+    status line; then "Import N reminders into list:" prefilled with the
+    list showing, else import_list_name. Looks the name up in
+    selected_source() first, then everywhere; 2+ → "type source/name";
+    none → list_name_error, then a new list in selected_source(). One undo
+    step ("Import"); goes to a new list. No file browser, no source
+    prompt (the user's call for the TUI), no path completion. `N` now
+    checks list_name_error too.
+  - Tests: app/tests/import_file_test.cpp (3). Tried in tmux: new list
+    from a smart list (default source), into the list showing, again
+    (already there), a bad path, a bad name, undo.
+- **TUI: `i` no longer edits** (2026-10-04, user's request): only `e` opens
+  a reminder in $EDITOR; `i` is unbound (keys.cpp, help box, TERMINAL.md).
 
 - **GUI flag button** (2026-10-04): the row's flag is a flat circular
   button (reminder_row.cpp): flagged → `flag-icon` (orange, always shown),
@@ -830,9 +854,10 @@ install). Update it whenever these change (user's requests 2026-10-04).
   without asking.
 - **KDE variant** (possible): a native Qt/Kirigami client for Plasma beside
   the GNOME one, on the same core library. Not decided; added 2026-10-03.
-- **TUI import key**: a key (the user suggested `I`) for the CLI's import
-  into the list or source showing, as the GNOME app's ☰ → Import…; core
-  read_import / import_into already do the work. Asked for 2026-10-04.
+- **TUI: file name completion** (Tab) in the import / export path prompts.
+  Asked for 2026-10-04 (with a "?": not settled).
+- **TUI export**, matching the GNOME app's Export… (lists, formats).
+  Asked for 2026-10-04.
 - **Query language**, SQL-like, for the CLI (`reminders query "…"`) and for
   defining your own smart lists (saved queries in the sidebar). Wanted by the
   user 2026-10-02; design not started.

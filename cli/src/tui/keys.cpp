@@ -23,6 +23,8 @@
 #include "reminders/dates.hpp"
 #include "reminders/format.hpp"
 #include "reminders/history.hpp"
+#include "reminders/import_file.hpp"
+#include "reminders/paths.hpp"
 #include "reminders/settings.hpp"
 #include "reminders/sources.hpp"
 #include "reminders/sync_runner.hpp"
@@ -42,6 +44,65 @@ std::string Tui::selected_source() {
 		return store_.source_of(*l)->config.name;
 	}
 	return store_.default_source();
+}
+
+// The file's path, then the list: the list showing, else one named after the
+// calendar (or the file). A name finds a list in the selected source first,
+// then in any (or "source/name"); one that isn't there is made in the
+// selected source.
+void Tui::import_file() {
+	auto file = prompt("Import file:");
+	if (!file || file->empty()) {
+		return;
+	}
+	auto path = file->starts_with('~') || file->find('$') != std::string::npos
+				  ? rem::expand_path(*file)
+				  : fs::absolute(*file).lexically_normal();
+	rem::Import imp;
+	try {
+		imp = rem::read_import_file(path);
+	} catch (const std::exception& e) {
+		message_ = std::format("Can't import: {}", e.what());
+		return;
+	}
+	auto source = selected_source();
+	auto* showing =
+		view_.kind == View::List ? store_.list(view_.name) : nullptr;
+	auto name =
+		prompt(std::format(
+				   "Import {} into list:",
+				   rem::reminder_count(imp) == 1
+					   ? std::string("1 reminder")
+					   : std::format("{} reminders", rem::reminder_count(imp))),
+			   showing ? showing->name : rem::import_list_name(imp, path));
+	if (!name || name->empty()) {
+		return;
+	}
+	auto found = rem::lists_called(store_, *name, source);
+	if (found.empty()) {
+		found = rem::lists_called(store_, *name);
+	}
+	if (found.size() > 1) {
+		message_ = std::format(
+			"Several lists are called “{}”: type source/name", *name);
+		return;
+	}
+	auto* list = found.empty() ? nullptr : found.front();
+	if (!list) {
+		if (auto err = rem::list_name_error(*name); !err.empty()) {
+			message_ = err;
+			return;
+		}
+	}
+	rem::ImportDone done;
+	undoable("Import", [&] {
+		done = rem::import_to(store_, list, source, *name, imp);
+		message_ = rem::import_summary(store_, done, imp);
+	});
+	if (done.created) {
+		select_view({View::List, done.key});
+		message_ = rem::import_summary(store_, done, imp);
+	}
 }
 
 bool Tui::handle_key(wint_t key, bool fn, bool alt) {
@@ -267,13 +328,18 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
 					}
 				}
 				return true;
+			case 'I':
+				import_file();
+				return true;
 			case 'N':
 				// Into the source whose group is selected, else the default
 				// one.
 				if (auto name = prompt("New list name:");
 					name && !name->empty()) {
 					auto source = selected_source();
-					if (store_.list(rem::Library::key(source, *name))) {
+					if (auto err = rem::list_name_error(*name); !err.empty()) {
+						message_ = err;
+					} else if (store_.list(rem::Library::key(source, *name))) {
 						message_ = "A list with that name already exists";
 					} else {
 						undoable("New List", [&] {
@@ -452,7 +518,6 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
 			edit_title_in_place(id);
 			break;
 		case 'e':
-		case 'i':
 			edit_in_editor(id);
 			break;
 		case 'd':

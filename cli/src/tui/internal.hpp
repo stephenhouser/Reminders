@@ -27,6 +27,7 @@
 #include "reminders/dates.hpp"
 #include "reminders/format.hpp"
 #include "reminders/history.hpp"
+#include "reminders/import_file.hpp"
 #include "reminders/preferences.hpp"
 #include "reminders/selection.hpp"
 #include "reminders/sidebar.hpp"
@@ -104,6 +105,9 @@ class Tui {
 		// The source the selection is in: the selected sidebar group's,
 		// else the list showing's, else the default source.
 		std::string selected_source();
+		// I: imports a file into the list showing, or a new one (asks for
+		// both).
+		void import_file();
 		bool remember_;
 		rem::History history_;
 		View view_;

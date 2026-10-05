@@ -3,7 +3,8 @@
 ## Features
 
 - Query language, for the CLI and for saved smart lists.
-- TUI: a key to import into the list showing, perhaps I.
+- TUI: tab completion for filenames on import export?
+- TUI: export -- match gui
 
 ## Known gaps
 

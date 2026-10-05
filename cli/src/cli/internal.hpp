@@ -28,6 +28,7 @@
 #include "reminders/dates.hpp"
 #include "reminders/exporter.hpp"
 #include "reminders/format.hpp"
+#include "reminders/import_file.hpp"
 #include "reminders/importer.hpp"
 #include "reminders/library.hpp"
 #include "reminders/paths.hpp"

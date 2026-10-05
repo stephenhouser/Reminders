@@ -261,7 +261,8 @@ Then:
   to bring back an export as a second set.
 - **Undo** (Ctrl+Z) takes the whole import back.
 
-In a terminal: `reminders import FILE [--list LIST] [--format F]`.
+In a terminal: `reminders import FILE [--list LIST] [--format F]`, or `I` in
+the interactive interface (see [TERMINAL.md](TERMINAL.md)).
 
 ## Exporting lists
 

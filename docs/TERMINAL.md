@@ -225,6 +225,7 @@ within a second.
 | h | Hide the selected list, smart list or tag from the sidebar; on a hidden one, show it again |
 | H | Show / stop showing hidden lists, smart lists and tags (dimmed), like the app's Show Hidden Lists |
 | N | New list |
+| I | Import a file: asks for its path (`~` works; others are from where you started `reminders`), then the list, filled in with the list showing, else a new one named after the calendar or the file. A name is looked for in the selected source first, then in any (`source/name` picks one); a new list goes in the selected source. One undo step |
 | u / r | Undo / redo |
 | ? | Help (scrolls with ↑↓ when the terminal is short; any other key closes it) |
 | q | Quit |
@@ -236,7 +237,7 @@ On the selected reminder:
 | x, Space | Done / not done |
 | n | New reminder (inline fields work; in Today it gets today's date, in Flagged a flag) |
 | Enter, F2 | Edit the title in place (see below) |
-| e, i | Edit every field in your editor (see below) |
+| e | Edit every field in your editor (see below) |
 | d | Due date: `today`, `tomorrow 09:00`, `fri`, `+3d`, `2026-10-31`, or `none` |
 | t / T | Due today / tomorrow |
 | f | Flag / unflag |

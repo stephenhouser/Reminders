@@ -231,22 +231,6 @@ std::string source_problem(const SourceEdit& e, const std::string& self) {
 }
 
 // Validates a list name for a file that must work on every synced platform.
-std::string list_name_error(const std::string& name) {
-	if (name.empty()) {
-		return "Enter a name";
-	}
-	if (name.front() == '.') {
-		return "Names can't start with a dot";
-	}
-	if (name.find_first_of("/\\<>:\"|?*") != std::string::npos) {
-		return "Names can't contain / \\ < > : \" | ? *";
-	}
-	if (name.find(".sync-conflict-") != std::string::npos) {
-		return "That name is reserved";
-	}
-	return {};
-}
-
 std::string lower(std::string_view s) {
 	std::string out(s);
 	for (auto& c : out) {
