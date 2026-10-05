@@ -186,12 +186,20 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
 		append(box, {toggle});
 	}
 
-	if (r.flagged) {
-		auto* flag = icon("sr-flag-symbolic", {"flag-icon"});
-		gtk_widget_set_valign(flag, GTK_ALIGN_CENTER);
-		gtk_widget_set_tooltip_text(flag, "Flagged");
-		append(box, {flag});
+	// The flag: shown when flagged, else on hover (dimmed); clicking it
+	// flags or unflags the row (with the selection, when it's part of it).
+	auto* flag = gtk_button_new_from_icon_name("sr-flag-symbolic");
+	gtk_widget_add_css_class(flag, "flat");
+	gtk_widget_add_css_class(flag, "circular");
+	gtk_widget_add_css_class(flag, r.flagged ? "flag-icon" : "row-button");
+	if (!r.flagged) {
+		gtk_widget_add_css_class(flag, "flag-off");
 	}
+	gtk_widget_set_valign(flag, GTK_ALIGN_CENTER);
+	gtk_widget_set_tooltip_text(flag, r.flagged ? "Unflag" : "Flag");
+	on(flag, "clicked",
+	   [this, id] { idle([this, ids = targets(id)] { toggle_flag(ids); }); });
+	append(box, {flag});
 
 	auto* details = gtk_button_new_from_icon_name("document-edit-symbolic");
 	gtk_widget_add_css_class(details, "flat");

@@ -93,7 +93,7 @@ Every view has a count under its name, of what it contains:
 | | |
 |---|---|
 | Due today / tomorrow | Ctrl+T / Ctrl+Shift+T (keeps any time already set) |
-| Flag / unflag | Ctrl+Shift+F |
+| Flag / unflag | Ctrl+Shift+F, or click the flag at the right of the row (it shows when you point at an unflagged reminder) |
 | Priority none / low / medium / high | Alt+0 / Alt+1 / Alt+2 / Alt+3 |
 
 Overdue dates show in red. Priority shows as `!`, `!!` or `!!!` before the title.
@@ -491,6 +491,8 @@ tag-icon.errands=cart
 smart-lists-display=visible
 local-lists-display=visible
 tags-display=visible
+# A reminder row's buttons (flag, Details, ⋮): shown on hover, or always (dimmed)
+row-buttons=hover
 # Set by the app when you fold a collapsible group
 smart-lists-collapsed=false
 lists-collapsed.personal=false
@@ -503,6 +505,11 @@ Comments go on their own lines, starting with `#`.
 to them. In the app the shortcut is shown to the right of the name, e.g.
 `Today  Ctrl+1  4`, through `Ctrl+0`. In the terminal client it's a prefix,
 e.g. `(1)Today`, for the keys `1`–`9` and `0`. It accepts `true`, `yes` or `1`, and is off when missing.
+
+`row-buttons` sets when a reminder row's buttons (its flag, Details and ⋮)
+show in the GNOME app: `hover` (the default) while you point at the row or
+reach it with the keyboard, `always` all the time, dimmed until you point at
+the row. Everything they do is also in the row's right-click menu.
 
 **Sidebar groups.** The sidebar has the smart lists, your lists and tags.
 Your lists are one group per [source](#sources): with one source it's

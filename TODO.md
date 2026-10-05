@@ -14,12 +14,12 @@
 - KDE version (maybe).
 - Query language, for the CLI and for saved smart lists.
 - TUI: a key to sync the selected source, and one to sync all sources.
-- Clicking the flag in the GUI should toggle flagged on and off
 - Settings: keep the parsed file in memory, reload when it changes on disk.
 - make the default new source "local"
 - import should allow selection of which source to import to "New List ... in ..."
 - New List dialog should let me pick which source to create in
 - Add import to TUI, perhaps the I key
+- only show a fixed number of lines in the notes field (set in settings)
 
 ## Known gaps
 
@@ -30,4 +30,6 @@
 
 ## Needs trying by hand
 
+- GUI: clicking the flag on a row flags / unflags it (with the selection).
+- GUI: `row-buttons=always` / `hover` in settings.ini.
 - Add Source for CalDAV and WebDAV after the back-end split (stage 4).

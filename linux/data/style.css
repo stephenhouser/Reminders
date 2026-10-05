@@ -47,11 +47,19 @@
 .reminder-row editablelabel { min-height: 24px; }
 .reminder-row .inline-link { padding: 0; min-height: 0; }
 
-/* Row buttons show on hover or keyboard focus, as in other GNOME apps. */
+/* Row buttons show on hover or keyboard focus (not focus from a click,
+   which would keep them up after the pointer leaves). */
 .reminder-row .row-button { opacity: 0; transition: opacity 150ms; }
+/* row-buttons=always in settings.ini: shown all the time, dimmed. */
+.row-buttons-always .reminder-row .row-button { opacity: 0.4; }
 .reminder-row:hover .row-button,
-.reminder-row:focus-within .row-button,
+.reminder-row:focus-visible .row-button,
+.reminder-row .row-button:focus-visible,
 .reminder-row .row-button:checked { opacity: 1; }
+/* An unflagged row's flag, when it shows: dimmed. */
+.reminder-row:hover .row-button.flag-off,
+.reminder-row:focus-visible .row-button.flag-off,
+.reminder-row .row-button.flag-off:focus-visible { opacity: 0.4; }
 
 .new-reminder-row text { min-height: 24px; }
 

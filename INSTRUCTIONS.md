@@ -720,6 +720,21 @@ Done so far:
   - Checked: 8/8 suites, format-check, the local-only build, GUI screenshot
     identical to stage 4's, TUI sidebar with key numbers.
 
+- **GUI flag button** (2026-10-04): the row's flag is a flat circular
+  button (reminder_row.cpp): flagged → `flag-icon` (orange, always shown),
+  tooltip Unflag; unflagged → `row-button dim-label` (shows on hover /
+  focus), tooltip Flag. Click → toggle_flag(targets(id)). Buttons are
+  already left out of the row's select-on-click. Unflagged: class
+  `flag-off`, opacity 0.4 when shown (dim-label lost to the row-button
+  hover rule's opacity 1 and showed black). Row buttons now show on
+  :hover / :focus-visible, not :focus-within, which kept them up after a
+  click until focus left the row (user saw the flag stay after unflagging).
+  - `row-buttons=hover | always` in [general] (user's choice to make it a
+    setting): Window::apply_row_buttons() toggles the class
+    `row-buttons-always` on the window, at start and in reload_settings;
+    CSS shows row buttons at 0.4 then (1 on hover). Documented in USING.md
+    and settings.example.ini. Screenshot checked with `always`.
+
 ## Future features (not started)
 
 TODO.md (top level) is the user's brief copy of this list and of Known

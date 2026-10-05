@@ -46,6 +46,7 @@ class Window {
 		open_settings();  // Settings…: settings.ini in the default text editor
 		void reload_settings();	 // applies settings.ini as it is now
 		void watch_settings();
+		void apply_row_buttons();  // row-buttons=hover | always
 
 	private:
 		Window(AdwApplication* app,

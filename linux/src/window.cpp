@@ -108,6 +108,17 @@ void Window::watch_settings() {
 			});
 }
 
+// row-buttons=always shows each reminder row's buttons (flag, Details, ⋮)
+// all the time, dimmed; hover (the default) only on hover or keyboard focus.
+void Window::apply_row_buttons() {
+	auto value = rem::load_setting("row-buttons");
+	if (value == "always") {
+		gtk_widget_add_css_class(window_, "row-buttons-always");
+	} else {
+		gtk_widget_remove_css_class(window_, "row-buttons-always");
+	}
+}
+
 void Window::reload_settings() {
 	std::string text;
 	{
@@ -120,6 +131,7 @@ void Window::reload_settings() {
 	settings_text_ = std::move(text);
 	show_key_numbers_ = key_numbers_override_.value_or(
 		rem::load_bool_setting("show-key-numbers"));
+	apply_row_buttons();
 	if (sidebar_) {
 		sidebar_->reload();
 	}
@@ -681,6 +693,7 @@ void Window::build() {
 	adw_overlay_split_view_set_show_sidebar(
 		ADW_OVERLAY_SPLIT_VIEW(split_),
 		rem::load_bool_setting("show-sidebar", true));
+	apply_row_buttons();
 	// ("notify" passes the property as well, so not on(), which is for signals
 	// that pass only the emitter.)
 	connect<void(GObject*, GParamSpec*)>(
