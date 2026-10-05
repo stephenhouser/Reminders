@@ -153,13 +153,31 @@ core library alone needs only a C++23 compiler and CMake.
 cmake -S . -B build -G Ninja
 cmake --build build
 ctest --test-dir build            # all the tests (or run them one by one:)
-./build/core/core_tests          # 136 tests for the core library (core_tests NAME runs the matching ones)
+./build/core/core_tests          # 106 tests for the core library (core_tests NAME runs the matching ones)
 ./build/app/app_tests            # the layer the two apps share
 ./build/backends/caldav_tests    # each back end's own tests (syncthing_, webdav_, git_tests, …);
 ./build/backends/caldav_server_tests backends/common/tests/fake_dav.py   # the *_server_tests use a fake server
 ./build/linux/Reminders          # the GNOME app (or: ./build/linux/Reminders ~/Sync/Reminders)
 ./build/cli/reminders --help     # the terminal client
 ```
+
+### Formatting
+
+The C++ sources are formatted with `clang-format` (Fedora: `clang-tools-extra`;
+Debian / Ubuntu: `clang-format`). The style comes from the nearest
+`.clang-format` above the sources; the repository doesn't have one of its own
+yet, so put one in the project folder or a folder above it (tabs for
+indentation). With `clang-format` installed, CMake adds two targets:
+
+```sh
+cmake --build build --target format         # reformat every C/C++ file in place
+cmake --build build --target format-check   # list files that aren't formatted; changes nothing
+clang-format -i core/src/settings.cpp       # or just the files you changed
+```
+
+`format` runs `clang-format` twice, since `InsertBraces` can need a second pass
+for nested statements. `format-check` fails if any file would change, so it
+can be run before a commit.
 
 ### Install
 
