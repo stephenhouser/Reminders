@@ -1,0 +1,60 @@
+# Terminal client — CLI and TUI notes
+
+One binary, `reminders`: with a command it's the CLI, with none it's the
+ncurses TUI. No GTK dependency, so it runs over SSH and on headless machines.
+User guide: `docs/TERMINAL.md`.
+
+- `src/cli/` — the CLI: `App` with a `cmd_*` method per command, registered in
+  `kCommands` (`app.cpp`); usage text is `kUsage` (`internal.hpp`).
+- `src/tui/` — the TUI: `tui.cpp` (setup, event loop), `keys.cpp`
+  (`handle_key`), `help.cpp` (the `?` box), `marks.cpp` (`v` / `*` marks),
+  `sidebar.cpp`, `items.cpp`, `editing.cpp`.
+- `src/text.hpp` — colours, due labels and priority marks shared by both, with
+  the same palette as the GNOME app.
+
+## Adding things touches more than one place
+
+- **A CLI command:** `kCommands` in `app.cpp`, `kUsage`, `docs/TERMINAL.md` —
+  and, **if it changes any list, `kEdits` in `src/cli/main.cpp`**. That list
+  decides which commands push to CalDAV/WebDAV/git sources afterwards; a write
+  command missing from it saves locally and silently never syncs.
+- **A TUI key:** `handle_key` in `keys.cpp`, the entries in `help.cpp`, the key
+  table in `docs/TERMINAL.md`. If it should also work on marked reminders,
+  `act_on_marked` in `marks.cpp`. Check for a collision first — `s` / `S` sync,
+  Ctrl+S is settings, `e` edits; `i` used to edit and is now unbound.
+- **Anything the GNOME app also does:** match its rules rather than inventing
+  new ones — complete and flag act on all alike, move and delete take the
+  outermost reminders, every multi-reminder change goes through `batch()` so
+  it's one undo step and one write per list.
+
+## ncurses: what the setup depends on
+
+- `setlocale(LC_ALL, "")` before `initscr()`, then wide characters
+  throughout: `get_wch`, `WACS_*` box drawing. Plain `getch` / `ACS_*` break on
+  non-ASCII titles.
+- **Ctrl+S is XOFF** in a terminal — it froze the TUI the first time. `run()`
+  clears `IXON`; ncurses restores it on exit.
+- **Alt+key arrives as Esc then the key.** `set_escdelay(25)` and a
+  non-blocking second `get_wch` tell the two apart; a bare Esc is one with
+  nothing after it.
+- **Modified arrows aren't keypad codes.** Alt+↑ etc. are looked up by
+  terminfo capability (`kUP3`, `kDN3`, `kNXT5`, …) through
+  `tigetstr` + `key_defined`, so they depend on `TERM` being right.
+- `timeout(1000)` makes the loop wake every second to poll sync and the folder,
+  even with no key pressed.
+
+## Testing
+
+On a private tmux server, never the user's:
+
+```
+tmux -L reminders-test -f /dev/null new-session -d -x 90 -y 24 \
+  "env HOME=<scratch>/home XDG_CONFIG_HOME= build/cli/reminders --folder <dir>; sleep 3"
+```
+
+- **Leave `TERM` alone.** Under `screen-256color` the `kUP3` family isn't
+  defined, so Alt+arrows silently do nothing.
+- `send-keys -l` for literal text (otherwise "Home" is the Home key); `M-Up`
+  for Alt keys; `capture-pane -p` to read the screen.
+- The CLI needs no terminal — test it straight from the shell, with
+  `--json` for output that's easy to check.

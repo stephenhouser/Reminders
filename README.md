@@ -223,7 +223,10 @@ linux/                 The GNOME client
   src/                 main, window, dialogs, support, gtk_util (RAII + signal helpers)
   data/                style.css, icons, .desktop file, GResource manifest
 cli/                   The terminal client: cli.cpp (commands), tui.cpp (ncurses)
-INSTRUCTIONS.md        The original brief, and how to recreate this project
+CLAUDE.md              Working notes: build, test and formatting rules (plus linux/ and cli/ CLAUDE.md)
+INSTRUCTIONS.md        The original brief, the decisions behind the project, and where it stands
+TODO.md                What's still to do
+docs/rebuild-prompt.md The prompt the first version was built from (frozen)
 ```
 
 ### The core library

@@ -80,3 +80,21 @@ per list, one VTODO per reminder. Its local copy is a folder in the [folder form
 - Changes are merged three-way, as for [conflicts](../../docs/FORMAT.md#conflicts): the base is the
   list as of the last sync, "main" is the local copy and the "conflict copy"
   is the server's version.
+
+## Records this client keeps
+
+In its per-device state folder (`$XDG_STATE_HOME/reminders/<device>/<source>/caldav/`):
+
+| File | Holds |
+|---|---|
+| `calendars.tsv` | the calendars found, with each one's CTag |
+| `<calendar>/items.tsv` | per reminder: its `^id`, the VTODO's `UID` and `ETag` |
+| `<calendar>/base.md` | the list as of the last sync — the merge base |
+| `<calendar>/<id>.ics` | the raw VTODO as the server sent it, so unknown properties survive a round trip |
+
+A sync pulls (CTag, then ETags, then multiget) into "theirs" = `base.md` plus
+the server's changes, merges against `base.md`, writes the list under the back
+end's write lock (aborting if the file changed meanwhile), then pushes changed
+VTODOs. A failed precondition (412) leaves the base at the server's version and
+is retried at the next sync. Only a delete made in an app removes the server
+calendar; a list file that merely vanished is fetched again.

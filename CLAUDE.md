@@ -10,8 +10,10 @@ lists are kept in sync: a local folder, CalDAV, WebDAV, git or Syncthing. No
 one of these is the basis of the project — the Markdown files are, and a back
 end is a module that can be added or left out.
 
-Design history, decisions and "Where things stand": `INSTRUCTIONS.md`.
-The short to-do list: `TODO.md`. The file format: `docs/FORMAT.md`.
+Decisions and why, and a short state of play: `INSTRUCTIONS.md`. The to-do
+list: `TODO.md`. The format: `docs/FORMAT.md`. Each back end:
+`backends/<id>/README.md`. Each client has its own notes, loaded when you
+work there: `linux/CLAUDE.md` (GTK) and `cli/CLAUDE.md` (CLI and ncurses).
 
 Apple Reminders on iOS is the model for the features and the feel, and its
 keyboard shortcuts are in the brief at the top of `INSTRUCTIONS.md`. It's the
@@ -70,9 +72,11 @@ cmake --build build --target format-check     # report only, changes nothing
 - **Never install anything** — system packages, toolchains, language deps —
   without asking first and saying what it's for. `command -v` checks are fine.
   The dev machine has no Swift or Xcode, so iOS code can't be built here.
-- **`TODO.md` mirrors the to-dos**: when an item, known gap or hand-check
-  changes, update `INSTRUCTIONS.md` (the detail) and `TODO.md` (one terse
-  line) together. No dates, explanations or test history in `TODO.md`.
+- **One home each.** `TODO.md` owns the to-do list — features, known gaps,
+  what needs trying by hand — one terse line per item, no dates, explanations
+  or test history. `INSTRUCTIONS.md` is the design record (decisions and why,
+  a short state of play) and does not track to-dos. Don't write an item into
+  both.
 - **Settled, don't re-open:** one Markdown file per list; native per platform
   (not Flutter); libcurl + libxml2 for CalDAV and WebDAV; `password-command=`
   for passwords; fake Python DAV servers in the tests; on iOS, Syncthing's Go
@@ -91,11 +95,21 @@ and overwrites their saved view.
   Actions without input: `gdbus call --session --dest
   com.stephenhouser.Reminders --object-path
   /com/stephenhouser/Reminders/window/1 --method org.gtk.Actions.Activate`.
-- **TUI:** a private tmux server, `tmux -L reminders-test -f /dev/null`.
-  Leave `TERM` alone — under `screen-256color` the Alt+arrow codes aren't
-  recognised and the keys silently do nothing. `send-keys -l` for literal
-  text, `M-Up` for Alt keys.
+- **TUI:** a private tmux server, `tmux -L reminders-test` — recipe in
+  `cli/CLAUDE.md`.
 - Test settings files need a `[general]` header line; keys outside it are
   ignored. A `--folder` other than the saved one ignores the saved `view`.
 - If a launch returns in ~30 ms it was handed to an existing instance: stop
   and check `pgrep -af build/linux/Reminders`.
+
+## Gotchas already paid for
+
+- **`.stignore` is only read at the Syncthing folder root**, so find the root by
+  looking for `.stfolder`.
+- **Recognising your own writes after a restart needs the persisted
+  fingerprint.** Without it, unsynced local edits become the merge base and the
+  other device's changes are lost at the next conflict.
+- **A notes line written `- [ ] …` reads back as a subtask** — the format has no
+  escape. Text combined from a paste is written `☐ …` to dodge it.
+
+Client-specific ones are in `linux/CLAUDE.md` and `cli/CLAUDE.md`.

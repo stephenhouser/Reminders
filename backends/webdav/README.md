@@ -64,3 +64,21 @@ them as it would a synced folder. Clients that sync with such a folder:
   `If-Match`.
 
 No `.reminders/` folder or conflict copies are kept on the server.
+
+## Records this client keeps
+
+In its per-device state folder (`$XDG_STATE_HOME/reminders/<device>/<source>/webdav/`):
+
+| File | Holds |
+|---|---|
+| `files.tsv` | per file: the list, its name on the server, and the ETag |
+| `base/<name>.md` | the file as of the last sync — the merge base |
+| `renamed.tsv`, `deleted.txt` | renames and deletions made in an app, waiting to go up as MOVE / DELETE |
+
+A sync PROPFINDs the folder, applies the pending renames (`MOVE` with
+`Overwrite: F`, in rounds; a cycle goes via a temporary name, and a name
+already taken is synced as a new file and merged without a base), then per
+file: changed on one side is copied, changed on both is merged three-way and
+PUT with `If-Match`. Every file on the server is pulled; only lists are pushed.
+A non-list changed on both sides keeps the server's copy, and ours is saved
+beside it as `NAME (this device).md`.
