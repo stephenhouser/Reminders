@@ -247,7 +247,7 @@ SourceConfig set_default_folder(const fs::path& folder) {
 		return source;
 	}
 	auto source = default_source().value_or(
-		SourceConfig{name_for(folder), "syncthing", folder, ""});
+		SourceConfig{name_for(folder), "local", folder, ""});
 	source.folder = folder;
 	source.backend = detect_backend(folder);
 	save_source(source);

@@ -59,7 +59,7 @@ struct SourceEdit {
 		std::string name;
 		std::string title;	// empty: from the name
 		std::string backend =
-			"syncthing";  // its back end's id (backend_module.hpp)
+			"local";  // its back end's id (backend_module.hpp)
 		std::filesystem::path folder;
 		bool is_default = false;
 		std::map<std::string, std::string> options =

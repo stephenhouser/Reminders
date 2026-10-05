@@ -58,7 +58,7 @@ the shortcuts below set the same fields without any emoji.
 - **Title:** click it, or select the reminder and press Enter or F2. Enter,
   Ctrl+S or clicking anywhere else saves; Esc puts back the old title.
   Clearing the title deletes the reminder.
-- **Everything else:** the ✏ button (shown on hover), Ctrl+I, or **Details…**
+- **Everything else:** double-click the reminder, the ✏ button (shown on hover), Ctrl+I, or **Details…**
   in the ⋮ menu. The details dialog has the title, notes, URL, date, time,
   repeat, flag, priority, list, tags and subtasks. **Done** or Ctrl+S saves;
   **Cancel** or Esc discards.
@@ -638,7 +638,7 @@ folder as `~/…`, so the file works on another computer with a different home.
 | `git` | A folder in a git repository (see [Git repositories](../backends/git/README.md)). Changed lists are committed, and pulled and pushed with the remote. |
 
 - **☰ → Sources… → Add Source…** asks for the source's **Name**, its
-  **Type** (Syncthing, Local Folder, CalDAV, WebDAV or Git) and its
+  **Type** (Syncthing, Local Folder, CalDAV, WebDAV or Git; Local Folder to start with) and its
   **Folder**. Choosing a folder picks the type for you (Syncthing inside a
   Syncthing folder, one with `.stfolder`; Git inside a git repository;
   else Local Folder); you can change it. For Git, a **Repository**

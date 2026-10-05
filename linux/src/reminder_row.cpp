@@ -373,6 +373,43 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
 		});
 	gtk_widget_add_controller(row, GTK_EVENT_CONTROLLER(pick));
 
+	// Double-clicking a row opens its Details. The first click on the title
+	// starts editing it, so the second stops that (keeping the title as it
+	// was). Not on the circle or the buttons, nor while the title was already
+	// being edited (a double-click there selects a word).
+	auto* open = gtk_gesture_click_new();
+	gtk_event_controller_set_propagation_phase(GTK_EVENT_CONTROLLER(open),
+											   GTK_PHASE_CAPTURE);
+	auto was_editing = std::make_shared<bool>(false);
+	connect<void(GtkGestureClick*, int, double, double)>(
+		open, "pressed",
+		[this, id, row, title, was_editing](GtkGestureClick* g, int n, double x,
+											double y) {
+			bool editing =
+				gtk_editable_label_get_editing(GTK_EDITABLE_LABEL(title));
+			if (n == 1) {
+				*was_editing = editing;
+				return;
+			}
+			if (n != 2 || *was_editing) {
+				return;
+			}
+			for (auto* w = gtk_widget_pick(row, x, y, GTK_PICK_DEFAULT);
+				 w && w != row; w = gtk_widget_get_parent(w)) {
+				if (GTK_IS_BUTTON(w) || GTK_IS_CHECK_BUTTON(w) ||
+					GTK_IS_MENU_BUTTON(w)) {
+					return;
+				}
+			}
+			gtk_gesture_set_state(GTK_GESTURE(g), GTK_EVENT_SEQUENCE_CLAIMED);
+			if (editing) {
+				gtk_editable_label_stop_editing(GTK_EDITABLE_LABEL(title),
+												FALSE);
+			}
+			idle([this, id] { show_details(id); });
+		});
+	gtk_widget_add_controller(row, GTK_EVENT_CONTROLLER(open));
+
 	// Clicking a row's empty space focuses it, so its keyboard shortcuts apply.
 	auto* select_click = gtk_gesture_click_new();
 	connect<void(GtkGestureClick*, int, double, double)>(

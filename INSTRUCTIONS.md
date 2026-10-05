@@ -743,6 +743,19 @@ Done so far:
   why the old fixed 2 showed every line of a multi-line note). TUI:
   Tui::note_lines_ (load_layout). Checked: GUI screenshot and TUI capture
   with note-lines=2.
+- **Double-click opens Details** (2026-10-04, user's request;
+  reminder_row.cpp): a capture-phase GtkGestureClick on the row; on
+  n_press 1 it notes whether the title was already editing; on n_press 2
+  (unless it was, or the pointer is on a button / check / menu button) it
+  claims the sequence, stops the edit the first click started without
+  committing, and opens show_details(id). Built; clicks to be tried by hand
+  (the headless session can't click).
+- **Add Source starts as Local Folder** (2026-10-04, user's request):
+  SourceEdit::backend defaults to "local" (was "syncthing"); choosing a
+  folder still detects Syncthing / git. set_default_folder's fallback is
+  "local" too (detect_backend overrides it anyway). SourceConfig's own
+  default stays "syncthing", so a hand-written section without backend=
+  reads as before.
 
 ## Future features (not started)
 
