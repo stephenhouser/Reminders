@@ -107,10 +107,9 @@ int Tui::run() {
 	check_folder();
 	sync_ = std::make_unique<rem::SyncRunner>(store_);
 	restore_view();
-	if (hide_sidebar_) {
-		focus_items_ =
-			true;  // started with the sidebar hidden (show-sidebar=false)
-	}
+	// Starts in the reminders of the view it opens on, so ↑/↓ move among
+	// them straight away (Tab goes to the sidebar).
+	focus_items_ = true;
 
 	try {
 		draw();

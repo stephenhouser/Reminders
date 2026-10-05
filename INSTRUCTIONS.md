@@ -765,6 +765,10 @@ Done so far:
   - Tests: app/tests/import_file_test.cpp (3). Tried in tmux: new list
     from a smart list (default source), into the list showing, again
     (already there), a bad path, a bad name, undo.
+- **TUI starts in the reminders** (2026-10-04, user's request): run()
+  sets focus_items_ after restore_view (was only with the sidebar hidden),
+  so ↑/↓ move among the reminders of the view it opens on, first one
+  selected; Tab to the sidebar. TERMINAL.md. Tried in tmux.
 - **TUI: `i` no longer edits** (2026-10-04, user's request): only `e` opens
   a reminder in $EDITOR; `i` is unbound (keys.cpp, help box, TERMINAL.md).
 

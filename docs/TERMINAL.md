@@ -204,7 +204,8 @@ unfold it. Alt+↑ / Alt+↓ (or `K` / `J`) move the selected entry within its g
 Alt+Shift+↑ / Alt+Shift+↓ move the group, as in the app. Which groups show, and in what order,
 follow the same settings as the app (see
 [the settings file](USING.md#the-settings-file)). It opens on the last list
-you had open, here or in the GNOME app. Changes made elsewhere (in
+you had open, here or in the GNOME app, with its reminders selected, so ↑ / ↓
+move among them straight away (Tab moves to the sidebar). Changes made elsewhere (in
 the GNOME app, on another device through Syncthing, or in an editor) appear
 within a second.
 
