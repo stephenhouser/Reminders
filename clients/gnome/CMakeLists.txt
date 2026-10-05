@@ -41,7 +41,8 @@ target_link_libraries(reminders-gnome PRIVATE reminders_app reminders_backends P
 set_source_files_properties(${RES_C} PROPERTIES COMPILE_OPTIONS "-w")
 
 include(GNUInstallDirs)
-set_target_properties(reminders-gnome PROPERTIES OUTPUT_NAME Reminders)
+set_target_properties(reminders-gnome PROPERTIES OUTPUT_NAME Reminders
+  RUNTIME_OUTPUT_DIRECTORY ${REMINDERS_BIN_DIR})
 install(TARGETS reminders-gnome)
 install(FILES data/com.stephenhouser.Reminders.desktop
         DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)

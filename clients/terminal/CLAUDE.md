@@ -49,7 +49,7 @@ On a private tmux server, never the user's:
 
 ```
 tmux -L reminders-test -f /dev/null new-session -d -x 90 -y 24 \
-  "env HOME=<scratch>/home XDG_CONFIG_HOME= build/cli/reminders --folder <dir>; sleep 3"
+  "env HOME=<scratch>/home XDG_CONFIG_HOME= build/bin/reminders --folder <dir>; sleep 3"
 ```
 
 - **Leave `TERM` alone.** Under `screen-256color` the `kUP3` family isn't

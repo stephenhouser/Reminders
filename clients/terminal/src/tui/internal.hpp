@@ -1,5 +1,5 @@
-// Internal to the terminal interface's files (cli/src/tui/): its types, the
-// Tui class and the text and colour helpers they share.
+// Internal to the terminal interface's files (clients/terminal/src/tui/): its
+// types, the Tui class and the text and colour helpers they share.
 #pragma once
 
 #include <ncurses.h>

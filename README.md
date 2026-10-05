@@ -157,8 +157,8 @@ ctest --test-dir build            # all the tests (or run them one by one:)
 ./build/app/app_tests            # the layer the two apps share
 ./build/backends/caldav_tests    # each back end's own tests (syncthing_, webdav_, git_tests, …);
 ./build/backends/caldav_server_tests backends/common/tests/fake_dav.py   # the *_server_tests use a fake server
-./build/linux/Reminders          # the GNOME app (or: ./build/linux/Reminders ~/Sync/Reminders)
-./build/cli/reminders --help     # the terminal client
+./build/bin/Reminders            # the GNOME app (or: ./build/bin/Reminders ~/Sync/Reminders)
+./build/bin/reminders --help     # the terminal client
 ```
 
 ### Formatting
@@ -219,11 +219,14 @@ app/                   What the two apps share: views, selection, actions on rem
 backends/              One module per back end, each with its code, tests and README.md
   common/              WebDAV/CalDAV HTTP (libcurl, libxml2), server settings, fake_dav.py test server
   local/  syncthing/  caldav/  webdav/  git/
-linux/                 The GNOME client
-  src/                 main, window, dialogs, support, gtk_util (RAII + signal helpers)
-  data/                style.css, icons, .desktop file, GResource manifest
-cli/                   The terminal client: cli.cpp (commands), tui.cpp (ncurses)
-CLAUDE.md              Working notes: build, test and formatting rules (plus linux/ and cli/ CLAUDE.md)
+clients/               One directory per client; each builds into build/bin/
+  gnome/               The GNOME client (GTK 4 + libadwaita)
+    src/               main, window, sidebar, content, dialogs, …, gtk_util (RAII + signal helpers)
+    data/              style.css, icons, .desktop file, GResource manifest
+  terminal/            The terminal client, `reminders`
+    src/cli/           the commands
+    src/tui/           the interactive interface (ncurses)
+CLAUDE.md              Working notes: build, test and formatting rules (plus one per client)
 INSTRUCTIONS.md        The original brief, the decisions behind the project, and where it stands
 TODO.md                What's still to do
 docs/rebuild-prompt.md The prompt the first version was built from (frozen)
@@ -283,7 +286,7 @@ library after every change, which keeps the code simple. Lists are small.
 
 - **Screenshots without screen capture:** GNOME locks down screen capture on
   Wayland, so the app can render its own window:
-  `REMINDERS_SCREENSHOT=out.png ./build/linux/Reminders` saves a PNG after
+  `REMINDERS_SCREENSHOT=out.png ./build/bin/Reminders` saves a PNG after
   1.5 s and quits.
 - **Testing without touching your real session:** the app is single-instance,
   so a test launch can be handed to your running copy, and a test window can
@@ -295,13 +298,13 @@ library after every change, which keeps the code simple. Lists are small.
     sleep 1
     WAYLAND_DISPLAY=test XDG_CONFIG_HOME=/tmp/r/config XDG_STATE_HOME=/tmp/r/state XDG_DATA_HOME=/tmp/r/data \
       XDG_CACHE_HOME=/tmp/r/cache REMINDERS_SCREENSHOT=/tmp/r/shot.png \
-      ./build/linux/Reminders /tmp/r/lists'
+      ./build/bin/Reminders /tmp/r/lists'
   ```
 - **Driving the app from scripts:** actions are exported over D-Bus, e.g.
   `gdbus call --session --dest com.stephenhouser.Reminders --object-path /com/stephenhouser/Reminders/window/1 --method org.gtk.Actions.Activate go-to '[]' '{}'`.
 - **Testing the TUI:** run it on a private tmux server, send keys, and
   capture the screen:
-  `tmux -L test new -d -s t -x 100 -y 30 ./build/cli/reminders; tmux -L test send-keys -t t 6 Tab j; tmux -L test capture-pane -p -t t`.
+  `tmux -L test new -d -s t -x 100 -y 30 ./build/bin/reminders; tmux -L test send-keys -t t 6 Tab j; tmux -L test capture-pane -p -t t`.
 - **Memory checks:** the core tests run clean under `valgrind`, and with
   `-D_GLIBCXX_DEBUG`.
 

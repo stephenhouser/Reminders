@@ -34,7 +34,7 @@ plus a short state of play. It is not a to-do list and not a changelog.
 
 - **What to do next** → `TODO.md`, which owns that list outright.
 - **How to work in this repo** (build, test, format, the mandates, isolated
-  test launches) → `CLAUDE.md`, and `linux/CLAUDE.md` for GTK.
+  test launches) → `CLAUDE.md`, plus one per client in `clients/<name>/`.
 - **What the apps do** → `README.md`, `docs/USING.md`, `docs/TERMINAL.md`.
 - **The file format** → `docs/FORMAT.md`, the contract every client implements.
 - **Each back end** → `backends/<id>/README.md`.
@@ -123,6 +123,6 @@ result and `git log` is the record. Tags to diff from:
   RRULEs beyond `docs/FORMAT.md`'s rules are kept but not shown; a notes line
   written `- [ ] …` reads back as a subtask because the format has no escape
   for it (combining pasted text writes `☐ …` instead to dodge it).
-- **The app icon** is waiting on the user: `linux/data` has the `.desktop` file
+- **The app icon** is waiting on the user: `clients/gnome/data` has the `.desktop` file
   and hicolor SVG, but nothing installs them, so GNOME shows a generic icon.
   It'll come with a proper install step.

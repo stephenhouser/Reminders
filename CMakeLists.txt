@@ -17,14 +17,18 @@ add_subdirectory(app)
 
 add_subdirectory(backends)
 
+# The clients, one directory each under clients/. Their executables all go
+# to build/bin/, so commands and docs don't depend on the source layout.
+set(REMINDERS_BIN_DIR ${CMAKE_BINARY_DIR}/bin)
+
 option(BUILD_TERMINAL_APP "Build the terminal client (needs ncursesw)" ON)
 if(BUILD_TERMINAL_APP)
-  add_subdirectory(cli)
+  add_subdirectory(clients/terminal)
 endif()
 
 option(BUILD_GNOME_APP "Build the GNOME client (needs gtk4 and libadwaita-1)" ON)
-if(BUILD_GNOME_APP AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/linux/CMakeLists.txt)
-  add_subdirectory(linux)
+if(BUILD_GNOME_APP AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/clients/gnome/CMakeLists.txt)
+  add_subdirectory(clients/gnome)
 endif()
 
 # Formatting with clang-format, in the style of the nearest .clang-format
@@ -39,8 +43,7 @@ if(CLANG_FORMAT)
        ${CMAKE_CURRENT_SOURCE_DIR}/core/*.cpp ${CMAKE_CURRENT_SOURCE_DIR}/core/*.hpp
        ${CMAKE_CURRENT_SOURCE_DIR}/app/*.cpp ${CMAKE_CURRENT_SOURCE_DIR}/app/*.hpp
        ${CMAKE_CURRENT_SOURCE_DIR}/backends/*.cpp ${CMAKE_CURRENT_SOURCE_DIR}/backends/*.hpp
-       ${CMAKE_CURRENT_SOURCE_DIR}/cli/*.cpp ${CMAKE_CURRENT_SOURCE_DIR}/cli/*.hpp
-       ${CMAKE_CURRENT_SOURCE_DIR}/linux/*.cpp ${CMAKE_CURRENT_SOURCE_DIR}/linux/*.hpp)
+       ${CMAKE_CURRENT_SOURCE_DIR}/clients/*.cpp ${CMAKE_CURRENT_SOURCE_DIR}/clients/*.hpp)
   add_custom_target(format
     COMMAND ${CLANG_FORMAT} -i --style=file ${FORMAT_SOURCES}
     COMMAND ${CLANG_FORMAT} -i --style=file ${FORMAT_SOURCES}

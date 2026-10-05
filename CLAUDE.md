@@ -13,7 +13,8 @@ end is a module that can be added or left out.
 Decisions and why, and a short state of play: `INSTRUCTIONS.md`. The to-do
 list: `TODO.md`. The format: `docs/FORMAT.md`. Each back end:
 `backends/<id>/README.md`. Each client has its own notes, loaded when you
-work there: `linux/CLAUDE.md` (GTK) and `cli/CLAUDE.md` (CLI and ncurses).
+work there: `clients/gnome/CLAUDE.md` (GTK) and `clients/terminal/CLAUDE.md`
+(CLI and ncurses).
 
 Apple Reminders on iOS is the model for the features and the feel, and its
 keyboard shortcuts are in the brief at the top of `INSTRUCTIONS.md`. It's the
@@ -23,12 +24,20 @@ reference, not the architecture.
 
 - `core/` — the library: model, file format, merge, history, settings, XDG
   paths, importer/exporter, `Library` (several sources open at once).
-- `app/` — the layer the GUI and the terminal client share (preferences,
+- `app/` — the toolkit-free layer every client shares (preferences,
   `import_file`), kept apart from core settings.
 - `backends/<id>/` — one module per source type: `local`, `syncthing`,
   `caldav`, `webdav`, `git`, plus `common/`.
-- `linux/` — the GNOME app (`build/linux/Reminders`), GTK4 + libadwaita.
-- `cli/` — the terminal client (`build/cli/reminders`): CLI and TUI.
+- `clients/<name>/` — one directory per client, named for the desktop or
+  environment it targets, not the OS:
+  - `gnome/` — the GNOME app, GTK 4 + libadwaita.
+  - `terminal/` — the terminal client: CLI and TUI in one binary.
+
+  Every client's executable builds into `build/bin/` (`REMINDERS_BIN_DIR`), so
+  it's `build/bin/Reminders` and `build/bin/reminders` whatever the source
+  layout. A new client sets `RUNTIME_OUTPUT_DIRECTORY ${REMINDERS_BIN_DIR}`
+  the same way. Test executables stay where they were (`build/core/`,
+  `build/app/`, `build/backends/`).
 
 Public headers sit under `<dir>/include/reminders/` and are included as
 `<reminders/paths.hpp>`; everything is in `namespace rem`.
@@ -96,11 +105,11 @@ and overwrites their saved view.
   com.stephenhouser.Reminders --object-path
   /com/stephenhouser/Reminders/window/1 --method org.gtk.Actions.Activate`.
 - **TUI:** a private tmux server, `tmux -L reminders-test` — recipe in
-  `cli/CLAUDE.md`.
+  `clients/terminal/CLAUDE.md`.
 - Test settings files need a `[general]` header line; keys outside it are
   ignored. A `--folder` other than the saved one ignores the saved `view`.
 - If a launch returns in ~30 ms it was handed to an existing instance: stop
-  and check `pgrep -af build/linux/Reminders`.
+  and check `pgrep -af build/bin/Reminders`.
 
 ## Gotchas already paid for
 
@@ -112,4 +121,4 @@ and overwrites their saved view.
 - **A notes line written `- [ ] …` reads back as a subtask** — the format has no
   escape. Text combined from a paste is written `☐ …` to dodge it.
 
-Client-specific ones are in `linux/CLAUDE.md` and `cli/CLAUDE.md`.
+Client-specific ones are in each `clients/<name>/CLAUDE.md`.

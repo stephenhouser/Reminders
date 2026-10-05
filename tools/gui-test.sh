@@ -11,7 +11,7 @@
 set -euo pipefail
 home="$1"
 shift
-app="$(cd "$(dirname "$0")/.." && pwd)/build/linux/Reminders"
+app="$(cd "$(dirname "$0")/.." && pwd)/build/bin/Reminders"
 sock="reminders-test-$$"
 exec env -u DISPLAY HOME="$home" XDG_CONFIG_HOME= XDG_DATA_HOME="$home/data" XDG_STATE_HOME="$home/state" \
 	GTK_A11Y=none GDK_BACKEND=wayland TEST_SOCK="$sock" \

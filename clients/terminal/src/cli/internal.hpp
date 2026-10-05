@@ -1,7 +1,7 @@
 // reminders: the command-line interface (and, with no command, the TUI).
 //
-// Internal to the CLI's files (cli/src/cli/): the shared types, the App
-// class with a method per command, and the helpers they use.
+// Internal to the CLI's files (clients/terminal/src/cli/): the shared types,
+// the App class with a method per command, and the helpers they use.
 #pragma once
 
 #include <unistd.h>
