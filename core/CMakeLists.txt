@@ -38,6 +38,7 @@ add_executable(core_tests
   tests/store_test.cpp
   tests/history_test.cpp
   tests/dates_test.cpp
+  tests/settings_test.cpp
   tests/clipboard_test.cpp
   tests/sources_test.cpp
   tests/library_test.cpp

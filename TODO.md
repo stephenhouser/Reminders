@@ -6,7 +6,7 @@
 2. Shared app layer for the GNOME app and the TUI. Done.
 3. Back-end registry with string ids. Done.
 4. One self-contained module per back end, with its own build option and docs. Done.
-5. Split settings into ini, preferences and source config.
+5. Split settings into ini, preferences and source config. Done.
 
 ## Features
 
@@ -15,7 +15,11 @@
 - Query language, for the CLI and for saved smart lists.
 - TUI: a key to sync the selected source, and one to sync all sources.
 - Clicking the flag in the GUI should toggle flagged on and off
+- Settings: keep the parsed file in memory, reload when it changes on disk.
 - make the default new source "local"
+- import should allow selection of which source to import to "New List ... in ..."
+- New List dialog should let me pick which source to create in
+- Add import to TUI, perhaps the I key
 
 ## Known gaps
 
@@ -26,4 +30,4 @@
 
 ## Needs trying by hand
 
-- Add Source for CalDAV and WebDAV, and Source Info, after the back-end split (stage 4).
+- Add Source for CalDAV and WebDAV after the back-end split (stage 4).

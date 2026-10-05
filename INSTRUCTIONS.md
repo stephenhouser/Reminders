@@ -698,7 +698,27 @@ Done so far:
     folders); CLI new-list / add / sync (git commit made, .stignore
     written); GUI screenshot through gui-test.sh with three sources.
   - Tried by the user: Add Source for local, git, a remote git and
-    syncthing all work. CalDAV / WebDAV Add Source and Source Info not yet.
+    syncthing all work; Source Info (editing a field, the Remove note for
+    git and syncthing) works. CalDAV / WebDAV Add Source not yet.
+- **Stage 5** (2026-10-04, bookmark `before-stage-5`): settings split; a
+  pure move, no behaviour change (option (b), caching the parsed file and
+  reloading on mtime change, left for later at the user's choice).
+  - core `settings.hpp/.cpp`: the settings file only — settings_file,
+    load / save_setting, load / save_section_setting, section_names,
+    section_settings, remove_section, load_bool_setting, device_name.
+    save_section_setting now uses write_lines (was a copy of it).
+  - app `preferences.hpp/.cpp` (new): everything the apps keep about the
+    display — with_key_number, GroupDisplay, SidebarGroup, sidebar order /
+    move helpers, SmartListsLayout, GroupLayout, collapsed / display,
+    names settings, list_entry_matches, HiddenEntries, order_tags /
+    order_lists, move_in_order / move_next_to, TagStyle. load_display is
+    file-local now. app sidebar.hpp, the TUI's internal.hpp and the GNOME
+    window.hpp include preferences.hpp.
+  - Source sections stay in core sources.cpp, through settings.hpp.
+  - Tests: the settings part of dates_test moved to core settings_test.cpp;
+    the preferences part to app/tests/preferences_test.cpp.
+  - Checked: 8/8 suites, format-check, the local-only build, GUI screenshot
+    identical to stage 4's, TUI sidebar with key numbers.
 
 ## Future features (not started)
 

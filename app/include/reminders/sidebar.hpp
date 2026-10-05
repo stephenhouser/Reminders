@@ -11,7 +11,7 @@
 #include <vector>
 
 #include "reminders/library.hpp"
-#include "reminders/settings.hpp"
+#include "reminders/preferences.hpp"
 #include "reminders/view.hpp"
 
 namespace rem {

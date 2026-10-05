@@ -197,7 +197,7 @@ core/                  Platform-neutral C++23 library (standard library only)
   include/reminders/   model, format, merge, recurrence, store, library, backend registry, sources, …
   src/
   tests/               Unit tests with a tiny built-in harness (no dependencies)
-app/                   What the two apps share: views, selection, actions on reminders, the sidebar's model
+app/                   What the two apps share: views, selection, actions on reminders, the sidebar's model and display preferences
 backends/              One module per back end, each with its code, tests and README.md
   common/              WebDAV/CalDAV HTTP (libcurl, libxml2), server settings, fake_dav.py test server
   local/  syncthing/  caldav/  webdav/  git/
@@ -228,7 +228,7 @@ INSTRUCTIONS.md        The original brief, and how to recreate this project
 | `exporter.hpp` | Exporting a list, or every list into a folder, in those formats, in forms the importer reads back |
 | `history.hpp` | Undo/redo as before/after snapshots of list files, merging around changes from other devices |
 | `paths.hpp` | The XDG base directories (config, data, state, cache), and `~` / `$VAR` in paths from settings |
-| `settings.hpp` | `$XDG_CONFIG_HOME/reminders/settings.ini`, shared by all clients, sidebar layout, and the device name |
+| `settings.hpp` | `$XDG_CONFIG_HOME/reminders/settings.ini`, shared by all clients: keys and sections, kept line for line; and the device name |
 | `clipboard.hpp` | Copying and pasting reminders as text |
 | `dates.hpp` | Local date, typed dates (`tomorrow`, `fri`, `+3d`), relative labels (`Tomorrow`, `Oct 3`) |
 
