@@ -308,7 +308,7 @@ in for them:
 - **Ctrl+Shift+letter** arrives as plain Ctrl+letter. So Ctrl+Shift+N, F, T,
   H and Z are `N`, `f`, `T`, `H` and `r` (Ctrl+E toggles, as in the app).
 - **Ctrl+I** is the same as Tab, which switches panes, so editing every field
-  is `e` or `i`.
+  is `e`.
 - **Ctrl+]** and **Ctrl+[** (indent / outdent) are `]` and `[`: Ctrl+[ is the
   same as Esc.
 - **Ctrl+1–9 and Ctrl+0** usually arrive as plain digits, so sidebar entries
@@ -318,7 +318,7 @@ in for them:
 
 ### Editing a reminder
 
-`e` (or `i`) in the TUI, and `reminders edit NAME` with no field options,
+`e` in the TUI, and `reminders edit NAME` with no field options,
 open the reminder in your editor (`$VISUAL`, then `$EDITOR`, else nano
 or vi) as simple `name: value` fields:
 

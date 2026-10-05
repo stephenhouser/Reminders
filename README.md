@@ -51,7 +51,7 @@ can reuse.
 - **Reminders**: title, notes, URL, due date and time, repeat ("every 2 weeks", weekdays, …), flag, priority, tags.
 - **Smart lists**: Today, Scheduled, All, All Reminders (completed ones too), Flagged, Completed, plus one per tag. Search across everything, and a Ctrl+K "Go to" switcher.
 - **Quick entry**: type `Pay rent #home 📅 2026-10-31 🚩` into "New Reminder" and the fields are filled in.
-- **Import and export** iCalendar (`.ics`) tasks, Markdown checklists, todo.txt, CSV or plain text (a line each), one list or all of them, from ☰ → Import… (or by dropping a file on the window) and ☰ → Export… (pick any lists; several can go into a `.zip`), or `reminders import` / `export`. Importing again doesn't duplicate unless you ask; an export imports back as it was.
+- **Import and export** iCalendar (`.ics`) tasks, Markdown checklists, todo.txt, CSV or plain text (a line each), one list or all of them, from ☰ → Import… (or by dropping a file on the window) and ☰ → Export… (pick any lists; several can go into a `.zip`), or `reminders import` / `export` (`I` imports in the full-screen interface). Importing again doesn't duplicate unless you ask; an export imports back as it was.
 - **Sidebar**: smart lists, lists and tags in the order you choose (drag them, or Alt+↑/↓), groups you can drag, fold or hide.
 - **Selecting several reminders** (Ctrl/Shift+click, Ctrl+A) to complete, flag, date, move, drag or delete them together.
 - **Undo and redo** (Ctrl+Z / Ctrl+Shift+Z) for every change, including moves and deleted lists.

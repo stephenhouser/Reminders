@@ -243,7 +243,7 @@ Ground rules
   hidden menu button; Show Completed stays win.show-completed); smart lists
   and tags get no menu;
   TUI J/K or Alt+↑/↓ in the sidebar (core move_sidebar_group skips groups
-  not showing). TUI S opens settings.ini in $EDITOR and reloads it.
+  not showing). TUI Ctrl+S (S until 2026-10-04) opens settings.ini in $EDITOR and reloads it.
   GUI main menu Settings… opens it with GtkFileLauncher (the default text
   editor), creating it with [general]; a GFileMonitor on the file reloads it
   300 ms after a change (skipped if the text is unchanged; sidebar focus kept
@@ -401,7 +401,7 @@ only compiled.
   pointer is read from the wrong argument and the app segfaults (Ctrl+B did,
   through notify::show-sidebar). Use `connect<void(GObject*, GParamSpec*)>`.
 - **settings.ini keys outside `[general]` are silently ignored.** A
-  hand-written file without the section header has no effect; the TUI's `S`
+  hand-written file without the section header has no effect; the TUI's Ctrl+S
   creates the file with the header.
 - **Testing pitfalls:**
   - **tmux:** keep tmux's own TERM. Forcing `TERM=screen-256color` loses the
@@ -873,23 +873,31 @@ install). Update it whenever these change (user's requests 2026-10-04).
     trips, three-way merging of Syncthing conflict copies, undo/redo history,
     settings, the XDG base directories, and sources: several open at once
     (`Library`), each with its own back end (syncthing, local, caldav,
-    webdav, git). Unit tests pass (137).
+    webdav, git). Settings are cached in memory, re-read when the file
+    changes. Tests pass: core 106, app 12 (the shared app layer, with
+    import_file), back ends 41.
   - **CalDAV, WebDAV and git back ends** (backends/, was net/ before
     refactor stage 4): CalDAV and WebDAV (libcurl
     + libxml2) keep a local Markdown copy in step with the server, merged
     three-way; git commits, pulls (list conflicts merged by the app) and
     pushes. Synced on open, every `interval=` minutes and shortly after
-    edits. Tested against a fake DAV server in Python and local git
-    repositories (15 network tests).
+    edits. Tested against a fake DAV server in Python (10 server tests)
+    and local git repositories (in git_tests).
   - **GNOME app** (`Reminders`): the features in the brief, the keyboard
     shortcuts, drag and drop within the app, the quick switcher,
     configurable sidebar groups (order, visible / collapsible / hidden,
     rearranged from the sidebar), one sidebar group per source, ☰ →
     Sources… with one Add Source… form for every type, ☰ → Sync All, and
     Sync Now on a syncing source's sidebar heading menu (SyncRunner::sync_now(source)).
+    Since 2026-10-04: click a row's flag to toggle it, row-buttons=hover /
+    always, note-lines=N, double-click opens Details, Add Source starts on
+    Local Folder, New List's Source row and Import's "New List … in …".
   - **Terminal client** (`reminders`): the CLI and the TUI, sharing settings
     and the last view with the app; `sync`, `--offline`, `new-list
-    --source`, `import`.
+    --source`, `import`. TUI since 2026-10-04: starts with focus in the
+    reminders; `s` / `S` sync the selected source / all; Ctrl+S edits
+    settings (was S); `I` imports a file; `e` edits in $EDITOR (`i` no
+    longer does); note-lines=N.
   - **Import** (2026-10-03): core importer.hpp. `read_import` tells the
     kinds apart by content: BEGIN:VCALENDAR → `read_ics`; checklist lines
     → `read_markdown` (Document's reminders with sections, ids, colour);
