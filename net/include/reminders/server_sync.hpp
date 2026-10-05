@@ -20,4 +20,9 @@ std::string run_password_command(const std::string& command);
 // SyncError when the server can't be reached.
 SyncResult sync_source(Store& store, const SourceConfig& source);
 
+// Attaches the sync of caldav, webdav and git to their registry entries
+// (backend_module.hpp), so they report syncs(). sync_source and SyncRunner
+// do it themselves; the apps call it before asking the registry.
+void register_network_backends();
+
 }  // namespace rem

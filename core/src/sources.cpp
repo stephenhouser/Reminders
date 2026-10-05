@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <format>
 
+#include "reminders/backend_module.hpp"
 #include "reminders/paths.hpp"
 #include "reminders/settings.hpp"
 #include "reminders/syncthing.hpp"
@@ -24,51 +25,36 @@ std::string section_of(const std::string& name) {
 SourceConfig read_source(const std::string& name) {
 	SourceConfig s;
 	s.name = name;
-	s.backend = parse_backend(load_section_setting(section_of(name), "backend"))
-					.value_or(BackendKind::Syncthing);
-	if (auto folder = load_section_setting(section_of(name), "folder");
-		!folder.empty()) {
-		s.folder = expand_path(folder);
-	}
-	s.title = load_section_setting(section_of(name), "title");
-	if (has_server(s.backend)) {
-		auto section = section_of(name);
-		s.dav.url = load_section_setting(section, "url");
-		s.dav.username = load_section_setting(section, "username");
-		s.dav.password_command =
-			load_section_setting(section, "password-command");
-		auto interval = load_section_setting(section, "interval");
-		int n = 0;
-		auto [p, ec] = std::from_chars(interval.data(),
-									   interval.data() + interval.size(), n);
-		if (ec == std::errc{} && p == interval.data() + interval.size() &&
-			n > 0) {
-			s.dav.interval = n;
-		}
-		if (s.folder.empty() && !s.dav.url.empty()) {
-			s.folder = default_copy_folder(s.backend, name);
+	auto section = section_of(name);
+	for (auto& [key, value] : section_settings(section)) {
+		if (key == "backend") {
+			if (auto* m = find_backend(value)) {
+				s.backend = m->id;
+			}
+		} else if (key == "folder") {
+			if (!value.empty()) {
+				s.folder = expand_path(value);
+			}
+		} else if (key == "title") {
+			s.title = value;
+		} else {
+			s.options[key] = value;
 		}
 	}
-	if (s.backend == BackendKind::Git) {
-		auto section = section_of(name);
-		s.git.url = load_section_setting(section, "url");
-		s.git.remote = load_section_setting(section, "remote");
-		s.git.branch = load_section_setting(section, "branch");
-		auto interval = load_section_setting(section, "interval");
-		int n = 0;
-		auto [p, ec] = std::from_chars(interval.data(),
-									   interval.data() + interval.size(), n);
-		if (ec == std::errc{} && p == interval.data() + interval.size() &&
-			n > 0) {
-			s.git.interval = n;
-		}
-		if (s.folder.empty() && !s.git.url.empty()) {
-			s.folder = default_copy_folder(s.backend, name);
-		}
+	if (s.folder.empty() && backend_of(s).owns_folder) {
+		s.folder = default_copy_folder(s.backend, name);
 	}
 	return s;
 }
 
+// A positive whole number of minutes, or `fallback`.
+int minutes(const std::string& text, int fallback) {
+	int n = 0;
+	auto [p, ec] = std::from_chars(text.data(), text.data() + text.size(), n);
+	return ec == std::errc{} && p == text.data() + text.size() && n > 0
+			 ? n
+			 : fallback;
+}
 // A source name from a folder's name: "Reminders" → "reminders".
 std::string name_for(const fs::path& folder) {
 	std::string out;
@@ -115,7 +101,7 @@ void move_state_dir(const fs::path& from, const fs::path& to) {
 void move_misplaced_state(const SourceConfig& source, const std::string& device,
 						  const fs::path& state) {
 	auto in_folder = source.folder / kStateDirName / device;
-	if (source.backend == BackendKind::Syncthing) {
+	if (backend_of(source).state_in_folder) {
 		if (!source.name.empty()) {
 			move_state_dir(state_dir() / device / source.name, in_folder);
 		}
@@ -126,13 +112,42 @@ void move_misplaced_state(const SourceConfig& source, const std::string& device,
 
 }  // namespace
 
-fs::path default_copy_folder(BackendKind backend, const std::string& name) {
-	return data_dir() / std::string(backend_name(backend)) / name;
+fs::path default_copy_folder(std::string_view backend,
+							 const std::string& name) {
+	return data_dir() / std::string(backend) / name;
 }
 
+std::string SourceConfig::option(const std::string& key) const {
+	auto at = options.find(key);
+	return at == options.end() ? std::string() : at->second;
+}
+
+DavSettings dav_settings(const SourceConfig& source) {
+	return {source.option("url"), source.option("username"),
+			source.option("password-command"), sync_interval(source)};
+}
+
+void set_dav_settings(SourceConfig& source, const DavSettings& settings) {
+	source.options["url"] = settings.url;
+	source.options["username"] = settings.username;
+	source.options["password-command"] = settings.password_command;
+	source.options["interval"] = std::to_string(settings.interval);
+}
+
+GitSettings git_settings(const SourceConfig& source) {
+	return {source.option("url"), source.option("remote"),
+			source.option("branch"), sync_interval(source)};
+}
+
+void set_git_settings(SourceConfig& source, const GitSettings& settings) {
+	source.options["url"] = settings.url;
+	source.options["remote"] = settings.remote;
+	source.options["branch"] = settings.branch;
+	source.options["interval"] = std::to_string(settings.interval);
+}
 fs::path source_state_dir(const SourceConfig& source,
 						  const std::string& device) {
-	if (source.backend == BackendKind::Syncthing) {
+	if (backend_of(source).state_in_folder) {
 		return state_dir(source.folder, device);
 	}
 	auto base = state_dir() / device;
@@ -204,40 +219,22 @@ void save_source(const SourceConfig& source) {
 	auto old_folder = load_section_setting(section, "folder");
 	auto old_url = load_section_setting(section, "url");
 	if ((!old_folder.empty() && expand_path(old_folder) != source.folder) ||
-		(has_server(source.backend) && !old_url.empty() &&
-		 old_url != source.dav.url)) {
+		(!old_url.empty() && old_url != source.option("url"))) {
 		std::error_code ec;
 		fs::remove_all(source_state_dir(source, device_name()), ec);
 	}
-	save_section_setting(section, "backend",
-						 std::string(backend_name(source.backend)));
+	save_section_setting(section, "backend", source.backend);
 	save_section_setting(section, "folder", contract_path(source.folder));
 	if (!source.title.empty()) {
-		save_section_setting(section_of(source.name), "title", source.title);
+		save_section_setting(section, "title", source.title);
 	}
-	if (has_server(source.backend)) {
-		auto section = section_of(source.name);
-		save_section_setting(section, "url", source.dav.url);
-		save_section_setting(section, "username", source.dav.username);
-		save_section_setting(section, "password-command",
-							 source.dav.password_command);
-		save_section_setting(section, "interval",
-							 std::to_string(source.dav.interval));
-	}
-	if (source.backend == BackendKind::Git) {
-		save_section_setting(section, "url", source.git.url);
-		save_section_setting(section, "remote", source.git.remote);
-		save_section_setting(section, "branch", source.git.branch);
-		save_section_setting(section, "interval",
-							 std::to_string(source.git.interval));
+	for (auto& [key, value] : source.options) {
+		save_section_setting(section, key, value);
 	}
 }
-
 int sync_interval(const SourceConfig& source) {
-	return source.backend == BackendKind::Git ? source.git.interval
-											  : source.dav.interval;
+	return minutes(source.option("interval"), 15);
 }
-
 bool in_git_repo(const fs::path& folder) {
 	std::error_code ec;
 	for (auto p = fs::weakly_canonical(folder, ec); !p.empty();
@@ -252,10 +249,14 @@ bool in_git_repo(const fs::path& folder) {
 	return false;
 }
 
-BackendKind detect_backend(const fs::path& folder) {
-	return syncthing_root(folder) ? BackendKind::Syncthing : BackendKind::Local;
+std::string detect_backend(const fs::path& folder) {
+	for (auto* m : backends()) {
+		if (m->detect_by_default && m->detect && m->detect(folder)) {
+			return m->id;
+		}
+	}
+	return "local";
 }
-
 SourceConfig source_for_folder(const fs::path& folder) {
 	std::error_code ec;
 	for (auto& s : load_sources()) {
@@ -263,12 +264,12 @@ SourceConfig source_for_folder(const fs::path& folder) {
 			return s;
 		}
 	}
-	return SourceConfig{"", detect_backend(folder), folder, {}};
+	return SourceConfig{"", detect_backend(folder), folder, ""};
 }
 
 SourceConfig set_default_folder(const fs::path& folder) {
 	// A server account stays one: the folder becomes a source of its own.
-	if (auto d = default_source(); d && has_server(d->backend)) {
+	if (auto d = default_source(); d && has_server(*d)) {
 		auto source = source_for_folder(folder);
 		if (source.name.empty()) {
 			source = add_source(folder);
@@ -277,7 +278,7 @@ SourceConfig set_default_folder(const fs::path& folder) {
 		return source;
 	}
 	auto source = default_source().value_or(
-		SourceConfig{name_for(folder), BackendKind::Syncthing, folder, {}});
+		SourceConfig{name_for(folder), "syncthing", folder, ""});
 	source.folder = folder;
 	source.backend = detect_backend(folder);
 	save_source(source);
@@ -304,42 +305,15 @@ std::string unique_source_name(const std::string& base,
 
 std::string new_source_name(const SourceConfig& source) {
 	std::string base = source.title;
-	if (base.empty() && has_server(source.backend) && !source.dav.url.empty()) {
-		// The host's second-to-last label: caldav.fastmail.com → fastmail.
-		auto start = source.dav.url.find("://");
-		auto host =
-			source.dav.url.substr(start == std::string::npos ? 0 : start + 3);
-		host = host.substr(0, host.find_first_of("/:"));
-		auto last = host.rfind('.');
-		if (last != std::string::npos && last > 0) {
-			auto prev = host.rfind('.', last - 1);
-			auto from = prev == std::string::npos ? 0 : prev + 1;
-			host = host.substr(from, last - from);
-		}
-		base = host;
-	}
-	if (base.empty() && source.backend == BackendKind::Git &&
-		!source.git.url.empty()) {
-		// The repository's name: …/notes.git or …:you/notes → notes.
-		auto url = source.git.url;
-		while (!url.empty() && url.back() == '/') {
-			url.pop_back();
-		}
-		auto name = url.substr(url.find_last_of("/:") == std::string::npos
-								   ? 0
-								   : url.find_last_of("/:") + 1);
-		if (name.ends_with(".git")) {
-			name.resize(name.size() - 4);
-		}
-		base = name;
+	auto& module = backend_of(source);
+	if (base.empty() && module.name_hint) {
+		base = module.name_hint(source);
 	}
 	if (base.empty() && !source.folder.empty()) {
 		base = source.folder.filename().string();
 	}
 	if (base.empty()) {
-		base = has_server(source.backend)
-				 ? std::string(backend_name(source.backend))
-				 : "reminders";
+		base = module.has_server ? module.id : "reminders";
 	}
 	return unique_source_name(name_for(fs::path(base)), load_sources());
 }
@@ -349,8 +323,7 @@ SourceConfig add_source(SourceConfig source) {
 	if (source.name.empty()) {
 		source.name = new_source_name(source);
 	}
-	if (source.folder.empty() &&
-		(has_server(source.backend) || source.backend == BackendKind::Git)) {
+	if (source.folder.empty() && backend_of(source).owns_folder) {
 		source.folder = default_copy_folder(source.backend, source.name);
 	}
 	save_source(source);
@@ -361,7 +334,7 @@ SourceConfig add_source(SourceConfig source) {
 }
 
 SourceConfig add_source(const fs::path& folder) {
-	return add_source(SourceConfig{"", detect_backend(folder), folder, {}});
+	return add_source(SourceConfig{"", detect_backend(folder), folder, ""});
 }
 
 void remove_source(const std::string& name, bool keep_copy) {
@@ -369,7 +342,7 @@ void remove_source(const std::string& name, bool keep_copy) {
 	for (auto& s : load_sources()) {
 		if (s.name == name) {
 			fs::remove_all(source_state_dir(s, device_name()), ec);
-			if (!keep_copy && has_server(s.backend) &&
+			if (!keep_copy && has_server(s) &&
 				s.folder == default_copy_folder(s.backend, name)) {
 				fs::remove_all(s.folder, ec);
 			}
@@ -386,7 +359,7 @@ std::unique_ptr<Store> open_source(const SourceConfig& source,
 								   const std::string& device) {
 	// A local copy, or a git folder (a clone or a new repository to be):
 	// made now, filled (or made a repository) by the first sync.
-	if (has_server(source.backend) || source.backend == BackendKind::Git) {
+	if (backend_of(source).owns_folder) {
 		fs::create_directories(source.folder);
 	}
 	auto state = source_state_dir(source, device);

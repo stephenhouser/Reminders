@@ -31,9 +31,9 @@ struct Fixture {
 			std::ofstream(dir / "home" / "B.md") << MARK
 				"- [ ] Tomorrow 📅 2026-10-05 🚩 #x ^b00001\n- [ ] Undated "
 				"^b00002\n";
-			lib.add(SourceConfig{"home", BackendKind::Local, dir / "home", ""},
-					std::make_unique<Store>(dir / "home", dir / "state",
-											BackendKind::Local));
+			lib.add(
+				SourceConfig{"home", "local", dir / "home", ""},
+				std::make_unique<Store>(dir / "home", dir / "state", "local"));
 			lib.load_all();
 		}
 		~Fixture() {

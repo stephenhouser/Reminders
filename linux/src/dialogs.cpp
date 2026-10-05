@@ -3,8 +3,10 @@
 #include <algorithm>
 #include <format>
 #include <memory>
+#include <set>
 
 #include "gtk_util.hpp"
+#include "reminders/backend_module.hpp"
 #include "reminders/paths.hpp"
 #include "support.hpp"
 
@@ -657,10 +659,6 @@ void show_tag_dialog(GtkWidget* parent, const std::string& tag, ListEdit style,
 namespace {
 
 // The back ends offered, in the Type row's order.
-constexpr rem::BackendKind kSourceTypes[] = {
-	rem::BackendKind::Syncthing, rem::BackendKind::Local,
-	rem::BackendKind::Caldav, rem::BackendKind::Webdav, rem::BackendKind::Git};
-
 struct SourceDialog {
 		SourceEdit edit;
 		std::function<std::string(const SourceEdit&)> validate;
@@ -668,74 +666,52 @@ struct SourceDialog {
 		GtkWidget* error = nullptr;
 		GtkWidget* type_row = nullptr;
 		GtkWidget* folder_row = nullptr;
-		GtkWidget* server_group = nullptr;	// CalDAV and WebDAV only
-		GtkWidget* repo_group = nullptr;	// git only
-		GtkWidget* address_row = nullptr;
-		// A new server source's folder (or a git clone's) follows its name and
-		// type (the default place in $XDG_DATA_HOME) until one is chosen.
+		std::vector<const rem::BackendModule*>
+			types;	// the Type row's, in order
+		// Each back end's settings groups, shown only for it.
+		std::vector<std::pair<std::string, GtkWidget*>>
+			groups;	 // back end id, group
+		// A new source's folder, for a back end that owns one, follows its
+		// name and type (the default place in $XDG_DATA_HOME) until one is
+		// chosen.
 		bool folder_chosen = false;
 
-		bool on_server() const { return rem::has_server(edit.backend); }
-		bool git() const { return edit.backend == rem::BackendKind::Git; }
-		// The folder can be the app's own: a local copy, or a git repository
-		// (cloned, or new).
-		bool own_folder() const { return on_server() || git(); }
+		const rem::BackendModule& module() const {
+			return rem::backend_of(edit.config());
+		}
+		guint type_index(const std::string& id) const {
+			for (guint i = 0; i < types.size(); ++i) {
+				if (types[i]->id == id) {
+					return i;
+				}
+			}
+			return 0;
+		}
 
 		void update() {
+			auto& m = module();
 			if (edit.is_new && !folder_chosen) {
-				edit.folder =
-					own_folder()
-						? rem::default_copy_folder(
-							  edit.backend, rem::new_source_name(
-												rem::SourceConfig{"",
-																  edit.backend,
-																  {},
-																  edit.title,
-																  edit.dav,
-																  edit.git}))
-						: std::filesystem::path{};
+				edit.folder = m.owns_folder
+								? rem::default_copy_folder(
+									  m.id, rem::new_source_name(edit.config()))
+								: std::filesystem::path{};
 			}
 			auto err = validate(edit);
 			gtk_label_set_text(GTK_LABEL(error), err.c_str());
 			gtk_widget_set_visible(error, !err.empty());
 			gtk_widget_set_sensitive(done, err.empty());
-			gtk_widget_set_visible(server_group, on_server());
-			gtk_widget_set_visible(repo_group, git());
+			for (auto& [id, group] : groups) {
+				gtk_widget_set_visible(group, id == m.id);
+			}
 			adw_preferences_row_set_title(
 				ADW_PREFERENCES_ROW(folder_row),
-				on_server() ? "Local Copy" : "Folder");
+				m.has_server ? "Local Copy" : "Folder");
 			auto folder = edit.folder.empty() ? std::string("None chosen")
 											  : rem::contract_path(edit.folder);
 			adw_action_row_set_subtitle(ADW_ACTION_ROW(folder_row),
 										folder.c_str());
-			bool webdav = edit.backend == rem::BackendKind::Webdav;
-			adw_action_row_set_subtitle(
-				ADW_ACTION_ROW(type_row),
-				edit.backend == rem::BackendKind::Syncthing
-					? "A folder Syncthing keeps in step; conflict copies are "
-					  "merged"
-				: edit.backend == rem::BackendKind::Local
-					? "A folder on this computer; files are read and saved as "
-					  "they are"
-				: git() ? "A folder in a git repository; changes are "
-						  "committed, pulled and pushed"
-				: webdav
-					? "List files in a folder on a WebDAV server, with a copy "
-					  "kept here"
-					: "Task lists on a CalDAV server, with a copy kept here");
-			adw_preferences_group_set_description(
-				ADW_PREFERENCES_GROUP(server_group),
-				webdav ? "The list files are kept in a folder on the server "
-						 "(Nextcloud, ownCloud, a NAS, …), made if "
-						 "it isn't there."
-					   : "Each of the account's task lists becomes a list here "
-						 "(Nextcloud, Fastmail, Radicale, …).");
-			gtk_widget_set_tooltip_text(
-				address_row, webdav ? "The folder's address, e.g. "
-									  "https://cloud.example.com/remote.php/"
-									  "dav/files/you/Reminders/"
-									: "The server's address, e.g. "
-									  "https://caldav.fastmail.com/");
+			adw_action_row_set_subtitle(ADW_ACTION_ROW(type_row),
+										m.description.c_str());
 		}
 };
 
@@ -778,26 +754,26 @@ void show_source_dialog(GtkWidget* parent, SourceEdit source,
 
 	d->type_row = adw_combo_row_new();
 	adw_preferences_row_set_title(ADW_PREFERENCES_ROW(d->type_row), "Type");
-	auto* kinds =
-		string_list({"Syncthing", "Local Folder", "CalDAV", "WebDAV", "Git"});
+	d->types = rem::backends();
+	std::vector<std::string> titles;
+	for (auto* m : d->types) {
+		titles.push_back(m->title);
+	}
+	auto* kinds = string_list(titles);
 	adw_combo_row_set_model(ADW_COMBO_ROW(d->type_row), G_LIST_MODEL(kinds));
 	g_object_unref(kinds);
-	auto type_index = [](rem::BackendKind k) {
-		return static_cast<guint>(std::ranges::find(kSourceTypes, k) -
-								  std::begin(kSourceTypes));
-	};
 	adw_combo_row_set_selected(ADW_COMBO_ROW(d->type_row),
-							   type_index(d->edit.backend));
+							   d->type_index(d->edit.backend));
 	connect<void(GObject*, GParamSpec*)>(
 		d->type_row, "notify::selected", [d](GObject*, GParamSpec*) {
 			auto i = adw_combo_row_get_selected(ADW_COMBO_ROW(d->type_row));
-			if (i >= std::size(kSourceTypes)) {
+			if (i >= d->types.size()) {
 				return;
 			}
-			bool was_on_server = d->on_server();
-			d->edit.backend = kSourceTypes[i];
+			bool was_own = d->module().owns_folder;
+			d->edit.backend = d->types[i]->id;
 			// A new source's default local copy isn't a folder to sync.
-			if (d->edit.is_new && was_on_server && !d->on_server() &&
+			if (d->edit.is_new && was_own && !d->module().owns_folder &&
 				!d->folder_chosen) {
 				d->edit.folder.clear();
 			}
@@ -814,8 +790,8 @@ void show_source_dialog(GtkWidget* parent, SourceEdit source,
 	on(change, "clicked", [d, dialog] {
 		auto* chooser = gtk_file_dialog_new();
 		gtk_file_dialog_set_title(
-			chooser, d->on_server() ? "Choose Where to Keep the Lists"
-									: "Choose the Source's Folder");
+			chooser, d->module().has_server ? "Choose Where to Keep the Lists"
+											: "Choose the Source's Folder");
 		if (!d->edit.folder.empty() &&
 			std::filesystem::is_directory(d->edit.folder)) {
 			auto current =
@@ -843,22 +819,20 @@ void show_source_dialog(GtkWidget* parent, SourceEdit source,
 					d->edit.folder = path;
 					g_free(path);
 					d->folder_chosen = true;
-					// A new folder source: Syncthing inside a Syncthing folder,
-					// git inside a git repository, else local.
-					if (d->edit.is_new &&
-						(d->edit.backend == rem::BackendKind::Syncthing ||
-						 d->edit.backend == rem::BackendKind::Local)) {
-						d->edit.backend = rem::detect_backend(d->edit.folder);
-						if (d->edit.backend == rem::BackendKind::Local &&
-							rem::in_git_repo(d->edit.folder)) {
-							d->edit.backend = rem::BackendKind::Git;
+					// A new folder source: the first type that recognises the
+					// folder (Syncthing inside a Syncthing folder, git inside a
+					// repository), else a local folder.
+					if (d->edit.is_new && !d->module().owns_folder) {
+						d->edit.backend = "local";
+						for (auto* m : d->types) {
+							if (m->detect && m->detect(d->edit.folder)) {
+								d->edit.backend = m->id;
+								break;
+							}
 						}
 						adw_combo_row_set_selected(
 							ADW_COMBO_ROW(d->type_row),
-							static_cast<guint>(
-								std::ranges::find(kSourceTypes,
-												  d->edit.backend) -
-								std::begin(kSourceTypes)));
+							d->type_index(d->edit.backend));
 					}
 					d->update();
 				}
@@ -886,76 +860,64 @@ void show_source_dialog(GtkWidget* parent, SourceEdit source,
 		});
 	adw_preferences_group_add(ADW_PREFERENCES_GROUP(main), is_default);
 
-	// CalDAV and WebDAV: the server, shown only for those types (its
-	// description and the address's hint are set by update()).
-	d->server_group = adw_preferences_group_new();
-	adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(d->server_group),
-									"Server");
-	auto entry = [&](const char* row_title, std::string* value,
-					 const char* hint, GtkWidget* group = nullptr) {
-		auto* row = adw_entry_row_new();
-		adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), row_title);
-		gtk_editable_set_text(GTK_EDITABLE(row), value->c_str());
-		if (hint) {
-			gtk_widget_set_tooltip_text(row, hint);
+	// Each back end's own settings, from its fields, in groups shown only
+	// for it. Back ends sharing a key (url=) share its value.
+	std::vector<GtkWidget*> setting_groups;
+	for (auto* m : d->types) {
+		std::map<std::string, GtkWidget*> by_name;
+		for (auto& f : m->fields) {
+			auto& group = by_name[f.group];
+			if (!group) {
+				group = adw_preferences_group_new();
+				adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(group),
+												f.group.c_str());
+				if (!m->settings_note.empty()) {
+					adw_preferences_group_set_description(
+						ADW_PREFERENCES_GROUP(group), m->settings_note.c_str());
+				}
+				d->groups.emplace_back(m->id, group);
+				setting_groups.push_back(group);
+			}
+			auto key = f.key;
+			GtkWidget* row;
+			if (f.kind == rem::SettingField::Minutes) {
+				row = adw_spin_row_new_with_range(1, 1440, 1);
+				adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row),
+											  f.label.c_str());
+				adw_action_row_set_subtitle(ADW_ACTION_ROW(row),
+											f.hint.c_str());
+				auto at = d->edit.options.find(key);
+				auto value =
+					at == d->edit.options.end() ? std::string() : at->second;
+				adw_spin_row_set_value(
+					ADW_SPIN_ROW(row),
+					value.empty() ? f.fallback : std::atoi(value.c_str()));
+				connect<void(GObject*, GParamSpec*)>(
+					row, "notify::value", [d, row, key](GObject*, GParamSpec*) {
+						d->edit.options[key] = std::to_string(static_cast<int>(
+							adw_spin_row_get_value(ADW_SPIN_ROW(row))));
+					});
+			} else {
+				row = adw_entry_row_new();
+				adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row),
+											  f.label.c_str());
+				if (auto at = d->edit.options.find(key);
+					at != d->edit.options.end()) {
+					gtk_editable_set_text(GTK_EDITABLE(row),
+										  at->second.c_str());
+				}
+				if (!f.hint.empty()) {
+					gtk_widget_set_tooltip_text(row, f.hint.c_str());
+				}
+				on(row, "changed", [d, row, key] {
+					d->edit.options[key] =
+						trim(gtk_editable_get_text(GTK_EDITABLE(row)));
+					d->update();
+				});
+			}
+			adw_preferences_group_add(ADW_PREFERENCES_GROUP(group), row);
 		}
-		on(row, "changed", [d, row, value] {
-			*value = trim(gtk_editable_get_text(GTK_EDITABLE(row)));
-			d->update();
-		});
-		adw_preferences_group_add(
-			ADW_PREFERENCES_GROUP(group ? group : d->server_group), row);
-		return row;
-	};
-	d->address_row = entry("Address", &d->edit.dav.url, nullptr);
-	entry("Username", &d->edit.dav.username, nullptr);
-	entry("Password Command", &d->edit.dav.password_command,
-		  "A command that prints the password, e.g. “secret-tool lookup "
-		  "service reminders-caldav” or “pass show caldav”");
-	auto* every = adw_spin_row_new_with_range(1, 1440, 1);
-	adw_preferences_row_set_title(ADW_PREFERENCES_ROW(every), "Sync Every");
-	adw_action_row_set_subtitle(
-		ADW_ACTION_ROW(every),
-		"Minutes; changes made here are sent straight away");
-	adw_spin_row_set_value(ADW_SPIN_ROW(every), d->edit.dav.interval);
-	connect<void(GObject*, GParamSpec*)>(
-		every, "notify::value", [d, every](GObject*, GParamSpec*) {
-			d->edit.dav.interval =
-				static_cast<int>(adw_spin_row_get_value(ADW_SPIN_ROW(every)));
-		});
-	adw_preferences_group_add(ADW_PREFERENCES_GROUP(d->server_group), every);
-
-	// git: the repository, shown only for that type.
-	d->repo_group = adw_preferences_group_new();
-	adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(d->repo_group),
-									"Repository");
-	adw_preferences_group_set_description(
-		ADW_PREFERENCES_GROUP(d->repo_group),
-		"Changed lists are committed and pushed, and changes from elsewhere "
-		"pulled and merged. Signing in uses your "
-		"git set-up (SSH keys, a credential helper).");
-	entry("Clone From", &d->edit.git.url,
-		  "Optional: the repository to clone (or push to) when the folder "
-		  "isn't one yet, e.g. "
-		  "git@github.com:you/notes.git. Without it, a folder that isn't a "
-		  "repository becomes a new one",
-		  d->repo_group);
-	entry("Remote", &d->edit.git.remote, "Optional; origin if empty",
-		  d->repo_group);
-	entry("Branch", &d->edit.git.branch,
-		  "Optional; the branch checked out if empty", d->repo_group);
-	auto* git_every = adw_spin_row_new_with_range(1, 1440, 1);
-	adw_preferences_row_set_title(ADW_PREFERENCES_ROW(git_every), "Sync Every");
-	adw_action_row_set_subtitle(
-		ADW_ACTION_ROW(git_every),
-		"Minutes; changes made here are sent straight away");
-	adw_spin_row_set_value(ADW_SPIN_ROW(git_every), d->edit.git.interval);
-	connect<void(GObject*, GParamSpec*)>(
-		git_every, "notify::value", [d, git_every](GObject*, GParamSpec*) {
-			d->edit.git.interval = static_cast<int>(
-				adw_spin_row_get_value(ADW_SPIN_ROW(git_every)));
-		});
-	adw_preferences_group_add(ADW_PREFERENCES_GROUP(d->repo_group), git_every);
+	}
 
 	d->error = label("", {"error", "caption"});
 	gtk_widget_set_margin_start(d->error, 12);
@@ -979,10 +941,10 @@ void show_source_dialog(GtkWidget* parent, SourceEdit source,
 
 	adw_preferences_page_add(ADW_PREFERENCES_PAGE(page),
 							 ADW_PREFERENCES_GROUP(main));
-	adw_preferences_page_add(ADW_PREFERENCES_PAGE(page),
-							 ADW_PREFERENCES_GROUP(d->server_group));
-	adw_preferences_page_add(ADW_PREFERENCES_PAGE(page),
-							 ADW_PREFERENCES_GROUP(d->repo_group));
+	for (auto* group : setting_groups) {
+		adw_preferences_page_add(ADW_PREFERENCES_PAGE(page),
+								 ADW_PREFERENCES_GROUP(group));
+	}
 	adw_preferences_page_add(ADW_PREFERENCES_PAGE(page),
 							 ADW_PREFERENCES_GROUP(errors));
 	if (!d->edit.is_new) {
@@ -997,6 +959,17 @@ void show_source_dialog(GtkWidget* parent, SourceEdit source,
 			return;
 		}
 		auto e = d->edit;
+		// Only its own back end's settings (and keys no back end shows, as
+		// written by hand); the form holds every type's.
+		std::set<std::string> own, shown;
+		for (auto* m : d->types) {
+			for (auto& f : m->fields) {
+				(m->id == e.backend ? own : shown).insert(f.key);
+			}
+		}
+		std::erase_if(e.options, [&](auto& kv) {
+			return !own.contains(kv.first) && shown.contains(kv.first);
+		});
 		adw_dialog_close(ADW_DIALOG(dialog));
 		on_done(std::move(e));
 	});

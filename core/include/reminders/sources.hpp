@@ -5,8 +5,9 @@
 //   default-source=personal
 //
 //   [source.personal]
-//   backend=syncthing        (or local, caldav or webdav; see backend.hpp)
-//   folder=~/Sync/Reminders  (~, $HOME and ${VAR} work; see expand_path)
+//   backend=syncthing        (or local, caldav, webdav, git;
+//   backend_module.hpp) folder=~/Sync/Reminders  (~, $HOME and ${VAR} work; see
+//   expand_path)
 //
 //   [source.fastmail]
 //   backend=caldav
@@ -29,12 +30,15 @@
 //   branch=main              (optional; default the one checked out)
 //   interval=15
 //
-// A CalDAV or WebDAV source's folder is its local copy, by default
-// $XDG_DATA_HOME/reminders/BACKEND/NAME/. Each source's per-device records
-// are in source_state_dir().
+// Besides backend=, folder= and title=, a section's keys are the back end's
+// own (SourceConfig::options); each back end lists them (backend_module.hpp).
+// A source whose back end owns its folder (CalDAV and WebDAV local copies, git
+// clones) has one by default: $XDG_DATA_HOME/reminders/BACKEND/NAME/. Each
+// source's per-device records are in source_state_dir().
 #pragma once
 
 #include <filesystem>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -47,7 +51,23 @@ namespace rem {
 
 namespace fs = std::filesystem;
 
-// A CalDAV or WebDAV source's server settings.
+struct SourceConfig {
+		std::string
+			name;  // [source.NAME]; empty for a folder used only this session
+		std::string backend =
+			"syncthing";  // its back end's id (backend_module.hpp)
+		fs::path folder;
+		std::string
+			title;	// title=, shown on its sidebar group; empty: from the name
+		// The back end's own settings: every other key of its section (url=,
+		// interval=, …), as written.
+		std::map<std::string, std::string> options = {};
+
+		// An option, or "" when unset.
+		std::string option(const std::string& key) const;
+};
+
+// A CalDAV or WebDAV source's server settings, from its options.
 struct DavSettings {
 		std::string url;  // CalDAV: the server, or its calendar home; WebDAV:
 						  // the folder
@@ -58,31 +78,24 @@ struct DavSettings {
 
 		bool operator==(const DavSettings&) const = default;
 };
+DavSettings dav_settings(const SourceConfig& source);
+void set_dav_settings(SourceConfig& source, const DavSettings& settings);
 
-// A git source's settings. Signing in is git's business (SSH keys, a
-// credential helper), as on the command line.
+// A git source's settings, from its options. Signing in is git's business
+// (SSH keys, a credential helper), as on the command line.
 struct GitSettings {
-		std::string
-			url;  // to clone from when the folder isn't a repository yet
+		std::string url;  // to clone from (or push to) when the folder isn't a
+						  // repository yet
 		std::string remote;	 // empty: origin
 		std::string branch;	 // empty: the branch checked out
 		int interval = 15;	 // minutes between syncs
 
 		bool operator==(const GitSettings&) const = default;
 };
+GitSettings git_settings(const SourceConfig& source);
+void set_git_settings(SourceConfig& source, const GitSettings& settings);
 
-struct SourceConfig {
-		std::string
-			name;  // [source.NAME]; empty for a folder used only this session
-		BackendKind backend = BackendKind::Syncthing;
-		fs::path folder;
-		std::string
-			title;	// title=, shown on its sidebar group; empty: from the name
-		DavSettings dav = {};  // CalDAV and WebDAV only (has_server)
-		GitSettings git = {};  // git only
-};
-
-// Minutes between a source's syncs (CalDAV, WebDAV, git).
+// Minutes between a source's syncs: interval=, else 15.
 int sync_interval(const SourceConfig& source);
 
 // Whether `folder` is in a git working tree (a .git at or above it).
@@ -91,7 +104,7 @@ bool in_git_repo(const fs::path& folder);
 // Where a CalDAV or WebDAV source keeps its local copy, and a git source
 // its clone, unless folder= says otherwise:
 // $XDG_DATA_HOME/reminders/BACKEND/NAME (~/.local/share/…).
-fs::path default_copy_folder(BackendKind backend, const std::string& name);
+fs::path default_copy_folder(std::string_view backend, const std::string& name);
 
 // A source's per-device records. Syncthing: <folder>/.reminders/DEVICE/
 // (merge bases; .stignore keeps it out of the sync). Others:
@@ -116,7 +129,7 @@ std::optional<fs::path> saved_folder();
 
 // The back end a folder needs when nothing says otherwise: syncthing inside a
 // Syncthing folder (one with .stfolder at or above it), else local.
-BackendKind detect_backend(const fs::path& folder);
+std::string detect_backend(const fs::path& folder);
 
 // The source for a folder (from the command line, say): the configured one
 // with that folder, else an unnamed one with the detected back end.

@@ -109,7 +109,7 @@ struct Fixture {
 		fs::path folder = dir / "lists";
 		fs::path state = dir / "state";
 		FakeFiles server;
-		Store store{folder, state, BackendKind::Webdav};
+		Store store{folder, state, "webdav"};
 
 		Fixture() { fs::create_directories(folder); }
 		~Fixture() {

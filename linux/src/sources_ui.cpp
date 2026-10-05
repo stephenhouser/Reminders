@@ -105,37 +105,12 @@ void Window::remove_source(const std::string& name) {
 		return;
 	}
 	auto config = source->config;
-	bool server = rem::has_server(config.backend);
+	auto& module = rem::backend_of(config);
+	bool server = module.has_server;
 	auto where = rem::contract_path(config.folder);
-	std::string detail;
-	switch (config.backend) {
-		case rem::BackendKind::Caldav:
-		case rem::BackendKind::Webdav:
-			detail = std::format(
-				"Deletes the local copy in {}. The lists on the server are "
-				"unaffected.",
-				where);
-			break;
-		case rem::BackendKind::Git:
-			detail = std::format(
-				"Deletes the local copy in {}. Any remote source is "
-				"unaffected.",
-				"Any changes not pushed yet are lost.", where);
-			break;
-		case rem::BackendKind::Syncthing:
-			detail = std::format(
-				"Deletes {} and everything in it from this computer.",
-				"WARNING: If Syncthing still shares the folder, ",
-				"it WILL BE DELETED EVERYWHERE.",
-				"Remove it from Syncthing first.", where);
-			break;
-		default:
-			detail = std::format(
-				"Deletes {} and everything in it. This computer may have the "
-				"only copy.",
-				where);
-			break;
-	}
+	auto detail = module.erase_note
+					? module.erase_note(config, where)
+					: std::format("Deletes {} and everything in it.", where);
 
 	auto* dialog = adw_alert_dialog_new(
 		std::format("Remove “{}”?", rem::source_title(config)).c_str(),
@@ -213,16 +188,14 @@ void Window::source_info(const std::string& name) {
 					config->folder,
 					rem::load_setting("default-source") == name ||
 						(store_ && store_->default_source() == name),
-					config->dav,
-					config->git,
+					config->options,
 					false};
 	show_source_dialog(
 		window_, edit,
 		[name](const SourceEdit& e) { return source_problem(e, name); },
 		[this](SourceEdit e) {
 			try {
-				rem::save_source(rem::SourceConfig{e.name, e.backend, e.folder,
-												   e.title, e.dav, e.git});
+				rem::save_source(e.config());
 				if (e.title.empty()) {
 					rem::save_section_setting("source." + e.name, "title", "");
 				}
@@ -243,17 +216,9 @@ void Window::show_sources() {
 	for (auto& s : rem::load_sources()) {
 		auto folder =
 			rem::contract_path(s.folder);  // ~/… for folders in the home folder
-		auto detail = s.backend == rem::BackendKind::Caldav
-						? std::format("CalDAV · {}", s.dav.url)
-					: s.backend == rem::BackendKind::Webdav
-						? std::format("WebDAV · {}", s.dav.url)
-					: s.backend == rem::BackendKind::Git
-						? std::format("Git · {}", folder)
-						: std::format("{} · {}",
-									  s.backend == rem::BackendKind::Local
-										  ? "Local folder"
-										  : "Syncthing",
-									  folder);
+		auto& module = rem::backend_of(s);
+		auto detail = std::format("{} · {}", module.title,
+								  module.has_server ? s.option("url") : folder);
 		rows.push_back({s.name, rem::source_title(s), detail});
 	}
 	show_sources_dialog(
@@ -271,16 +236,17 @@ void Window::add_source() {
 		[](const SourceEdit& e) { return source_problem(e, ""); },
 		[this](SourceEdit e) {
 			try {
-				if (!rem::has_server(e.backend)) {
+				if (!rem::has_server(e.config())) {
 					std::filesystem::create_directories(e.folder);
 				}
-				auto config = rem::add_source(rem::SourceConfig{
-					"", e.backend, e.folder, e.title, e.dav, e.git});
+				auto source = e.config();
+				source.name.clear();
+				auto config = rem::add_source(source);
 				if (e.is_default) {
 					rem::save_setting("default-source", config.name);
 				}
 				toast(
-					rem::syncs(e.backend)
+					rem::syncs(config)
 						? std::format(
 							  "Added “{}”; its lists appear once it has synced",
 							  rem::source_title(config))

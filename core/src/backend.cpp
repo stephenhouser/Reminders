@@ -16,14 +16,14 @@ constexpr std::string_view kConflictMarker = ".sync-conflict-";
 
 class LocalBackend : public Backend {
 	public:
-		BackendKind kind() const override { return BackendKind::Local; }
+		std::string_view id() const override { return "local"; }
 };
 
 class SyncthingBackend : public Backend {
 	public:
 		explicit SyncthingBackend(fs::path state_dir)
 			: state_dir_(std::move(state_dir)) {}
-		BackendKind kind() const override { return BackendKind::Syncthing; }
+		std::string_view id() const override { return "syncthing"; }
 
 		void prepare(const fs::path& folder) override {
 			ignore_state_in_syncthing(folder);
@@ -116,52 +116,6 @@ class SyncthingBackend : public Backend {
 
 }  // namespace
 
-std::string_view backend_name(BackendKind kind) {
-	switch (kind) {
-		case BackendKind::Local:
-			return "local";
-		case BackendKind::Caldav:
-			return "caldav";
-		case BackendKind::Webdav:
-			return "webdav";
-		case BackendKind::Git:
-			return "git";
-		case BackendKind::Syncthing:
-			break;
-	}
-	return "syncthing";
-}
-
-std::optional<BackendKind> parse_backend(std::string_view name) {
-	std::string n;
-	for (char c : name) {
-		n += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-	}
-	if (n == "syncthing") {
-		return BackendKind::Syncthing;
-	}
-	if (n == "local") {
-		return BackendKind::Local;
-	}
-	if (n == "caldav") {
-		return BackendKind::Caldav;
-	}
-	if (n == "webdav") {
-		return BackendKind::Webdav;
-	}
-	if (n == "git") {
-		return BackendKind::Git;
-	}
-	return std::nullopt;
-}
-
-bool has_server(BackendKind kind) {
-	return kind == BackendKind::Caldav || kind == BackendKind::Webdav;
-}
-bool syncs(BackendKind kind) {
-	return has_server(kind) || kind == BackendKind::Git;
-}
-
 std::optional<std::string> Backend::list_name_for(const fs::path& file) const {
 	auto fname = file.filename().string();
 	if (fname.empty() || fname[0] == '.' || !fname.ends_with(".md")) {
@@ -189,9 +143,7 @@ bool Backend::is_own_write(std::string_view, const std::string&) const {
 void Backend::move_state(std::string_view, std::string_view) const {}
 void Backend::drop_state(std::string_view) const {}
 
-fs::path ServerBackend::records_dir() const {
-	return state_dir_ / std::string(backend_name(kind_));
-}
+fs::path ServerBackend::records_dir() const { return state_dir_ / id_; }
 
 void ServerBackend::move_state(std::string_view from,
 							   std::string_view to) const {
@@ -207,13 +159,11 @@ void ServerBackend::deleted_by_user(std::string_view name) const {
 		<< field(std::string(name)) << '\n';
 }
 
-std::unique_ptr<Backend> make_backend(BackendKind kind, fs::path state_dir) {
-	if (kind == BackendKind::Local) {
-		return std::make_unique<LocalBackend>();
-	}
-	if (syncs(kind)) {
-		return std::make_unique<ServerBackend>(kind, std::move(state_dir));
-	}
+std::unique_ptr<Backend> make_local_backend() {
+	return std::make_unique<LocalBackend>();
+}
+
+std::unique_ptr<Backend> make_syncthing_backend(fs::path state_dir) {
 	return std::make_unique<SyncthingBackend>(std::move(state_dir));
 }
 

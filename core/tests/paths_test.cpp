@@ -124,15 +124,15 @@ TEST(paths_in_settings_and_state) {
 	CHECK(!fs::exists(dir / "home" / "Lists" / ".reminders"));
 
 	// A folder that isn't a configured source gets one of its own.
-	auto loose = source_state_dir(
-		SourceConfig{"", BackendKind::Local, dir / "elsewhere"}, device);
+	auto loose =
+		source_state_dir(SourceConfig{"", "local", dir / "elsewhere", ""}, device);
 	CHECK(loose.parent_path() == state.parent_path());
 	CHECK(loose.filename().string().starts_with("folder-"));
 
 	// A Syncthing source keeps them in its folder, as .reminders/DEVICE, and
 	// gets them back from $XDG_STATE_HOME if they were moved there.
 	auto st = sources[0];
-	st.backend = BackendKind::Syncthing;
+	st.backend = "syncthing";
 	CHECK(source_state_dir(st, device) ==
 		  dir / "home" / "Lists" / ".reminders" / device);
 	open_source(st, device);

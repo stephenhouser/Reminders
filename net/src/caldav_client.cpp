@@ -325,13 +325,13 @@ std::unique_ptr<Remote> make_caldav_remote(const DavSettings& settings,
 
 SyncResult sync_caldav_source(Store& store, const SourceConfig& source) {
 	auto* backend = dynamic_cast<ServerBackend*>(&store.backend_object());
-	if (!backend || backend->kind() != BackendKind::Caldav) {
+	if (!backend || backend->id() != "caldav") {
 		throw SyncError(std::format("{} isn't a CalDAV source", source.name));
 	}
 	auto cache = source.name.empty()
 				   ? fs::path{}
 				   : cache_dir() / "caldav" / (source.name + ".home");
-	auto remote = make_caldav_remote(source.dav, cache);
+	auto remote = make_caldav_remote(dav_settings(source), cache);
 	return caldav_sync(store.folder(), store.state_dir(), *remote,
 					   backend->lock());
 }

@@ -10,6 +10,7 @@ add_library(reminders_core
   src/dates.cpp
   src/clipboard.cpp
   src/backend.cpp
+  src/backend_module.cpp
   src/sources.cpp
   src/library.cpp
   src/ical.cpp

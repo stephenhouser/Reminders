@@ -2,6 +2,7 @@
 
 #include <format>
 
+#include "reminders/backend_module.hpp"
 #include "reminders/server_sync.hpp"
 
 namespace rem {
@@ -16,9 +17,10 @@ constexpr auto kPoll = seconds{1};
 }  // namespace
 
 SyncRunner::SyncRunner(Library& library) {
+	register_network_backends();
 	auto now = steady_clock::now();
 	for (auto& s : library.sources()) {
-		if (syncs(s.config.backend) && s.store) {
+		if (syncs(s.config) && s.store) {
 			jobs_.push_back({s.config, s.store.get(), {}, now});
 		}
 	}

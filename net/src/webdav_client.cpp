@@ -166,10 +166,10 @@ std::unique_ptr<FileRemote> make_webdav_remote(const DavSettings& settings) {
 
 SyncResult sync_webdav_source(Store& store, const SourceConfig& source) {
 	auto* backend = dynamic_cast<ServerBackend*>(&store.backend_object());
-	if (!backend || backend->kind() != BackendKind::Webdav) {
+	if (!backend || backend->id() != "webdav") {
 		throw SyncError(std::format("{} isn't a WebDAV source", source.name));
 	}
-	auto remote = make_webdav_remote(source.dav);
+	auto remote = make_webdav_remote(dav_settings(source));
 	return webdav_sync(store.folder(), store.state_dir(), *remote,
 					   backend->lock());
 }

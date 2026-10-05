@@ -4,7 +4,9 @@
 
 #include <cstdio>
 #include <format>
+#include <mutex>
 
+#include "reminders/backend_module.hpp"
 #include "reminders/caldav_client.hpp"
 #include "reminders/git_sync.hpp"
 #include "reminders/webdav_client.hpp"
@@ -37,18 +39,22 @@ std::string run_password_command(const std::string& command) {
 	return out;
 }
 
+void register_network_backends() {
+	static std::once_flag once;
+	std::call_once(once, [] {
+		find_backend("caldav")->sync = sync_caldav_source;
+		find_backend("webdav")->sync = sync_webdav_source;
+		find_backend("git")->sync = sync_git_source;
+	});
+}
+
 SyncResult sync_source(Store& store, const SourceConfig& source) {
-	switch (source.backend) {
-		case BackendKind::Caldav:
-			return sync_caldav_source(store, source);
-		case BackendKind::Webdav:
-			return sync_webdav_source(store, source);
-		case BackendKind::Git:
-			return sync_git_source(store, source);
-		default:
-			throw SyncError(
-				std::format("{} isn't synced by the app", source.name));
+	register_network_backends();
+	auto& module = backend_of(source);
+	if (!module.syncs()) {
+		throw SyncError(std::format("{} isn't synced by the app", source.name));
 	}
+	return module.sync(store, source);
 }
 
 }  // namespace rem

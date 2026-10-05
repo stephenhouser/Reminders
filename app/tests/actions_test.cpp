@@ -41,10 +41,9 @@ struct Fixture {
 			std::ofstream(dir / "work" / "Todo.md")
 				<< MARK "- [ ] Report ^w00001\n";
 			for (auto name : {"home", "work"}) {
-				lib.add(
-					SourceConfig{name, BackendKind::Local, dir / name, ""},
-					std::make_unique<Store>(dir / name, dir / "state" / name,
-											BackendKind::Local));
+				lib.add(SourceConfig{name, "local", dir / name, ""},
+						std::make_unique<Store>(dir / name,
+												dir / "state" / name, "local"));
 			}
 			lib.load_all();
 		}

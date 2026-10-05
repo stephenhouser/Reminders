@@ -21,6 +21,7 @@
 #include <string>
 #include <vector>
 
+#include "reminders/backend_module.hpp"
 #include "reminders/dates.hpp"
 #include "reminders/exporter.hpp"
 #include "reminders/format.hpp"

@@ -43,9 +43,9 @@ struct Folder {
 			fs::create_directories(dir / "lists");
 			std::ofstream(dir / "lists" / "Trip.md")
 				<< MARK "- [ ] Visa ^visa01\n";
-			lib.add(SourceConfig{"home", BackendKind::Local, dir / "lists", {}},
-					std::make_unique<Store>(dir / "lists", dir / "state",
-											BackendKind::Local));
+			lib.add(
+				SourceConfig{"home", "local", dir / "lists", {}},
+				std::make_unique<Store>(dir / "lists", dir / "state", "local"));
 			lib.load_all();
 		}
 		~Folder() { fs::remove_all(dir); }

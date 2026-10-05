@@ -508,7 +508,7 @@ void Window::sidebar_menu(GtkListBoxRow* row, double x, double y) {
 			bool syncs = false;
 #ifdef REMINDERS_NETWORK
 			for (auto& s : store_->sources()) {
-				if (s.config.name == source && rem::syncs(s.config.backend)) {
+				if (s.config.name == source && rem::syncs(s.config)) {
 					syncs = sync_ != nullptr;
 				}
 			}

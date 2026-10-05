@@ -29,6 +29,9 @@ void save_section_setting(const std::string& section, const std::string& key,
 						  const std::string& value);
 // Every [section] in the file, in order ("general", "source.personal", …).
 std::vector<std::string> section_names();
+// Every key=value in a section, in file order (comments left out).
+std::vector<std::pair<std::string, std::string>> section_settings(
+	const std::string& section);
 // Removes a section and everything in it.
 void remove_section(const std::string& section);
 

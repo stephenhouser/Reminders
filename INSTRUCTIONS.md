@@ -620,6 +620,44 @@ Done so far:
     fold, Go To. While doing this, found the GUI test windows had been
     opening on the user's desktop (WAYLAND_DISPLAY=wayland-0); fixed with
     tools/gui-test.sh (see the decisions table).
+- **Stage 3** (2026-10-04, bookmark `before-stage-3`): back-end registry
+  with string ids; no BackendKind enum, backend_name, parse_backend.
+  - core `backend_module.hpp/.cpp`: `BackendModule` {id, title,
+    description, has_server, synced, owns_folder, state_in_folder,
+    detect_by_default, fields (SettingField key / label / hint / kind Text
+    / Url / Command / Minutes / group / fallback), settings_note, detect,
+    problem, name_hint, erase_note, make_backend, sync; syncs() = synced &&
+    sync}; register_backend, find_backend (ignores case), backend_of
+    (unknown → syncthing), backends() (form order), make_backend(id),
+    has_server(source), syncs(source). The five built-ins register on
+    first use (call_once); net's `register_network_backends()` (call_once)
+    attaches caldav / webdav / git sync; sync_source and SyncRunner call
+    it, and the apps call it at start (still #ifdef REMINDERS_NETWORK until
+    stage 4).
+  - `Backend::id()` (string_view) instead of kind(); `ServerBackend(id,
+    state)`; make_local_backend / make_syncthing_backend; Store takes an
+    id.
+  - `SourceConfig {name, backend (id string, default "syncthing"), folder,
+    title, options}`; `option(key)`; read_source takes every other key of
+    the section (settings `section_settings()`), save_source writes them;
+    `dav_settings` / `set_dav_settings`, `git_settings` /
+    `set_git_settings` view the options; sync_interval = interval= or 15;
+    default folder when the module owns_folder; detect_backend = first
+    detect_by_default module that detects, else local.
+  - GNOME app: SourceEdit {…, backend id, options}; the source dialog's
+    Type row lists backends(), each module's fields become groups (entry
+    rows, spin row for Minutes) shown only for it, with settings_note;
+    choosing a folder picks the first module that detects it; Done keeps
+    only the chosen module's keys (plus keys no module shows).
+    source_problem = "built without X support" when synced && !sync, then
+    module.problem, then the folder-in-use check. Sources list: "Title ·
+    url" for servers, "Title · folder" else. Remove's note comes from
+    erase_note (the user's wording, whose sentences had been passed to
+    std::format as extra arguments and dropped; now joined).
+  - Checked: tests (core backend_registry, sources with options); the
+    Add Source form for Git and CalDAV (headless, through gui-test.sh),
+    filled in and added, settings.ini as expected; CLI folder / lists /
+    sync.
 
 ## Future features (not started)
 

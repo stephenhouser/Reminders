@@ -220,9 +220,9 @@ TEST(export_all_lists) {
 		fs::create_directories(dir / name);
 		std::ofstream(dir / name / "Todo.md")
 			<< "---\nreminders: 1\n---\n- [ ] " << name << "\n";
-		lib.add(SourceConfig{name, BackendKind::Local, dir / name, {}},
-				std::make_unique<Store>(dir / name, dir / "state" / name,
-										BackendKind::Local));
+		lib.add(
+			SourceConfig{name, "local", dir / name, {}},
+			std::make_unique<Store>(dir / name, dir / "state" / name, "local"));
 	}
 	std::ofstream(dir / "home" / "Garden.md")
 		<< "---\nreminders: 1\n---\n- [ ] Weed\n";
@@ -244,9 +244,8 @@ TEST(export_zip_archive) {
 	std::ofstream(dir / "lists" / "Home.md")
 		<< "---\nreminders: 1\n---\n- [ ] Sweep ^swee01\n";
 	Library lib;
-	lib.add(SourceConfig{"home", BackendKind::Local, dir / "lists", {}},
-			std::make_unique<Store>(dir / "lists", dir / "state",
-									BackendKind::Local));
+	lib.add(SourceConfig{"home", "local", dir / "lists", {}},
+			std::make_unique<Store>(dir / "lists", dir / "state", "local"));
 	lib.load_all();
 	auto zip = export_zip(lib, lib.lists(), ExportFormat::Csv);
 	auto u16 = [&](std::size_t at) {

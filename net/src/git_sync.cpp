@@ -457,7 +457,7 @@ SyncResult git_sync(const fs::path& folder, const GitSettings& settings,
 
 SyncResult sync_git_source(Store& store, const SourceConfig& source) {
 	auto* backend = dynamic_cast<ServerBackend*>(&store.backend_object());
-	if (!backend || backend->kind() != BackendKind::Git) {
+	if (!backend || backend->id() != "git") {
 		throw SyncError(std::format("{} isn't a git source", source.name));
 	}
 	// git sees renames and deletions in the files themselves: the back
@@ -465,7 +465,8 @@ SyncResult sync_git_source(Store& store, const SourceConfig& source) {
 	std::error_code ec;
 	fs::remove(backend->records_dir() / "renamed.tsv", ec);
 	fs::remove(backend->records_dir() / "deleted.txt", ec);
-	return git_sync(store.folder(), source.git, backend->lock(), device_name());
+	return git_sync(store.folder(), git_settings(source), backend->lock(),
+					device_name());
 }
 
 }  // namespace rem

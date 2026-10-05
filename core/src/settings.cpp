@@ -116,6 +116,27 @@ std::string load_section_setting(const std::string& section,
 	return trimmed(std::string_view(l).substr(l.find('=') + 1));
 }
 
+std::vector<std::pair<std::string, std::string>> section_settings(
+	const std::string& section) {
+	std::vector<std::pair<std::string, std::string>> out;
+	bool in = false;
+	for (auto& l : read_lines(settings_file())) {
+		auto t = trimmed(l);
+		if (t.size() > 2 && t.front() == '[' && t.back() == ']') {
+			in = t.substr(1, t.size() - 2) == section;
+			continue;
+		}
+		if (!in || t.empty() || t.front() == '#' || t.front() == ';') {
+			continue;
+		}
+		if (auto eq = t.find('='); eq != std::string::npos) {
+			out.emplace_back(trimmed(std::string_view(t).substr(0, eq)),
+							 trimmed(std::string_view(t).substr(eq + 1)));
+		}
+	}
+	return out;
+}
+
 std::vector<std::string> section_names() {
 	std::vector<std::string> out;
 	for (auto& l : read_lines(settings_file())) {

@@ -3,6 +3,9 @@
 using namespace cli;
 
 int main(int argc, char** argv) {
+#ifdef REMINDERS_NETWORK
+	rem::register_network_backends();  // caldav, webdav and git sync
+#endif
 	std::vector<std::string> args(argv + 1, argv + argc);
 	Global g;
 	g.color = isatty(STDOUT_FILENO) && !std::getenv("NO_COLOR");
@@ -77,7 +80,7 @@ int main(int argc, char** argv) {
 			auto source = rem::set_default_folder(path);
 			std::cout << std::format("Folder set to {} (source “{}”, {})\n",
 									 source.folder.string(), source.name,
-									 rem::backend_name(source.backend));
+									 source.backend);
 			return 0;
 		}
 

@@ -24,7 +24,7 @@ bool sync_servers([[maybe_unused]] rem::Library& library,
 	bool ok = true;
 #ifdef REMINDERS_NETWORK
 	for (auto& s : library.sources()) {
-		if (!rem::syncs(s.config.backend) || !s.store) {
+		if (!rem::syncs(s.config) || !s.store) {
 			continue;
 		}
 		if (!only.empty() && s.config.name != only) {
@@ -64,9 +64,8 @@ rem::fs::path folder_arg(const std::string& arg) {
 }
 
 bool has_servers(const rem::Library& library) {
-	return std::ranges::any_of(library.sources(), [](auto& s) {
-		return rem::syncs(s.config.backend);
-	});
+	return std::ranges::any_of(library.sources(),
+							   [](auto& s) { return rem::syncs(s.config); });
 }
 
 std::string json_escape(std::string_view s) {

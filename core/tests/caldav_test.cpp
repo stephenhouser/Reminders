@@ -177,7 +177,7 @@ struct Fixture {
 		fs::path folder = dir / "lists";
 		fs::path state = dir / "state";
 		FakeRemote server;
-		ServerBackend backend{BackendKind::Caldav, state};
+		ServerBackend backend{"caldav", state};
 
 		Fixture() { fs::create_directories(folder); }
 		~Fixture() {

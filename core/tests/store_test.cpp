@@ -3,6 +3,7 @@
 #include <fstream>
 #include <sstream>
 
+#include "reminders/backend_module.hpp"
 #include "test.hpp"
 
 using namespace rem;
@@ -355,9 +356,9 @@ TEST(local_backend_has_no_sync_handling) {
 	// A file named like a Syncthing conflict copy is just another file here.
 	write(t.sync() / "Groceries.sync-conflict-20261001-120000-ABCDEFG.md",
 		  MARK "- [ ] Eggs ^eggs01\n");
-	Store s(t.sync(), t.state(), BackendKind::Local);
+	Store s(t.sync(), t.state(), "local");
 	s.load_all();
-	CHECK(s.backend() == BackendKind::Local);
+	CHECK(s.backend() == "local");
 	CHECK_EQ(
 		s.list_name_for(t.sync() /
 						"Groceries.sync-conflict-20261001-120000-ABCDEFG.md")
@@ -378,11 +379,24 @@ TEST(local_backend_has_no_sync_handling) {
 	CHECK(s.list("Groceries")->doc.find("brea01") != nullptr);
 }
 
-TEST(backend_names) {
-	CHECK(parse_backend("Syncthing") == BackendKind::Syncthing);
-	CHECK(parse_backend("local") == BackendKind::Local);
-	CHECK(!parse_backend("dropbox"));
-	CHECK_EQ(backend_name(BackendKind::Local), "local");
+TEST(backend_registry) {
+	CHECK_EQ(find_backend("Syncthing")->id, "syncthing");  // ignoring case
+	CHECK(!find_backend("dropbox"));
+	std::vector<std::string> ids;
+	for (auto* m : backends()) {
+		ids.push_back(m->id);
+	}
+	CHECK((ids == std::vector<std::string>{"syncthing", "local", "caldav",
+										   "webdav", "git"}));
+	CHECK(find_backend("git")->owns_folder && !find_backend("git")->has_server);
+	CHECK(find_backend("syncthing")->state_in_folder);
+	CHECK_EQ(backend_of(SourceConfig{"x", "nonsense", {}, ""}).id, "syncthing");
+	CHECK_EQ(make_backend("local", {})->id(), "local");
+	SourceConfig git{
+		"notes", "git", {}, "", {{"url", "git@github.com:you/notes.git"}}};
+	CHECK_EQ(find_backend("git")->name_hint(git), "notes");
+	CHECK_EQ(git_settings(git).url, "git@github.com:you/notes.git");
+	CHECK_EQ(git_settings(git).interval, 15);
 }
 
 TEST(held_saves_write_each_list_once) {

@@ -204,47 +204,22 @@ GMenu* menu_section(GMenu* menu) {
 }
 
 // What's wrong with a CalDAV or WebDAV account's settings, or "".
-std::string dav_problem(const rem::DavSettings& c) {
-	if (c.url.empty()) {
-		return "Enter the server's address";
-	}
-	if (!c.url.starts_with("https://") && !c.url.starts_with("http://")) {
-		return "The address starts with https://";
-	}
-	if (c.url.find('.', c.url.find("://")) == std::string::npos &&
-		c.url.find("localhost") == std::string::npos &&
-		c.url.find("127.0.0.1") == std::string::npos) {
-		return "That doesn't look like a server's address";
-	}
-	return {};
-}
-
 // What's wrong with a source in Add Source / Source Info, or "". `self` is
 // the source being edited ("" for a new one).
 std::string source_problem(const SourceEdit& e, const std::string& self) {
-	std::error_code ec;
-	if (rem::has_server(e.backend)) {
-#ifndef REMINDERS_NETWORK
-		return "This copy of Reminders was built without CalDAV and WebDAV";
-#endif
-		if (auto p = dav_problem(e.dav); !p.empty()) {
+	auto config = e.config();
+	auto& module = rem::backend_of(config);
+	if (module.synced && !module.sync) {
+		return std::format(
+			"This copy of Reminders was built without {} support",
+			module.title);
+	}
+	if (module.problem) {
+		if (auto p = module.problem(config); !p.empty()) {
 			return p;
 		}
-	} else if (e.backend == rem::BackendKind::Git) {
-#ifndef REMINDERS_NETWORK
-		return "This copy of Reminders was built without git support";
-#endif
-		if (e.folder.empty()) {
-			return "Choose a folder";
-		}
-	} else {
-		if (e.folder.empty()) {
-			return "Choose a folder";
-		}
-		if (!std::filesystem::is_directory(e.folder, ec)) {
-			return "That folder doesn't exist";
-		}
 	}
+	std::error_code ec;
 	for (auto& s : rem::load_sources()) {
 		if (s.name != self &&
 			(s.folder == e.folder ||

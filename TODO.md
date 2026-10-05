@@ -4,7 +4,7 @@
 
 1. Split the big UI files (window, tui, cli) by area. Done.
 2. Shared app layer for the GNOME app and the TUI. Done.
-3. Back-end registry with string ids.
+3. Back-end registry with string ids. Done.
 4. One self-contained module per back end, with its own build option and docs.
 5. Split settings into ini, preferences and source config.
 
@@ -14,6 +14,7 @@
 - KDE version (maybe).
 - Query language, for the CLI and for saved smart lists.
 - TUI: a key to sync the selected source, and one to sync all sources.
+- Clicking the flag in the GUI should toggle flagged on and off
 
 ## Known gaps
 

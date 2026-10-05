@@ -71,9 +71,11 @@ class Store : public ListTexts {
 		// Syncthing, per list, the merge base and a fingerprint of the last
 		// version this device wrote).
 		Store(fs::path folder, fs::path state_dir,
-			  BackendKind backend = BackendKind::Syncthing);
+			  std::string_view backend = "syncthing");
 
-		BackendKind backend() const { return backend_->kind(); }
+		std::string_view backend() const {
+			return backend_->id();
+		}  // its back end's id
 		Backend& backend_object() { return *backend_; }
 		// Back-end set-up when the source is opened (Syncthing: .stignore).
 		void prepare() { backend_->prepare(folder_); }

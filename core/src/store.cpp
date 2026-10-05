@@ -9,6 +9,7 @@
 #include <sstream>
 #include <utility>
 
+#include "reminders/backend_module.hpp"
 #include "reminders/format.hpp"
 #include "reminders/merge.hpp"
 #include "reminders/recurrence.hpp"
@@ -107,7 +108,7 @@ std::optional<int> ListFile::order() const {
 	return n;
 }
 
-Store::Store(fs::path folder, fs::path state_dir, BackendKind backend)
+Store::Store(fs::path folder, fs::path state_dir, std::string_view backend)
 	: folder_(std::move(folder)),
 	  state_dir_(std::move(state_dir)),
 	  backend_(make_backend(backend, state_dir_)) {}

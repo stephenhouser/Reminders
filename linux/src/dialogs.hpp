@@ -5,6 +5,7 @@
 
 #include <filesystem>
 #include <functional>
+#include <map>
 #include <optional>
 #include <string>
 #include <vector>
@@ -57,12 +58,17 @@ void show_tag_dialog(GtkWidget* parent, const std::string& tag, ListEdit style,
 struct SourceEdit {
 		std::string name;
 		std::string title;	// empty: from the name
-		rem::BackendKind backend = rem::BackendKind::Syncthing;
+		std::string backend =
+			"syncthing";  // its back end's id (backend_module.hpp)
 		std::filesystem::path folder;
 		bool is_default = false;
-		rem::DavSettings dav = {};
-		rem::GitSettings git = {};
+		std::map<std::string, std::string> options =
+			{};	 // the back end's own settings
 		bool is_new = false;
+
+		rem::SourceConfig config() const {
+			return {name, backend, folder, title, options};
+		}
 };
 // `validate` returns an error to show, or "". `on_remove` runs when Remove
 // Source… is pressed (the dialog closes first).

@@ -162,13 +162,12 @@ TEST(net_sync_runner) {
 	CHECK(other->put(href + "bins.ics", todo("bins-uid", "Bins out"), "")
 			  .has_value());
 
-	SourceConfig config{"chores", BackendKind::Caldav, dir.path / "lists", "",
-						settings()};
+	SourceConfig config{"chores", "caldav", dir.path / "lists", ""};
+	set_dav_settings(config, settings());
 	fs::create_directories(config.folder);
 	Library library;
-	library.add(config,
-				std::make_unique<Store>(config.folder, dir.path / "state",
-										BackendKind::Caldav));
+	library.add(config, std::make_unique<Store>(config.folder,
+												dir.path / "state", "caldav"));
 	auto file = config.folder / "Chores.md";
 	auto wait_for = [](auto&& cond) {
 		for (int i = 0; i < 100 && !cond(); ++i) {
@@ -294,13 +293,12 @@ TEST(net_webdav_sync_runner) {
 	CHECK(other->put("Chores", "---\nreminders: 1\n---\n- [ ] Bins out\n", "")
 			  .has_value());
 
-	SourceConfig config{"cloud", BackendKind::Webdav, dir.path / "lists", "",
-						s};
+	SourceConfig config{"cloud", "webdav", dir.path / "lists", ""};
+	set_dav_settings(config, s);
 	fs::create_directories(config.folder);
 	Library library;
-	library.add(config,
-				std::make_unique<Store>(config.folder, dir.path / "state",
-										BackendKind::Webdav));
+	library.add(config, std::make_unique<Store>(config.folder,
+												dir.path / "state", "webdav"));
 	auto file = config.folder / "Chores.md";
 	auto wait_for = [](auto&& cond) {
 		for (int i = 0; i < 100 && !cond(); ++i) {

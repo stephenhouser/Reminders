@@ -1,22 +1,7 @@
 // What keeps a source's folder in step with other devices, and the special
 // handling that needs. The Store does the loading, saving and queries; a
-// back end only adds what its kind of syncing requires.
-//
-//   syncthing  Syncthing syncs the folder. Conflict copies ("X.sync-conflict-
-//              …md") are merged three-way, using a per-device record of the
-//              last version that came from another device (the merge base)
-//              and of the last version this device wrote, kept in
-//              <folder>/.reminders/<device>/, which .stignore keeps out of
-//              Syncthing.
-//   local      Just the folder: files are read and written as they are,
-//              nothing else.
-//   caldav     The folder is a local copy of task lists on a CalDAV server,
-//              kept in step by caldav_sync() (see caldav.hpp).
-//   webdav     The folder is a local copy of list files kept in a folder on a
-//              WebDAV server, kept in step by webdav_sync() (see webdav.hpp).
-//   git        The folder is in a git working tree: changed lists are
-//              committed, and pulled and pushed with its remote, by
-//              git_sync() (net/, git_sync.hpp).
+// back end only adds what its kind of syncing requires. Which back ends
+// there are, and what each is, is in the registry (backend_module.hpp).
 #pragma once
 
 #include <filesystem>
@@ -31,18 +16,6 @@
 namespace rem {
 
 namespace fs = std::filesystem;
-
-enum class BackendKind { Syncthing, Local, Caldav, Webdav, Git };
-
-// "syncthing" / "local" / "caldav" / "webdav" / "git"; parse_backend is
-// case-insensitive.
-std::string_view backend_name(BackendKind kind);
-std::optional<BackendKind> parse_backend(std::string_view name);
-// CalDAV and WebDAV: the folder is a local copy of what's on a server.
-bool has_server(BackendKind kind);
-// The back ends the app syncs itself (SyncRunner, `reminders sync`):
-// CalDAV, WebDAV and git.
-bool syncs(BackendKind kind);
 
 // A network or server failure; the sync stops and is retried later.
 struct SyncError : std::runtime_error {
@@ -59,7 +32,8 @@ struct SyncResult {
 class Backend {
 	public:
 		virtual ~Backend() = default;
-		virtual BackendKind kind() const = 0;
+		virtual std::string_view id()
+			const = 0;	// its registry id: "syncthing", "git", …
 
 		// Run once when the source is opened (Syncthing: keep the per-device
 		// state out of the sync).
@@ -106,9 +80,9 @@ class Backend {
 // the sync's take turns under write_lock().
 class ServerBackend : public Backend {
 	public:
-		ServerBackend(BackendKind kind, fs::path state_dir)
-			: kind_(kind), state_dir_(std::move(state_dir)) {}
-		BackendKind kind() const override { return kind_; }
+		ServerBackend(std::string id, fs::path state_dir)
+			: id_(std::move(id)), state_dir_(std::move(state_dir)) {}
+		std::string_view id() const override { return id_; }
 		std::mutex* write_lock() override { return &lock_; }
 		void move_state(std::string_view from,
 						std::string_view to) const override;
@@ -119,12 +93,13 @@ class ServerBackend : public Backend {
 		fs::path records_dir() const;
 
 	private:
-		BackendKind kind_;
+		std::string id_;
 		fs::path state_dir_;
 		mutable std::mutex lock_;
 };
 
-// `state_dir` is the per-device folder (Syncthing's records live there).
-std::unique_ptr<Backend> make_backend(BackendKind kind, fs::path state_dir);
+// The back ends every module's make_backend builds on.
+std::unique_ptr<Backend> make_local_backend();
+std::unique_ptr<Backend> make_syncthing_backend(fs::path state_dir);
 
 }  // namespace rem
