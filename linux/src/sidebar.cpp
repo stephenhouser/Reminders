@@ -245,7 +245,7 @@ void Window::set_entry_hidden(const View& v, bool hidden) {
 void Window::edit_tag(const std::string& tag) {
 	auto style = rem::load_tag_style(tag);
 	show_tag_dialog(
-		window_, tag, ListEdit{"#" + tag, style.color, style.icon},
+		window_, tag, ListEdit{"#" + tag, style.color, style.icon, {}},
 		[this, tag](ListEdit e) {
 			try {
 				rem::save_tag_style(tag, {e.color, e.icon});

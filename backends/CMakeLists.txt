@@ -1,8 +1,8 @@
 # The back ends, one module each (backends/ID/): its code, tests and docs
 # (README.md). Each can be left out of the build; register_backends()
 # (generated below) registers those built in.
-option(BUILD_BACKEND_SYNCTHING "Syncthing folders" ON)
 option(BUILD_BACKEND_LOCAL "Local folders" ON)
+option(BUILD_BACKEND_SYNCTHING "Syncthing folders" ON)
 option(BUILD_BACKEND_CALDAV "CalDAV accounts (needs libcurl and libxml2)" ON)
 option(BUILD_BACKEND_WEBDAV "WebDAV folders (needs libcurl and libxml2)" ON)
 option(BUILD_BACKEND_GIT "git repositories (runs the git command)" ON)
@@ -23,6 +23,13 @@ function(backend_tests name)
   add_test(NAME ${name} COMMAND ${name} ${T_ARGS})
 endfunction()
 
+if(BUILD_BACKEND_LOCAL)
+  add_library(reminders_backend_local STATIC local/src/local.cpp)
+  target_link_libraries(reminders_backend_local PUBLIC reminders_core)
+  list(APPEND REMINDERS_BACKENDS local)
+  list(APPEND BACKEND_LIBS reminders_backend_local)
+endif()
+
 if(BUILD_BACKEND_SYNCTHING)
   add_library(reminders_backend_syncthing STATIC syncthing/src/syncthing.cpp)
   target_include_directories(reminders_backend_syncthing PUBLIC syncthing/include)
@@ -30,13 +37,6 @@ if(BUILD_BACKEND_SYNCTHING)
   list(APPEND REMINDERS_BACKENDS syncthing)
   list(APPEND BACKEND_LIBS reminders_backend_syncthing)
   backend_tests(syncthing_tests SOURCES syncthing/tests/syncthing_test.cpp syncthing/tests/syncthing_store_test.cpp LIBS reminders_backend_syncthing)
-endif()
-
-if(BUILD_BACKEND_LOCAL)
-  add_library(reminders_backend_local STATIC local/src/local.cpp)
-  target_link_libraries(reminders_backend_local PUBLIC reminders_core)
-  list(APPEND REMINDERS_BACKENDS local)
-  list(APPEND BACKEND_LIBS reminders_backend_local)
 endif()
 
 # CalDAV and WebDAV share the HTTP and XML code, and the server settings.

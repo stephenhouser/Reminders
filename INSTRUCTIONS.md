@@ -748,14 +748,42 @@ Done so far:
   n_press 1 it notes whether the title was already editing; on n_press 2
   (unless it was, or the pointer is on a button / check / menu button) it
   claims the sequence, stops the edit the first click started without
-  committing, and opens show_details(id). Built; clicks to be tried by hand
-  (the headless session can't click).
+  committing, and opens show_details(id). The headless session can't click;
+  tried by the user 2026-10-04, works.
 - **Add Source starts as Local Folder** (2026-10-04, user's request):
   SourceEdit::backend defaults to "local" (was "syncthing"); choosing a
   folder still detects Syncthing / git. set_default_folder's fallback is
   "local" too (detect_backend overrides it anyway). SourceConfig's own
   default stays "syncthing", so a hand-written section without backend=
   reads as before.
+  - The Type list is backends() order = registration order = the block
+    order in backends/CMakeLists.txt; local's block (and option) now comes
+    first. local has no detect, so detection order is unchanged.
+- **Choosing the source for a new list** (2026-10-04, user's choice of
+  "New List … in …"; TUI / CLI unchanged: no --source → default source).
+  - Import: the Into row starts with one "New List “X” in TITLE" per open
+    source (plain "New List “X”" with one), then every list; parallel
+    `new_in` gives the source for a new-list choice. Starts on the viewed
+    list's source (else default), or a list already called X.
+  - New List: ListEdit::source; show_list_dialog(…, sources
+    (SourceChoice name / title), start_source) adds a Source combo row
+    under Name when there are 2+ sources; validation (name clash) and
+    create use e.source. Window::new_list passes the open sources.
+  - Into row: the choice stays beside "Into", like Read As (the user
+    preferred that to use_subtitle, which showed it in full underneath; a
+    long one is cut short there). prefer-wide-layout didn't widen it.
+    Its popup: a list factory (label, xalign 0, wraps at 60 chars, no
+    ellipsizing; no check: the user found it extra, it followed the hover),
+    since the default
+    cut every "New List …" to "New List “Weekly Groc…". Checked by
+    rendering the popover itself (popups aren't in the window screenshot;
+    temporary hook: activate the row, find the GtkPopover child, render it
+    with gtk_widget_paintable_new + its native's renderer).
+  - Checked: screenshots of both dialogs with three sources (import shown
+    through a temporary hook on the new-list action, then reverted).
+    Headless action calls: scratchpad gui-action.sh (gui-test.sh + gdbus
+    Activate $ACTION after 0.9 s, waits on the app's pid only). Tried by
+    the user 2026-10-04, both work.
 
 ## Future features (not started)
 
@@ -782,6 +810,12 @@ install). Update it whenever these change (user's requests 2026-10-04).
   Sync Now on a source heading) and one to sync every source (☰ → Sync
   All). Only for sources the app syncs (CalDAV, WebDAV, git); uses
   SyncRunner::sync_now(source) / sync_now(). Asked for 2026-10-04.
+- **TUI import key**: a key (the user suggested `I`) for the CLI's import
+  into the list or source showing, as the GNOME app's ☰ → Import…; core
+  read_import / import_into already do the work. Asked for 2026-10-04.
+- **Settings caching** (stage 5's option (b), deferred by the user): keep
+  the parsed settings file in memory in core settings.cpp and reload it when
+  its mtime changes, instead of reading it on every call.
 - **Query language**, SQL-like, for the CLI (`reminders query "…"`) and for
   defining your own smart lists (saved queries in the sidebar). Wanted by the
   user 2026-10-02; design not started.
@@ -1033,7 +1067,7 @@ install). Update it whenever these change (user's requests 2026-10-04).
     stops editing, keeping the text; outside every reminder row it clears
     the selection. Shortcuts dialog has a section.
     Checked headless through direct calls (selection, menu, each op +
-    undo); real Ctrl/Shift clicks and drags need trying by hand.
+    undo); real Ctrl/Shift clicks and drags tried by the user 2026-10-04.
   - **Marking several reminders in the TUI** (2026-10-04): `v` toggles the
     mark and moves down, `*` marks every reminder showing, Esc (anywhere)
     unmarks. `Tui::marked_`, pruned to the reminders in view each draw and
@@ -1057,8 +1091,12 @@ install). Update it whenever these change (user's requests 2026-10-04).
   section's end, the field stays empty); pasting / dropping several lines
   (split or one, Split / Combine, Ctrl+Shift+V); pasting a link. TUI:
   marking (v, *, Esc) and acting on the marks, completing them included; the help box after its
-  fixes. ⋮ → Mark as Completed on a selection. Nothing
-  untried; TODO.md "Needs trying by hand" is empty.
+  fixes. ⋮ → Mark as Completed on a selection. Also, later the same day:
+  clicking a row's flag to flag / unflag, `row-buttons=always` and `hover`,
+  `note-lines=N` in both apps, double-clicking a reminder to open Details,
+  Add Source starting on Local Folder, and New List's Source row with
+  Import's "New List … in …". TODO.md's "Needs trying by hand" is down to
+  Add Source for CalDAV and WebDAV.
 - **Known gaps:**
   - CalDAV and WebDAV haven't been tried against a real server yet (only
     the fake one). Git against a hosted repository: tried by the user

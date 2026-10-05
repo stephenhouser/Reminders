@@ -36,12 +36,22 @@ struct ListEdit {
 		std::string name;
 		std::string color = "blue";
 		std::string icon = "list";
+		std::string source;	 // New List: the source it goes into
+};
+
+// A source to offer in New List: its name and the title shown.
+struct SourceChoice {
+		std::string name, title;
 };
 
 // `existing` empty → "New List". `validate` returns an error to show, or "".
+// With two or more `sources`, New List has a Source row, starting on
+// `start_source`; the choice is in ListEdit::source either way.
 void show_list_dialog(GtkWidget* parent, std::optional<ListEdit> existing,
 					  std::function<std::string(const ListEdit&)> validate,
-					  std::function<void(ListEdit)> on_done);
+					  std::function<void(ListEdit)> on_done,
+					  std::vector<SourceChoice> sources = {},
+					  std::string start_source = {});
 
 // "Tag Info": the same colour and icon choices, without a name to edit
 // (`style.name` is shown as the subtitle, e.g. "#errands").

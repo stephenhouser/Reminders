@@ -93,9 +93,9 @@ void Window::import_files(std::vector<std::filesystem::path> files,
 }
 
 // Asks which list the reminders go into: a new one named after the
-// calendar or file (first), or any list; one already called that is
-// chosen to begin with. "Read As" shows the kind of file found, and
-// reads it again as another.
+// calendar or file (first; one per source when there are several), or any
+// list; one already called that is chosen to begin with. "Read As" shows the
+// kind of file found, and reads it again as another.
 void Window::import_tasks(const std::filesystem::path& file, std::string text,
 						  std::string into, std::function<void()> then) {
 	static constexpr rem::Import::Kind kKinds[] = {
@@ -141,16 +141,33 @@ void Window::import_tasks(const std::filesystem::path& file, std::string text,
 		name = "Imported";
 	}
 
-	std::vector<std::string> keys{""};	// "": the new list
-	std::vector<std::string> labels{std::format("New List “{}”", name)};
+	// First a new list, one choice per source when there are several
+	// ("New List “X” in Work"), then every list. keys[i] is "" for a new
+	// list, in new_in[i].
+	std::vector<std::string> keys, labels, new_in;
 	guint selected = 0;
+	auto& open_sources = store_->sources();
+	for (auto& s : open_sources) {
+		if (s.config.name == source) {
+			selected = static_cast<guint>(keys.size());
+		}
+		keys.emplace_back();
+		new_in.push_back(s.config.name);
+		labels.push_back(open_sources.size() > 1
+							 ? std::format("New List “{}” in {}", name,
+										   rem::source_title(s.config))
+							 : std::format("New List “{}”", name));
+	}
+	bool matched = false;
 	for (auto* l : store_->lists()) {
 		auto key = store_->key_of(*l);
 		if (key == into ||
-			(into.empty() && lower(l->name) == lower(name) && selected == 0)) {
+			(into.empty() && lower(l->name) == lower(name) && !matched)) {
 			selected = static_cast<guint>(keys.size());
+			matched = true;
 		}
-		keys.push_back(store_->key_of(*l));
+		keys.push_back(key);
+		new_in.emplace_back();
 		labels.push_back(store_->label(*l));
 	}
 
@@ -177,6 +194,26 @@ void Window::import_tasks(const std::filesystem::path& file, std::string text,
 						   std::begin(kKinds)));
 	auto* into_row = adw_combo_row_new();
 	adw_preferences_row_set_title(ADW_PREFERENCES_ROW(into_row), "Into");
+	// Its popup shows each choice in full (the default cuts them short),
+	// wrapping very long ones.
+	auto* factory = gtk_signal_list_item_factory_new();
+	connect<void(GtkSignalListItemFactory*, GObject*)>(
+		factory, "setup", [](GtkSignalListItemFactory*, GObject* object) {
+			auto* text = gtk_label_new(nullptr);
+			gtk_label_set_xalign(GTK_LABEL(text), 0);
+			gtk_label_set_wrap(GTK_LABEL(text), TRUE);
+			gtk_label_set_max_width_chars(GTK_LABEL(text), 60);
+			gtk_list_item_set_child(GTK_LIST_ITEM(object), text);
+		});
+	connect<void(GtkSignalListItemFactory*, GObject*)>(
+		factory, "bind", [](GtkSignalListItemFactory*, GObject* object) {
+			auto* item = GTK_LIST_ITEM(object);
+			gtk_label_set_text(GTK_LABEL(gtk_list_item_get_child(item)),
+							   gtk_string_object_get_string(GTK_STRING_OBJECT(
+								   gtk_list_item_get_item(item))));
+		});
+	adw_combo_row_set_list_factory(ADW_COMBO_ROW(into_row), factory);
+	g_object_unref(factory);
 	auto* model = gtk_string_list_new(nullptr);
 	for (auto& l : labels) {
 		gtk_string_list_append(model, l.c_str());
@@ -241,7 +278,7 @@ void Window::import_tasks(const std::filesystem::path& file, std::string text,
 
 	connect<void(AdwAlertDialog*, const char*)>(
 		dialog, "response",
-		[this, into_row, duplicates, keys, source, name, state, then](
+		[this, into_row, duplicates, keys, new_in, name, state, then](
 			AdwAlertDialog*, const char* response) {
 			if (then) {
 				then();
@@ -251,9 +288,11 @@ void Window::import_tasks(const std::filesystem::path& file, std::string text,
 				return;
 			}
 			auto& imp = *state->imp;
-			auto key = keys.at(std::min<std::size_t>(
+			auto choice = std::min<std::size_t>(
 				adw_combo_row_get_selected(ADW_COMBO_ROW(into_row)),
-				keys.size() - 1));
+				keys.size() - 1);
+			auto key = keys.at(choice);
+			auto& source = new_in.at(choice);
 			rem::ImportResult result;
 			undoable("Import", [&] {
 				try {

@@ -501,7 +501,9 @@ namespace {
 void present_style_dialog(GtkWidget* parent, std::optional<ListEdit> existing,
 						  const std::string* tag,
 						  std::function<std::string(const ListEdit&)> validate,
-						  std::function<void(ListEdit)> on_done) {
+						  std::function<void(ListEdit)> on_done,
+						  std::vector<SourceChoice> sources = {},
+						  std::string start_source = {}) {
 	bool is_new = !existing;
 	auto* dialog = adw_dialog_new();
 	adw_dialog_set_title(ADW_DIALOG(dialog), tag	  ? "Tag Info"
@@ -510,6 +512,9 @@ void present_style_dialog(GtkWidget* parent, std::optional<ListEdit> existing,
 	adw_dialog_set_content_width(ADW_DIALOG(dialog), 440);
 	auto* d = attach(dialog, "state", std::make_unique<ListDialog>());
 	d->edit = existing.value_or(ListEdit{});
+	if (is_new) {
+		d->edit.source = start_source;
+	}
 	d->validate = std::move(validate);
 	d->on_done = std::move(on_done);
 
@@ -541,6 +546,33 @@ void present_style_dialog(GtkWidget* parent, std::optional<ListEdit> existing,
 	gtk_widget_set_margin_start(d->error, 12);
 	adw_preferences_group_add(ADW_PREFERENCES_GROUP(name_group), d->error);
 	on(d->name, "changed", [d] { d->update(); });
+
+	// New List with several sources: which one it goes into.
+	if (is_new && !tag && sources.size() > 1) {
+		auto* row = adw_combo_row_new();
+		adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), "Source");
+		auto* model = gtk_string_list_new(nullptr);
+		guint at = 0;
+		for (std::size_t i = 0; i < sources.size(); ++i) {
+			gtk_string_list_append(model, sources[i].title.c_str());
+			if (sources[i].name == start_source) {
+				at = static_cast<guint>(i);
+			}
+		}
+		adw_combo_row_set_model(ADW_COMBO_ROW(row), G_LIST_MODEL(model));
+		g_object_unref(model);
+		adw_combo_row_set_selected(ADW_COMBO_ROW(row), at);
+		d->edit.source = sources[at].name;
+		connect<void(GObject*, GParamSpec*)>(
+			row, "notify::selected", [d, row, sources](GObject*, GParamSpec*) {
+				auto i = adw_combo_row_get_selected(ADW_COMBO_ROW(row));
+				if (i < sources.size()) {
+					d->edit.source = sources[i].name;
+					d->update();
+				}
+			});
+		adw_preferences_group_add(ADW_PREFERENCES_GROUP(name_group), row);
+	}
 
 	auto* colors_group = adw_preferences_group_new();
 	adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(colors_group),
@@ -644,9 +676,12 @@ void present_style_dialog(GtkWidget* parent, std::optional<ListEdit> existing,
 
 void show_list_dialog(GtkWidget* parent, std::optional<ListEdit> existing,
 					  std::function<std::string(const ListEdit&)> validate,
-					  std::function<void(ListEdit)> on_done) {
+					  std::function<void(ListEdit)> on_done,
+					  std::vector<SourceChoice> sources,
+					  std::string start_source) {
 	present_style_dialog(parent, std::move(existing), nullptr,
-						 std::move(validate), std::move(on_done));
+						 std::move(validate), std::move(on_done),
+						 std::move(sources), std::move(start_source));
 }
 
 void show_tag_dialog(GtkWidget* parent, const std::string& tag, ListEdit style,

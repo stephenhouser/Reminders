@@ -30,7 +30,8 @@ If Reminders is already running, it switches that window to the folder.
 ### 3. Make a list
 
 **New List** (Ctrl+Shift+N, or the button at the bottom of the sidebar) asks
-for a name, a colour and an icon. The list becomes `<name>.md` in your folder.
+for a name, a colour and an icon (and, with several sources, which one it goes
+into). The list becomes `<name>.md` in your folder.
 
 ## Reminders
 
@@ -246,8 +247,10 @@ works out which one a file is from its name and content and shows it under
 Then:
 
 - **Where they go:** choose the list under **Into**. The first choice is a
-  new list named after the calendar (or the file); a list that already has
-  that name is chosen to begin with.
+  new list named after the calendar (or the file); with several sources
+  there's one for each ("New List "Groceries" in Work"), starting with the
+  source you're viewing. A list that already has that name is chosen to
+  begin with.
 - **Importing the same file again** doesn't double anything. Reminders that
   have ids (from a calendar, a Reminders list, or an export from here) are
   recognised wherever they have moved since. Others are recognised by their
@@ -631,14 +634,14 @@ folder as `~/…`, so the file works on another computer with a different home.
 
 | Back end | What it does |
 |---|---|
-| `syncthing` | The folder is synced by Syncthing. Conflict copies are merged; per-device records live in `<folder>/.reminders/`, which `.stignore` keeps out of the sync (see [Syncthing](../backends/syncthing/README.md)). |
 | `local` | Just the folder: list files are read and saved as they are, and changes made by other programs still show up (see [Local Folder](../backends/local/README.md)). |
+| `syncthing` | The folder is synced by Syncthing. Conflict copies are merged; per-device records live in `<folder>/.reminders/`, which `.stignore` keeps out of the sync (see [Syncthing](../backends/syncthing/README.md)). |
 | `caldav` | Task lists on a CalDAV server (see [CalDAV accounts](../backends/caldav/README.md)). The folder is a local copy, kept in step with the server. |
 | `webdav` | List files in a folder on a WebDAV server (see [WebDAV folders](../backends/webdav/README.md)). The folder is a local copy, kept in step with the server's. |
 | `git` | A folder in a git repository (see [Git repositories](../backends/git/README.md)). Changed lists are committed, and pulled and pushed with the remote. |
 
 - **☰ → Sources… → Add Source…** asks for the source's **Name**, its
-  **Type** (Syncthing, Local Folder, CalDAV, WebDAV or Git; Local Folder to start with) and its
+  **Type** (Local Folder, the starting choice, Syncthing, CalDAV, WebDAV or Git) and its
   **Folder**. Choosing a folder picks the type for you (Syncthing inside a
   Syncthing folder, one with `.stfolder`; Git inside a git repository;
   else Local Folder); you can change it. For Git, a **Repository**
@@ -678,7 +681,9 @@ folder as `~/…`, so the file works on another computer with a different home.
   shown for its group; without it, the name capitalised (`personal` →
   "Personal").
 - **New lists** go into the source of the list you're viewing, else the
-  default one. In the terminal: `reminders new-list NAME --source NAME`.
+  default one; New List's **Source** row (shown with several sources) and
+  Import's "New List … in …" choices can pick another. In the terminal:
+  `reminders new-list NAME --source NAME`, else the default source.
 - **List names** only need to be unique within a source. Where two sources
   have a list of the same name, it's shown as `source/name` (in mixed views,
   the Details list field and the terminal), and settings name it that way:

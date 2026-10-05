@@ -19,32 +19,37 @@
 
 namespace ui {
 
-// A new list in `source`; by default the source of the list showing, else
-// the default source.
+// A new list, starting in `source`; by default the source of the list
+// showing, else the default source. With several sources the dialog can
+// choose another.
 void Window::new_list(std::string source) {
 	if (source.empty()) {
 		auto* l = view_.kind == View::List ? store_->list(view_.name) : nullptr;
 		source =
 			l ? store_->source_of(*l)->config.name : store_->default_source();
 	}
+	std::vector<SourceChoice> choices;
+	for (auto& s : store_->sources()) {
+		choices.push_back({s.config.name, rem::source_title(s.config)});
+	}
 	show_list_dialog(
 		window_, std::nullopt,
-		[this, source](const ListEdit& e) -> std::string {
+		[this](const ListEdit& e) -> std::string {
 			if (auto err = list_name_error(e.name); !err.empty()) {
 				return err;
 			}
-			for (auto* l : store_->lists(source)) {
+			for (auto* l : store_->lists(e.source)) {
 				if (lower(l->name) == lower(e.name)) {
 					return "A list with that name already exists";
 				}
 			}
 			return {};
 		},
-		[this, source](ListEdit e) {
+		[this](ListEdit e) {
 			bool ok = true;
 			undoable("New List", [&] {
 				try {
-					store_->create_list(source, e.name, e.color, e.icon);
+					store_->create_list(e.source, e.name, e.color, e.icon);
 				} catch (const std::exception& ex) {
 					toast(
 						std::format("Couldn't create the list: {}", ex.what()));
@@ -54,9 +59,10 @@ void Window::new_list(std::string source) {
 			if (!ok) {
 				return;
 			}
-			select(View{View::List, rem::Library::key(source, e.name)});
+			select(View{View::List, rem::Library::key(e.source, e.name)});
 			show_content();
-		});
+		},
+		std::move(choices), source);
 }
 
 // List Info… for the list with key `key` ("source/name").
@@ -68,7 +74,7 @@ void Window::edit_list(const std::string& key) {
 	auto name = l->name;
 	auto source = store_->source_of(*l)->config.name;
 	show_list_dialog(
-		window_, ListEdit{l->name, l->color(), l->icon()},
+		window_, ListEdit{l->name, l->color(), l->icon(), {}},
 		[this, name, source](const ListEdit& e) -> std::string {
 			if (auto err = list_name_error(e.name); !err.empty()) {
 				return err;
