@@ -25,9 +25,12 @@ Steps, one per line:
 KEY is one character, a name below (CTRL SHIFT ALT, RET TAB ESC SPACE DEL
 BACKSPACE, UP DOWN LEFT RIGHT HOME END PAGEUP PAGEDOWN, MENU, F1 … F12), or
 an X keysym in hex (0xff67). The pointer starts outside the window; on the
-1100x750 virtual monitor, two moves of 200 150 put it at (325, 270) in the
-window. To see where it is, run with WAYLAND_DEBUG=client set for the app
-and read its wl_pointer.enter / motion events.
+1100x750 virtual monitor, two moves of 200 150 put it at (325, 270) on the
+window's surface, which has a 25 px shadow margin: (300, 245) in a
+screenshot. Then 200 150, -215 95 lands on the first of your lists in the
+sidebar of a 900x640 window. To see where it is, run with
+WAYLAND_DEBUG=client set for the app and read its wl_pointer.enter / motion
+events (and set_window_geometry for the margin).
 
 Lessons built in, each of which once made a correct app look broken:
 - One D-Bus connection for the whole run: mutter ends a RemoteDesktop

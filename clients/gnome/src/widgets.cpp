@@ -105,19 +105,8 @@ const View* row_view(GtkListBoxRow* row) {
 	return static_cast<const View*>(g_object_get_data(G_OBJECT(row), "view"));
 }
 
-// The shortcut that jumps to sidebar entry `index` (0-based), as GTK shows
-// accelerators ("Ctrl+1" … "Ctrl+0"), or "" past the tenth.
-std::string jump_shortcut(std::size_t index) {
-	if (index >= 10) {
-		return {};
-	}
-	return take_string(gtk_accelerator_get_label(
-		GDK_KEY_0 + static_cast<guint>((index + 1) % 10), GDK_CONTROL_MASK));
-}
-
 GtkWidget* sidebar_row(const char* icon_name, std::string_view color,
-					   const std::string& title, std::optional<int> count,
-					   const std::string& shortcut) {
+					   const std::string& title, std::optional<int> count) {
 	auto* row = gtk_list_box_row_new();
 	auto* box = hbox(12);
 	auto* img = icon(icon_name, {"list-icon"});
@@ -127,12 +116,7 @@ GtkWidget* sidebar_row(const char* icon_name, std::string_view color,
 	gtk_label_set_ellipsize(GTK_LABEL(name), PANGO_ELLIPSIZE_END);
 	gtk_widget_set_hexpand(name, TRUE);
 	append(box, {img, name});
-	if (!shortcut.empty()) {
-		append(box,
-			   {label(shortcut, {"dim-label", "caption", "sidebar-shortcut"})});
-	}
-	// A fixed-width, right-aligned count column (empty for tags), so the
-	// shortcut labels line up whatever the counts are.
+	// A fixed-width, right-aligned count column (empty for tags).
 	auto* count_label = label(count ? std::to_string(*count) : "",
 							  {"dim-label", "numeric", "sidebar-count"});
 	gtk_label_set_xalign(GTK_LABEL(count_label), 1);
@@ -200,6 +184,14 @@ GMenu* menu_section(GMenu* menu) {
 	g_menu_append_section(menu, nullptr, G_MENU_MODEL(section));
 	g_object_unref(section);
 	return section;
+}
+
+void menu_append_accel(GMenu* menu, const char* label, const char* action,
+					   const char* accel) {
+	auto* item = g_menu_item_new(label, action);
+	g_menu_item_set_attribute(item, "accel", "s", accel);
+	g_menu_append_item(menu, item);
+	g_object_unref(item);
 }
 
 // What's wrong with a CalDAV or WebDAV account's settings, or "".

@@ -461,4 +461,13 @@ void Window::focus_results() {
 	idle([keep] { gtk_widget_grab_focus(keep.get()); });
 }
 
+void Window::focus_content() {
+	auto* target = first_row_ ? first_row_ : first_new_entry_;
+	if (!target) {
+		return;	 // nothing to focus (an empty smart list)
+	}
+	auto keep = Obj<GtkWidget>::ref(target);
+	idle([keep] { gtk_widget_grab_focus(keep.get()); });
+}
+
 }  // namespace ui

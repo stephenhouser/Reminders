@@ -43,28 +43,27 @@ void show_shortcuts(GtkApplication* app) {
 		}
 		adw_shortcuts_dialog_add(ADW_SHORTCUTS_DIALOG(dialog), s);
 	};
-	section(
-		"Reminders",
-		{{"New Reminder", "<Control>n"},
-		 {"Complete / Not Complete", "space"},
-		 {"Edit Title", "Return"},
-		 {"Save While Editing", "<Control>s"},
-		 {"Cancel Editing", "Escape"},
-		 {"Details", "<Control>i <Alt>Return"},
-		 {"Menu", "Menu <Shift>F10"},
-		 {"Flag / Unflag", "<Control><Shift>f"},
-		 {"Due Today", "<Control>t"},
-		 {"Due Tomorrow", "<Control><Shift>t"},
-		 {"Priority: None, Low, Medium, High", "<Alt>0 <Alt>1 <Alt>2 <Alt>3"},
-		 {"Indent (Make Subtask)", "<Control>bracketright"},
-		 {"Outdent", "<Control>bracketleft"},
-		 {"Move Up", "<Alt>Up"},
-		 {"Move Down", "<Alt>Down"},
-		 {"Cut", "<Control>x"},
-		 {"Copy", "<Control>c"},
-		 {"Paste as New Reminders", "<Control>v"},
-		 {"Paste Special (One or One per Line)", "<Control><Shift>v"},
-		 {"Delete", "Delete"}});
+	section("Reminders",
+			{{"New Reminder", "<Control>n"},
+			 {"Complete / Not Complete", "space"},
+			 {"Edit Title", "Return"},
+			 {"Save While Editing", "<Control>s"},
+			 {"Cancel Editing", "Escape"},
+			 {"Details", "<Control>i <Alt>Return"},
+			 {"Menu", "Menu <Shift>F10"},
+			 {"Flag / Unflag", "<Control><Shift>f"},
+			 {"Due Today", "<Control>t"},
+			 {"Due Tomorrow", "<Control><Shift>t"},
+			 {"Priority: None, Low, Medium, High",
+			  "<Control>0 <Control>1 <Control>2 <Control>3"},
+			 {"Indent (Make Subtask)", "<Control>bracketright"},
+			 {"Outdent", "<Control>bracketleft"},
+			 {"Move Up / Down", "<Control>Up <Control>Down"},
+			 {"Cut", "<Control>x"},
+			 {"Copy", "<Control>c"},
+			 {"Paste as New Reminders", "<Control>v"},
+			 {"Paste Special (One or One per Line)", "<Control><Shift>v"},
+			 {"Delete", "Delete"}});
 	{
 		// Clicks can't be shown as keys, so they're told in a subtitle.
 		auto* s = adw_shortcuts_section_new("Selecting Several Reminders");
@@ -80,19 +79,18 @@ void show_shortcuts(GtkApplication* app) {
 									  "Escape <Control><Shift>a"));
 		adw_shortcuts_dialog_add(ADW_SHORTCUTS_DIALOG(dialog), s);
 	}
-	section("Lists", {{"Go To…", "<Control>k"},
-					  {"Sidebar Entries 1–9 (Today, Scheduled, …, Your Lists)",
-					   "<Control>1...<Control>9"},
-					  {"Sidebar Entry 10", "<Control>0"},
-					  {"Next in Sidebar", "<Control>Page_Down"},
-					  {"Previous in Sidebar", "<Control>Page_Up"},
-					  {"Move Up / Down in the Sidebar", "<Alt>Up <Alt>Down"},
-					  {"Move Sidebar Group Up / Down",
-					   "<Alt><Shift>Up <Alt><Shift>Down"},
-					  {"New List", "<Control><Shift>n"},
-					  {"Show / Hide Completed", "<Control>h"},
-					  {"Show / Hide Hidden Lists", "<Control><Shift>h"},
-					  {"Show / Hide All Subtasks", "<Control>e"}});
+	section("Lists",
+			{{"Go To…", "<Control>k"},
+			 {"Open and Move Into (in the Sidebar)", "Return"},
+			 {"Next in Sidebar", "<Control>Page_Down"},
+			 {"Previous in Sidebar", "<Control>Page_Up"},
+			 {"Move Up / Down in the Sidebar", "<Control>Up <Control>Down"},
+			 {"Move Sidebar Group Up / Down",
+			  "<Control><Shift>Up <Control><Shift>Down"},
+			 {"New List", "<Control><Shift>n"},
+			 {"Show / Hide Completed", "<Control>h"},
+			 {"Show / Hide Hidden Lists", "<Control><Shift>h"},
+			 {"Show / Hide All Subtasks", "<Control>e"}});
 	section("General", {{"Undo", "<Control>z"},
 						{"Redo", "<Control><Shift>z"},
 						{"Search", "<Control>f"},
@@ -142,27 +140,19 @@ void schedule_screenshot(GtkWindow* win, std::string path) {
 
 }  // namespace
 
-// Shows the window, creating it if needed; `folder` replaces the open folder,
-// `key_numbers` overrides the show-key-numbers setting.
-void present(AdwApplication* app, std::optional<std::filesystem::path> folder,
-			 std::optional<bool> key_numbers = std::nullopt) {
+// Shows the window, creating it if needed; `folder` replaces the open folder.
+void present(AdwApplication* app, std::optional<std::filesystem::path> folder) {
 	if (auto* existing =
 			gtk_application_get_active_window(GTK_APPLICATION(app))) {
 		if (auto* w = ui::Window::from(existing)) {
 			if (folder) {
 				w->open_sources(*folder);
 			}
-			if (key_numbers) {
-				w->set_show_key_numbers(*key_numbers);
-			}
 		}
 		gtk_window_present(existing);
 		return;
 	}
 	auto* window = ui::Window::create(app, std::move(folder));
-	if (key_numbers) {
-		window->set_show_key_numbers(*key_numbers);
-	}
 	auto* win = window->gtk();
 	gtk_window_present(win);
 	if (const char* shot = g_getenv("REMINDERS_SCREENSHOT")) {
@@ -185,22 +175,8 @@ int handle_command_line(AdwApplication* app, GApplicationCommandLine* cmd) {
 	int argc = static_cast<int>(args.size());
 	char** argv = args.data();
 
-	std::optional<bool> key_numbers;
-	auto* opts = g_application_command_line_get_options_dict(cmd);
-	bool show = g_variant_dict_contains(opts, "show-key-numbers");
-	bool hide = g_variant_dict_contains(opts, "hide-key-numbers");
-	if (show || hide) {
-		key_numbers = show;
-	}
-
 	int status = 0;
-	if (show && hide) {
-		g_application_command_line_printerr(
-			cmd,
-			"Reminders: use --show-key-numbers or --hide-key-numbers, not "
-			"both\n");
-		status = 1;
-	} else if (argc > 2) {
+	if (argc > 2) {
 		g_application_command_line_printerr(cmd, "Usage: Reminders [FOLDER]\n");
 		status = 1;
 	} else if (argc == 2) {
@@ -213,10 +189,10 @@ int handle_command_line(AdwApplication* app, GApplicationCommandLine* cmd) {
 				cmd, "Reminders: “%s” is not a folder\n", argv[1]);
 			status = 1;
 		} else {
-			present(app, std::filesystem::path(path), key_numbers);
+			present(app, std::filesystem::path(path));
 		}
 	} else {
-		present(app, std::nullopt, key_numbers);
+		present(app, std::nullopt);
 	}
 	g_strfreev(all_argv);
 	return status;
@@ -230,15 +206,6 @@ int main(int argc, char** argv) {
 	g_application_set_option_context_parameter_string(G_APPLICATION(app),
 													  "[FOLDER]");
 	// Registering an option also turns on GApplication's --help handling.
-	g_application_add_main_option(
-		G_APPLICATION(app), "show-key-numbers", 0, G_OPTION_FLAG_NONE,
-		G_OPTION_ARG_NONE,
-		"Show each sidebar entry’s Ctrl+number shortcut after its name",
-		nullptr);
-	g_application_add_main_option(
-		G_APPLICATION(app), "hide-key-numbers", 0, G_OPTION_FLAG_NONE,
-		G_OPTION_ARG_NONE,
-		"Don't label them (overrides the show-key-numbers setting)", nullptr);
 	g_application_add_main_option(G_APPLICATION(app), "version", 0,
 								  G_OPTION_FLAG_NONE, G_OPTION_ARG_NONE,
 								  "Show the version and exit", nullptr);
@@ -293,12 +260,6 @@ int main(int argc, char** argv) {
 		accel("win.show-hidden", "<Control><Shift>h");
 		accel("win.toggle-sidebar", "<Control>b", "F9");
 		accel("win.toggle-subtasks", "<Control>e");
-		for (int n = 1; n <= 10; ++n) {
-			auto action = std::format("win.go-{}", n);
-			auto key = std::format("<Control>{}",
-								   n % 10);	 // Ctrl+1 … Ctrl+9, then Ctrl+0
-			accel(action.c_str(), key.c_str());
-		}
 		accel("win.go-to", "<Control>k");
 		accel("win.next-view", "<Control>Page_Down");
 		accel("win.previous-view", "<Control>Page_Up");

@@ -95,7 +95,7 @@ Every view has a count under its name, of what it contains:
 |---|---|
 | Due today / tomorrow | Ctrl+T / Ctrl+Shift+T (keeps any time already set) |
 | Flag / unflag | Ctrl+Shift+F, or click the flag at the right of the row (it shows when you point at an unflagged reminder) |
-| Priority none / low / medium / high | Alt+0 / Alt+1 / Alt+2 / Alt+3 |
+| Priority none / low / medium / high | Ctrl+0 / Ctrl+1 / Ctrl+2 / Ctrl+3 |
 
 Overdue dates show in red. Priority shows as `!`, `!!` or `!!!` before the title.
 
@@ -127,8 +127,8 @@ Subtasks are one level deep, as in Apple Reminders.
   first list, made to show there). Undo with Ctrl+Z.
 - **Drag reminders out** to another app: it gets them as text, the same
   Markdown Copy gives (a selection drags them all). They stay here.
-- **Alt+↑ / Alt+↓** moves the selected reminder up or down, across section
-  boundaries.
+- **Ctrl+↑ / Ctrl+↓**, or **Move Up / Move Down** in a reminder's **⋮** or
+  right-click menu, moves it one place, across section boundaries (in a list, one reminder at a time).
 - **The List field** in the details dialog moves it to another list.
 
 ### Copying and pasting
@@ -204,7 +204,7 @@ Select several reminders to change them all at once:
 Selected rows are tinted, and with two or more the header says how many
 ("4 Selected"). The
 usual keys and the **⋮** or right-click menu of a selected reminder then act
-on all of them: Space, Ctrl+Shift+F, Ctrl+T / Ctrl+Shift+T, Alt+0 … Alt+3,
+on all of them: Space, Ctrl+Shift+F, Ctrl+T / Ctrl+Shift+T, Ctrl+0 … Ctrl+3,
 Ctrl+X, Ctrl+C, Delete, and in the menu **Mark as Completed** (or Not Completed)
 and **Move To**. Dragging a selected reminder
 drags them all; they land together, in their order. Each change is one step
@@ -215,7 +215,7 @@ for Ctrl+Z.
 - **A selected reminder's subtasks** go with it when moving, copying or
   deleting, selected or not.
 - **Clicking a selected reminder's circle** completes just that one.
-- **Details, Indent / Outdent and Alt+↑ / Alt+↓** still work on the one
+- **Details, Indent / Outdent and Ctrl+↑ / Ctrl+↓** still work on the one
   reminder with the focus.
 
 ## Importing reminders
@@ -331,8 +331,9 @@ A list can be divided into sections (they are `## Headings` in the file).
   move into the results.
 - **Go To** (Ctrl+K) jumps to any list, smart list or tag by typing part of
   its name. The last entry searches for what you typed.
-- **Ctrl+1 … Ctrl+9 and Ctrl+0** jump to the first ten sidebar entries, in
-  order: Today, Scheduled, All, All Reminders, Flagged, Completed, then your lists.
+- **Ctrl+Page Down / Ctrl+Page Up** step to the next or previous sidebar entry.
+- **Enter** on a sidebar entry opens it and moves the focus to its first
+  reminder (or New Reminder, in an empty list), ready for the reminder keys.
 
 ## Undo
 
@@ -364,9 +365,9 @@ Press Ctrl+? in the app for this list.
 | Menu, Shift+F10 | The reminder's ⋮ menu |
 | Ctrl+Shift+F | Flag / unflag |
 | Ctrl+T / Ctrl+Shift+T | Due today / tomorrow |
-| Alt+0 … Alt+3 | Priority none / low / medium / high |
+| Ctrl+0 … Ctrl+3 | Priority none / low / medium / high |
 | Ctrl+] / Ctrl+[ | Indent / outdent |
-| Alt+↑ / Alt+↓ | Move up / down |
+| Ctrl+↑ / Ctrl+↓ | Move up / down (in a list) |
 | Ctrl+X | Cut (copy, then delete) |
 | Ctrl+C | Copy (as Markdown) |
 | Ctrl+V | Paste reminders (outside a text field); ⋮ → Paste puts them after that reminder |
@@ -387,8 +388,10 @@ Press Ctrl+? in the app for this list.
 | Shortcut | Action |
 |---|---|
 | Ctrl+K | Go to… |
-| Ctrl+1 … Ctrl+9, Ctrl+0 | Sidebar entry 1–10 |
+| Enter (in the sidebar) | Open the entry and move into its reminders |
 | Ctrl+Page Down / Ctrl+Page Up | Next / previous sidebar entry |
+| Ctrl+↑ / Ctrl+↓ | Move the sidebar entry up / down |
+| Ctrl+Shift+↑ / Ctrl+Shift+↓ | Move its sidebar group up / down |
 | Ctrl+Shift+N | New list |
 | Ctrl+H | Show / hide completed |
 | Ctrl+Shift+H | Show / hide hidden lists, smart lists and tags |
@@ -471,7 +474,7 @@ the local copy).
 ## The settings file
 
 `$XDG_CONFIG_HOME/reminders/settings.ini` (`~/.config/reminders/settings.ini`) is shared by the GNOME app and the terminal
-client. Most of it is filled in for you; `show-key-numbers` is only set here.
+client. Most of it is filled in for you; `show-key-numbers` (terminal only) is only set here.
 In the app, **main menu → Settings…** (Ctrl+,) opens it in your default text editor
 (creating it if needed), and changes apply as soon as you save. In the
 terminal client, `Ctrl+S` opens it in your editor and applies the changes when you
@@ -488,7 +491,7 @@ default-source=personal
 view=list:Groceries
 # Whether the sidebar is shown (Ctrl+B in either app)
 show-sidebar=true
-# Show each sidebar entry's jump key (Ctrl+1 …)
+# Terminal client: show each sidebar entry's jump key ((1) …)
 show-key-numbers=true
 # The order of the sidebar's groups
 sidebar-order=smart-lists, local-lists, tags
@@ -520,10 +523,10 @@ tags-collapsed=false
 
 Comments go on their own lines, starting with `#`.
 
-`show-key-numbers` labels the first ten sidebar entries with the key that jumps
-to them. In the app the shortcut is shown to the right of the name, e.g.
-`Today  Ctrl+1  4`, through `Ctrl+0`. In the terminal client it's a prefix,
-e.g. `(1)Today`, for the keys `1`–`9` and `0`. It accepts `true`, `yes` or `1`, and is off when missing.
+`show-key-numbers` labels the terminal client's first ten sidebar entries with
+the key that jumps to them, as a prefix, e.g. `(1)Today`, for the keys `1`–`9`
+and `0`. The GNOME app has no such keys (the HIG gives Ctrl+number to other
+uses), so it ignores the setting. It accepts `true`, `yes` or `1`, and is off when missing.
 
 `row-buttons` sets when a reminder row's buttons (its flag, Details and ⋮)
 show in the GNOME app: `hover` (the default) while you point at the row or
@@ -549,8 +552,8 @@ the file:
 - **In the app:** drag a group's heading with the mouse and drop it on
   another group: on that group's top half to go above it, its bottom half to
   go below (a line shows where). Or right-click (or long-press) a group's
-  heading and choose Move Up or Move Down, or press Alt+Shift+↑ /
-  Alt+Shift+↓ on any of its entries. The group at the top has no heading
+  heading and choose Move Up or Move Down, or press Ctrl+Shift+↑ /
+  Ctrl+Shift+↓ on any of its entries. The group at the top has no heading
   unless it's collapsible, so move it by dragging another group above it
   (or with the keys). The same menu's **Collapsible** item
   switches the group between `visible` and `collapsible`.
@@ -581,9 +584,9 @@ in `collapsible` mode. `local-lists-display` applies to every source's group.
 
 - **`smart-lists`** chooses which smart lists appear and in what order, e.g.
   `smart-lists=today, flagged`.
-- **Numbering:** the shortcuts (Ctrl+1 …), Ctrl+Page Up/Down and their labels
-  follow what's showing, in order. So hiding or folding the smart lists makes
-  your lists start at Ctrl+1.
+- **Numbering:** Ctrl+Page Up/Down, and the terminal client's number keys and
+  their labels, follow what's showing, in order. So hiding or folding the
+  smart lists makes your lists start at `1`.
 - **Go To (Ctrl+K)** still finds entries in folded groups, but not in hidden
   ones.
 
@@ -600,16 +603,16 @@ entry goes.
   `show-hidden`.
 - **The terminal client** follows the same settings.
 
-**Reordering entries.** The same keys work in the app and the terminal
-client:
+**Reordering entries.** The app uses Ctrl, the terminal client Alt:
 
 | Keys | Moves |
 |---|---|
-| Alt+↑ / Alt+↓ | The selected smart list, list or tag, within its group (in the terminal, also `K` / `J`) |
-| Alt+Shift+↑ / Alt+Shift+↓ | Its whole group |
+| Ctrl+↑ / Ctrl+↓ (terminal: Alt+↑ / Alt+↓) | The selected smart list, list or tag, within its group (in the terminal, also `K` / `J`); on a group's heading, the group |
+| Ctrl+Shift+↑ / Ctrl+Shift+↓ (terminal: Alt+Shift+↑ / Alt+Shift+↓) | Its whole group |
 
-In the app, the right-click menu's **Move Up** / **Move Down** do the same
-for an entry, and on a heading for its group. You can also drag an entry
+In the app, an entry's right-click menu has **Move Up** / **Move Down** too,
+and a heading's moves its group.
+ You can also drag an entry
 with the mouse to another place in its group: a line shows where it will
 go. Entries stay in their own group (a list can't be dragged into another
 source's group, or among the tags); dropping a reminder on a list still
@@ -625,10 +628,8 @@ it a colour and icon, as for a list. They're saved in settings.ini
 - **A hidden last list:** if the list you last had open is now hidden, the app
   opens on Today or the first entry showing.
 
-For one run, `--show-key-numbers` or `--hide-key-numbers` on the command line
-overrides it without changing the file (`Reminders --show-key-numbers`, or
-`reminders --hide-key-numbers`). Passing one to an app that's already running
-switches its sidebar.
+For one run, `reminders --show-key-numbers` or `--hide-key-numbers` on the
+terminal client's command line overrides it without changing the file.
 
 ### Sources
 

@@ -32,14 +32,6 @@ Window* Window::from(GtkWindow* window) {
 				  : nullptr;
 }
 
-void Window::set_show_key_numbers(bool on) {
-	show_key_numbers_ = on;
-	key_numbers_override_ = on;
-	if (store_) {
-		rebuild_sidebar();
-	}
-}
-
 // Opens settings.ini in the default app for text files, creating it (with
 // the [general] line its settings go under) if needed. Saving it there is
 // picked up by watch_settings().
@@ -129,8 +121,6 @@ void Window::reload_settings() {
 		return;
 	}
 	settings_text_ = std::move(text);
-	show_key_numbers_ = key_numbers_override_.value_or(
-		rem::load_bool_setting("show-key-numbers"));
 	apply_row_buttons();
 	if (auto lines = rem::load_note_lines(); lines != note_lines_) {
 		note_lines_ = lines;
@@ -218,7 +208,7 @@ void Window::show_reminder(const std::string& id) {
 }
 
 Window::Window(AdwApplication* app, std::optional<std::filesystem::path> folder)
-	: app_(app), show_key_numbers_(rem::load_bool_setting("show-key-numbers")) {
+	: app_(app) {
 	build();
 	add_actions();
 	// Ctrl+A and Escape for the reminder selection, wherever the focus is in
@@ -464,6 +454,34 @@ void Window::build() {
 				show_content();
 			}
 		});
+	// Enter on an entry also moves the focus into its reminders (a click
+	// leaves it be). Caught before the row's own Enter, which activates it.
+	auto* sidebar_enter = gtk_event_controller_key_new();
+	gtk_event_controller_set_propagation_phase(sidebar_enter,
+											   GTK_PHASE_CAPTURE);
+	connect<gboolean(GtkEventControllerKey*, guint, guint, GdkModifierType)>(
+		sidebar_enter, "key-pressed",
+		[this](GtkEventControllerKey*, guint key, guint,
+			   GdkModifierType mods) -> gboolean {
+			if ((key != GDK_KEY_Return && key != GDK_KEY_KP_Enter) ||
+				(mods & gtk_accelerator_get_default_mod_mask())) {
+				return FALSE;
+			}
+			auto* focus = gtk_root_get_focus(GTK_ROOT(window_));
+			if (!focus || !GTK_IS_LIST_BOX_ROW(focus) || updating_sidebar_) {
+				return FALSE;
+			}
+			auto* v = row_view(GTK_LIST_BOX_ROW(focus));
+			if (!v) {
+				return FALSE;  // a heading: folds as usual
+			}
+			auto view = *v;	 // select() can rebuild the sidebar
+			select(view);
+			show_content();
+			focus_content();
+			return TRUE;
+		});
+	gtk_widget_add_controller(sidebar_list_, sidebar_enter);
 	// Right-click or long-press: a menu to move the group up or down.
 	auto* sidebar_click = gtk_gesture_click_new();
 	gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(sidebar_click),
@@ -487,17 +505,18 @@ void Window::build() {
 		});
 	gtk_widget_add_controller(sidebar_list_,
 							  GTK_EVENT_CONTROLLER(sidebar_press));
-	// Alt+↑ / Alt+↓ (and with Shift) on a sidebar row move it or its group.
+	// Ctrl+↑ / Ctrl+↓ (and with Shift) on a sidebar row move it or its group.
 	auto* sidebar_keys = gtk_event_controller_key_new();
 	connect<gboolean(GtkEventControllerKey*, guint, guint, GdkModifierType)>(
 		sidebar_keys, "key-pressed",
 		[this](GtkEventControllerKey*, guint key, guint,
 			   GdkModifierType mods) -> gboolean {
-			// Alt+↑/↓ moves the entry within its group (on a heading, the
-			// group); Alt+Shift+↑/↓ moves the group. The same keys as the TUI.
+			// Ctrl+↑/↓ moves the entry within its group (on a heading, the
+			// group); Ctrl+Shift+↑/↓ moves the group. (The terminal client
+			// uses Alt.)
 			auto mask = mods & gtk_accelerator_get_default_mod_mask();
-			bool group_keys = mask == (GDK_ALT_MASK | GDK_SHIFT_MASK);
-			if (mask != GDK_ALT_MASK && !group_keys) {
+			bool group_keys = mask == (GDK_CONTROL_MASK | GDK_SHIFT_MASK);
+			if (mask != GDK_CONTROL_MASK && !group_keys) {
 				return FALSE;
 			}
 			if (key != GDK_KEY_Up && key != GDK_KEY_Down) {
@@ -512,7 +531,8 @@ void Window::build() {
 			if (v && !group_keys) {
 				auto view = *v;
 				idle([this, view, delta] { move_entry(view, delta); });
-			} else if (auto g = row_group(GTK_LIST_BOX_ROW(focus))) {
+			} else if (auto g = focus ? row_group(GTK_LIST_BOX_ROW(focus))
+									  : std::nullopt) {
 				auto group = *g;
 				idle([this, group, delta] { move_group(group, delta); });
 			}
@@ -750,20 +770,6 @@ void Window::add_actions() {
 	});
 	g_simple_action_set_enabled(sync_action_, FALSE);
 	add_action(window_, "settings", [this] { open_settings(); });
-	// "go-1" … "go-10": the sidebar's entries in order (Ctrl+1 … Ctrl+9,
-	// Ctrl+0).
-	for (int n = 1; n <= 10; ++n) {
-		add_action(window_, std::format("go-{}", n).c_str(), [this, n] {
-			if (!store_) {
-				return;
-			}
-			auto views = sidebar_views();
-			if (n <= static_cast<int>(views.size())) {
-				select(views[static_cast<std::size_t>(n - 1)]);
-				show_content();
-			}
-		});
-	}
 	add_action(window_, "go-to", [this] {
 		if (store_) {
 			quick_switcher();

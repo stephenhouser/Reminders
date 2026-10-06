@@ -62,10 +62,8 @@ std::string trim(std::string_view s);
 int open_count(rem::ListFile& l);
 void set_row_view(GtkWidget* row, View v);
 const View* row_view(GtkListBoxRow* row);
-std::string jump_shortcut(std::size_t index);
 GtkWidget* sidebar_row(const char* icon_name, std::string_view color,
-					   const std::string& title, std::optional<int> count,
-					   const std::string& shortcut = {});
+					   const std::string& title, std::optional<int> count);
 void set_row_group(GtkWidget* row, const rem::SidebarGroup& group);
 std::optional<rem::SidebarGroup> row_group(GtkListBoxRow* row);
 GtkWidget* fold_heading(const std::string& text, bool collapsed,
@@ -73,6 +71,9 @@ GtkWidget* fold_heading(const std::string& text, bool collapsed,
 GtkWidget* sidebar_heading(const std::string& text);
 GtkWidget* boxed_list();
 GMenu* menu_section(GMenu* menu);
+// A menu item that shows its shortcut.
+void menu_append_accel(GMenu* menu, const char* label, const char* action,
+					   const char* accel);
 std::string source_problem(const SourceEdit& e, const std::string& self);
 using rem::list_name_error;
 GType reminder_drag_type();

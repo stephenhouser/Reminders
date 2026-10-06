@@ -24,12 +24,6 @@ void Window::rebuild_sidebar() {
 	auto* list = GTK_LIST_BOX(sidebar_list_);
 	gtk_list_box_remove_all(list);
 	auto day = today();
-	// Optional "Ctrl+1"-style labels after each name (show-key-numbers),
-	// numbered in display order over the entries that are showing.
-	std::size_t index = 0;
-	auto shortcut = [this](std::size_t i) {
-		return show_key_numbers_ ? jump_shortcut(i) : std::string();
-	};
 
 	// Entries are dragged to another place in their group.
 	auto make_reorderable = [this](GtkWidget* row, const View& v) {
@@ -102,9 +96,8 @@ void Window::rebuild_sidebar() {
 						default:
 							break;
 					}
-					auto* row =
-						sidebar_row(s->icon, s->color, s->title,
-									static_cast<int>(count), shortcut(index++));
+					auto* row = sidebar_row(s->icon, s->color, s->title,
+											static_cast<int>(count));
 					set_row_view(row, v);
 					if (entry_hidden(v)) {
 						gtk_widget_add_css_class(row, "hidden-entry");
@@ -118,7 +111,7 @@ void Window::rebuild_sidebar() {
 					auto key = store_->key_of(*l);
 					auto* row =
 						sidebar_row(list_icon_name(l->icon()), l->color(),
-									l->name, open_count(*l), shortcut(index++));
+									l->name, open_count(*l));
 					set_row_view(row, View{View::List, key});
 					if (entry_hidden(View{View::List, key})) {
 						gtk_widget_add_css_class(row, "hidden-entry");
@@ -151,9 +144,8 @@ void Window::rebuild_sidebar() {
 			case rem::SidebarGroup::Tags:
 				for (auto& t : sidebar_tags()) {
 					auto style = rem::load_tag_style(t);
-					auto* row =
-						sidebar_row(list_icon_name(style.icon), style.color,
-									"#" + t, std::nullopt, shortcut(index++));
+					auto* row = sidebar_row(list_icon_name(style.icon),
+											style.color, "#" + t, std::nullopt);
 					set_row_view(row, View{View::Tag, t});
 					if (entry_hidden(View{View::Tag, t})) {
 						gtk_widget_add_css_class(row, "hidden-entry");
@@ -446,8 +438,10 @@ void Window::sidebar_menu(GtkListBoxRow* row, double x, double y) {
 		}
 		{  // the entry's place in its group
 			auto* moves = menu_section(m);
-			g_menu_append(moves, "Move _Up", "sidebar-entry.move-up");
-			g_menu_append(moves, "Move _Down", "sidebar-entry.move-down");
+			menu_append_accel(moves, "Move _Up", "sidebar-entry.move-up",
+							  "<Control>Up");
+			menu_append_accel(moves, "Move _Down", "sidebar-entry.move-down",
+							  "<Control>Down");
 		}
 		g_menu_append(menu_section(m), hidden ? "_Show" : "_Hide",
 					  "sidebar-entry.hide");
@@ -471,10 +465,10 @@ void Window::sidebar_menu(GtkListBoxRow* row, double x, double y) {
 		auto* m = g_menu_new();
 		auto* moves = menu_section(m);
 		auto title = group_title(*group);
-		g_menu_append(moves, std::format("Move “{}” _Up", title).c_str(),
-					  "win.move-group-up");
-		g_menu_append(moves, std::format("Move “{}” _Down", title).c_str(),
-					  "win.move-group-down");
+		menu_append_accel(moves, std::format("Move “{}” _Up", title).c_str(),
+						  "win.move-group-up", "<Control><Shift>Up");
+		menu_append_accel(moves, std::format("Move “{}” _Down", title).c_str(),
+						  "win.move-group-down", "<Control><Shift>Down");
 		auto enable = [this](const char* name, bool on) {
 			g_simple_action_set_enabled(
 				G_SIMPLE_ACTION(

@@ -47,12 +47,12 @@ can reuse.
 ## Features (Linux client)
 
 - **Sources**: several open at once, each its own sidebar group, each with its own back end (Syncthing, a plain local folder, a CalDAV account, a WebDAV folder, or a git repository). Smart lists, tags and search cover them all, and reminders can be moved between them. Managed from ☰ → Sources….
-- **Lists**: colours, icons, sections, manual order (drag or Alt+↑/↓), and subtasks one level deep (indent with Ctrl+]).
+- **Lists**: colours, icons, sections, manual order (drag or Ctrl+↑/↓), and subtasks one level deep (indent with Ctrl+]).
 - **Reminders**: title, notes, URL, due date and time, repeat ("every 2 weeks", weekdays, …), flag, priority, tags.
 - **Smart lists**: Today, Scheduled, All, All Reminders (completed ones too), Flagged, Completed, plus one per tag. Search across everything, and a Ctrl+K "Go to" switcher.
 - **Quick entry**: type `Pay rent #home 📅 2026-10-31 🚩` into "New Reminder" and the fields are filled in.
 - **Import and export** iCalendar (`.ics`) tasks, Markdown checklists, todo.txt, CSV or plain text (a line each), one list or all of them, from ☰ → Import… (or by dropping a file on the window) and ☰ → Export… (pick any lists; several can go into a `.zip`), or `reminders import` / `export` (`I` imports in the full-screen interface). Importing again doesn't duplicate unless you ask; an export imports back as it was.
-- **Sidebar**: smart lists, lists and tags in the order you choose (drag them, or Alt+↑/↓), groups you can drag, fold or hide.
+- **Sidebar**: smart lists, lists and tags in the order you choose (drag them, or Ctrl+↑/↓), groups you can drag, fold or hide.
 - **Selecting several reminders** (Ctrl/Shift+click, Ctrl+A) to complete, flag, date, move, drag or delete them together.
 - **Undo and redo** (Ctrl+Z / Ctrl+Shift+Z) for every change, including moves and deleted lists.
 - **Keyboard-driven**: nearly everything has a shortcut; see the [user guide](docs/USING.md#keyboard-shortcuts).

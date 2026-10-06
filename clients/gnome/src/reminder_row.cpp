@@ -251,6 +251,11 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
 	auto* outdent_action = add_action(actions, "outdent", [this, id] {
 		idle([this, id] { indent(id, false); });
 	});
+	// Enabled as the menu opens, once it's known whether there's room.
+	add_action(actions, "move-up",
+			   [this, id] { idle([this, id] { move_step(id, true); }); });
+	add_action(actions, "move-down",
+			   [this, id] { idle([this, id] { move_step(id, false); }); });
 	g_simple_action_set_enabled(indent_action, can_indent);
 	g_simple_action_set_enabled(outdent_action, can_outdent);
 	{
@@ -514,6 +519,11 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
 					   (key == GDK_KEY_Up || key == GDK_KEY_Down)) {
 				extend_selection(id, key == GDK_KEY_Up);
 				return TRUE;
+			} else if (mask == GDK_CONTROL_MASK && key >= GDK_KEY_0 &&
+					   key <= GDK_KEY_3) {
+				auto p = static_cast<rem::Priority>(key - GDK_KEY_0);
+				return later(
+					[this, ids = targets(id), p] { set_priority(ids, p); });
 			} else if (mask == GDK_CONTROL_MASK) {
 				switch (key) {
 					case GDK_KEY_t:
@@ -538,6 +548,14 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
 							return later([this, id] { indent(id, false); });
 						}
 						break;
+					case GDK_KEY_Up:
+					case GDK_KEY_Down:
+						// Elsewhere, left to the list box (focus moves).
+						if (in_list) {
+							bool up = key == GDK_KEY_Up;
+							return later([this, id, up] { move_step(id, up); });
+						}
+						break;
 				}
 			} else if (mask == (GDK_CONTROL_MASK | GDK_SHIFT_MASK) &&
 					   key == GDK_KEY_f) {
@@ -545,15 +563,6 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
 			} else if (mask == (GDK_CONTROL_MASK | GDK_SHIFT_MASK) &&
 					   key == GDK_KEY_t) {
 				return later([this, ids = targets(id)] { set_due(ids, 1); });
-			} else if (mask == GDK_ALT_MASK && key >= GDK_KEY_0 &&
-					   key <= GDK_KEY_3) {
-				auto p = static_cast<rem::Priority>(key - GDK_KEY_0);
-				return later(
-					[this, ids = targets(id), p] { set_priority(ids, p); });
-			} else if (mask == GDK_ALT_MASK && in_list &&
-					   (key == GDK_KEY_Up || key == GDK_KEY_Down)) {
-				bool up = key == GDK_KEY_Up;
-				return later([this, id, up] { move_step(id, up); });
 			} else if (mask == GDK_ALT_MASK &&
 					   (key == GDK_KEY_Return || key == GDK_KEY_KP_Enter)) {
 				// Alt+Return: the HIG's Properties, beside Ctrl+I.
@@ -693,6 +702,12 @@ GMenuModel* Window::reminder_menu(const std::string& id, bool in_list) {
 			G_SIMPLE_ACTION(g_action_map_lookup_action(actions, "paste")),
 			gdk_content_formats_contain_gtype(formats, G_TYPE_STRING));
 		gdk_content_formats_unref(formats);
+		for (bool up : {true, false}) {
+			g_simple_action_set_enabled(
+				G_SIMPLE_ACTION(g_action_map_lookup_action(
+					actions, up ? "move-up" : "move-down")),
+				in_list && can_move_step(id, up));
+		}
 	}
 	auto ids = targets(id);
 	bool several = ids.size() > 1;
@@ -758,6 +773,9 @@ GMenuModel* Window::reminder_menu(const std::string& id, bool in_list) {
 		auto* structure = menu_section(menu);
 		item(structure, "_Indent", "reminder.indent", "<Control>bracketright");
 		item(structure, "_Outdent", "reminder.outdent", "<Control>bracketleft");
+		// v and w: u and p are taken (_Unflag, _Paste).
+		item(structure, "Mo_ve Up", "reminder.move-up", "<Control>Up");
+		item(structure, "Move Do_wn", "reminder.move-down", "<Control>Down");
 	}
 	item(menu_section(menu),
 		 several ? std::format("_Delete {} Reminders", ids.size()) : "_Delete",

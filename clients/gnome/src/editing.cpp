@@ -267,6 +267,19 @@ void Window::move_step(const std::string& id, bool up) {
 	});
 }
 
+// Whether move_step would move it: tried on a copy of its list.
+bool Window::can_move_step(const std::string& id, bool up) {
+	auto ref = store_ ? store_->find(id) : std::nullopt;
+	if (!ref) {
+		return false;
+	}
+	bool show_done = show_completed_;
+	auto copy = ref->list->doc;
+	return copy.move_step(id, up, [show_done](const rem::Reminder& r) {
+		return show_done || !r.done;
+	});
+}
+
 void Window::indent(const std::string& id, bool in) {
 	auto ref = store_->find(id);
 	if (!ref) {

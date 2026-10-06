@@ -40,8 +40,6 @@ class Window {
 		// Opens a reminder's list and its details dialog (e.g. from a
 		// notification).
 		void show_reminder(const std::string& id);
-		// Overrides the show-key-numbers setting (from the command line).
-		void set_show_key_numbers(bool on);
 		void
 		open_settings();  // Settings…: settings.ini in the default text editor
 		void reload_settings();	 // applies settings.ini as it is now
@@ -161,6 +159,8 @@ class Window {
 		void toggle_subtasks(const std::string& id);
 		void show_content();   // on narrow windows, hides the overlaid sidebar
 		void focus_results();  // from the search entry into the search results
+		// Focus on the first reminder (or New Reminder) of what's shown.
+		void focus_content();
 		// Drag and drop (several reminders land together, in order).
 		void move_reminders(const std::vector<std::string>& ids,
 							const std::string& target,
@@ -171,6 +171,7 @@ class Window {
 		void move_to_list(const std::vector<std::string>& ids,
 						  const std::string& list);
 		void move_step(const std::string& id, bool up);
+		bool can_move_step(const std::string& id, bool up);
 		void setup_autoscroll();
 		// Delete; with `cut`, Ctrl+X: copied first, the same single undo step.
 		void delete_reminders(const std::vector<std::string>& ids,
@@ -310,8 +311,6 @@ class Window {
 		gulong settings_handler_ = 0;
 		guint settings_timer_ = 0;
 		std::string settings_text_;	 // settings.ini as last applied
-		std::optional<bool>
-			key_numbers_override_;	// --show-key-numbers / --hide-key-numbers
 		GtkWidget* first_new_entry_ =
 			nullptr;  // "New Reminder" entry of the current list
 		std::set<std::string> pending_reload_;
@@ -325,7 +324,6 @@ class Window {
 		bool updating_sidebar_ = false;
 		bool show_completed_ = false;
 		std::size_t note_lines_ = rem::load_note_lines();  // note-lines
-		bool show_key_numbers_ = false;	 // settings.ini: show-key-numbers
 		std::unique_ptr<rem::Sidebar>
 			sidebar_;  // its layout (made with store_)
 		GSimpleAction* show_hidden_action_ = nullptr;
