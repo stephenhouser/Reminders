@@ -32,118 +32,131 @@ int App::cmd_add(const Args& a) {
 }
 
 int App::cmd_edit(const Args& a) {
-	if (a.positional.empty()) {
-		throw UsageError(
-			"edit needs the name of a reminder (then the fields to change)");
-	}
-	auto ref = resolve(join(a.positional), a.get("in"));
-	auto id = ref.reminder->id;
+	auto refs = targets(
+		join(a.positional), a,
+		"edit needs the name of a reminder (then the fields to change)");
 	bool only_lookup =
 		std::ranges::all_of(a.options, [](auto& o) { return o.first == "in"; });
 	if (only_lookup) {
 		// No fields given: edit them all in $EDITOR.
-		if (!isatty(STDIN_FILENO) || !isatty(STDOUT_FILENO)) {
-			throw UsageError(
-				"edit needs fields to change (e.g. --due fri), or a terminal "
-				"to open an editor in");
+		if (refs.size() > 1) {
+			throw UsageError("edit in $EDITOR takes one reminder at a time");
 		}
-		switch (editfile::edit(store_, id)) {
+		auto id = refs.front().reminder->id;
+		auto outcome = editfile::Outcome::Unchanged;
+		if (hooks_.edit) {
+			outcome = hooks_.edit(id);
+		} else {
+			if (!isatty(STDIN_FILENO) || !isatty(STDOUT_FILENO)) {
+				throw UsageError(
+					"edit needs fields to change (e.g. --due fri), or a "
+					"terminal to open an editor in");
+			}
+			outcome = editfile::edit(store_, id);
+		}
+		switch (outcome) {
 			case editfile::Outcome::Saved:
 				break;
 			case editfile::Outcome::Unchanged:
 				if (!g_.json) {
-					std::cout << "No changes\n";
+					out_ << "No changes\n";
 				}
 				return 0;
 			case editfile::Outcome::Reverted:
 				if (!g_.json) {
-					std::cout << "Reverted; the reminder is as it was\n";
+					out_ << "Reverted; the reminder is as it was\n";
 				}
 				return 1;
 		}
 		report("Updated", *store_.find(id));
 		return 0;
 	}
-	apply_fields(*ref.reminder, a);
-	store_.touch(id);
-	if (auto l = a.get("list")) {
-		auto& dest = list_named(*l);
-		if (&dest != ref.list) {
-			store_.move_to_list(id, dest);
-		}
+	rem::ListFile* dest = a.get("list") ? &list_named(*a.get("list")) : nullptr;
+	std::vector<std::string> ids;
+	for (auto& ref : refs) {
+		apply_fields(*ref.reminder, a);
+		store_.touch(ref.reminder->id);
+		ids.push_back(ref.reminder->id);
 	}
-	report("Updated", *store_.find(id));
+	if (dest) {
+		rem::move_to_list(store_, rem::outermost(store_, ids), *dest);
+	}
+	report_all("Updated", ids);
 	return 0;
 }
 
 int App::cmd_done(const Args& a, bool done) {
-	if (a.positional.empty()) {
-		throw UsageError(done ? "done needs the name of a reminder"
-							  : "undone needs the name of a reminder");
+	auto refs = targets(join(a.positional), a,
+						done ? "done needs the name of a reminder"
+							 : "undone needs the name of a reminder");
+	std::vector<std::string> ids;
+	for (auto& ref : refs) {
+		ids.push_back(ref.reminder->id);
+		store_.set_done(ref.reminder->id, done, today_);
 	}
-	// Several names: each word is one reminder only if quoted separately, so
-	// try the whole text first.
-	std::vector<std::string> names =
-		a.positional.size() == 1 ? a.positional
-								 : std::vector<std::string>{join(a.positional)};
-	for (auto& ref_text : names) {
-		auto ref = resolve(ref_text, a.get("in"));
-		auto id = ref.reminder->id;
-		store_.set_done(id, done, today_);
-		report(done ? "Completed" : "Reopened", *store_.find(id));
-	}
+	report_all(done ? "Completed" : "Reopened", ids);
 	return 0;
 }
 
 int App::cmd_move(const Args& a) {
 	auto to = a.get("to");
-	if (a.positional.empty() || (!to && a.positional.size() < 2)) {
-		throw UsageError(
-			"move needs a reminder and a list: reminders move NAME --to LIST");
+	const char* usage =
+		"move needs a reminder and a list: reminders move NAME --to LIST";
+	if (!to && a.positional.empty()) {
+		throw UsageError(usage);
 	}
+	// NAME --to LIST, or NAME LIST; without NAME, the selected reminders.
 	auto name =
 		to ? join(a.positional)
 		   : join(std::vector(a.positional.begin(), a.positional.end() - 1));
-	auto ref = resolve(name, a.get("in"));
-	auto id = ref.reminder->id;
+	auto refs = targets(name, a, usage);
 	auto& dest = list_named(to ? *to : a.positional.back());
-	if (&dest != ref.list) {
-		store_.move_to_list(id, dest);
+	std::vector<std::string> ids;
+	for (auto& ref : refs) {
+		ids.push_back(ref.reminder->id);
 	}
+	ids = rem::outermost(store_, ids);
+	rem::move_to_list(store_, ids, dest);
 	if (auto section = a.get("section")) {
-		dest.doc.move_to_end(id, *section);
-		store_.save(dest);
+		rem::move_to_section_end(store_, ids, dest, *section);
 	}
-	report("Moved", *store_.find(id));
+	report_all("Moved", ids);
 	return 0;
 }
 
 int App::cmd_delete(const Args& a) {
-	if (a.positional.empty()) {
-		throw UsageError("delete needs the name of a reminder");
-	}
-	std::vector<rem::Ref> refs{resolve(join(a.positional), a.get("in"))};
-	if (!a.has("yes") && isatty(STDIN_FILENO)) {
-		for (auto& r : refs) {
-			print_reminder(r, st_, 0, true, today_);
-		}
-		std::cout << "Delete this reminder? [y/N] " << std::flush;
-		std::string answer;
-		std::getline(std::cin, answer);
-		if (term::lower(answer) != "y" && term::lower(answer) != "yes") {
-			return 1;
-		}
-	}
+	auto refs = targets(join(a.positional), a,
+						"delete needs the name of a reminder");
 	std::vector<std::string> ids;
 	for (auto& r : refs) {
 		ids.push_back(r.reminder->id);
 	}
-	for (auto& id : ids) {
-		store_.remove(id);
+	ids = rem::outermost(store_, ids);
+	if (!a.has("yes")) {
+		if (hooks_.confirm) {
+			auto question =
+				ids.size() == 1
+					? std::format("Delete “{}”?", store_.find(ids[0])->reminder->title)
+					: std::format("Delete {} reminders?", ids.size());
+			if (!hooks_.confirm(question)) {
+				return 1;
+			}
+		} else if (hooks_.interactive && isatty(STDIN_FILENO)) {
+			for (auto& id : ids) {
+				print_reminder(out_, *store_.find(id), st_, 0, true, today_);
+			}
+			out_ << "Delete this reminder? [y/N] " << std::flush;
+			std::string answer;
+			std::getline(std::cin, answer);
+			if (term::lower(answer) != "y" && term::lower(answer) != "yes") {
+				return 1;
+			}
+		}
 	}
+	auto n = rem::remove(store_, ids);
 	if (!g_.json) {
-		std::cout << "Deleted " << ids.size()
-				  << (ids.size() == 1 ? " reminder" : " reminders") << "\n";
+		out_ << "Deleted " << n << (n == 1 ? " reminder" : " reminders")
+			 << "\n";
 	}
 	return 0;
 }
@@ -178,9 +191,9 @@ int App::cmd_new_list(const Args& a) {
 	}
 	store_.create_list(source, name, color, icon);
 	if (!g_.json) {
-		std::cout << "Created " << name
-				  << (store_.sources().size() > 1 ? " in " + source : "")
-				  << "\n";
+		out_ << "Created " << name
+			 << (store_.sources().size() > 1 ? " in " + source : "")
+			 << "\n";
 	}
 	return 0;
 }

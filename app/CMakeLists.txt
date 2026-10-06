@@ -8,7 +8,8 @@ add_library(reminders_app STATIC
   src/view_model.cpp
   src/sidebar.cpp
   src/preferences.cpp
-  src/import_file.cpp)
+  src/import_file.cpp
+  src/command_line.cpp)
 target_include_directories(reminders_app PUBLIC include)
 target_link_libraries(reminders_app PUBLIC reminders_core)
 
@@ -20,7 +21,8 @@ add_executable(app_tests
   tests/view_model_test.cpp
   tests/sidebar_test.cpp
   tests/preferences_test.cpp
-  tests/import_file_test.cpp)
+  tests/import_file_test.cpp
+  tests/command_line_test.cpp)
 target_include_directories(app_tests PRIVATE ${PROJECT_SOURCE_DIR}/core/tests)
 target_link_libraries(app_tests PRIVATE reminders_app)
 add_test(NAME app_tests COMMAND app_tests)

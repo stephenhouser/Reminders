@@ -119,22 +119,29 @@ int main(int argc, char** argv) {
 		if (sync) {
 			sync_servers(*library);
 		}
-		auto* lib = library.get();
-		App app(g, std::move(library), own_folder);
+		library->load_all();
 		if (cmd == "tui") {
 			if (!isatty(STDIN_FILENO) || !isatty(STDOUT_FILENO)) {
 				throw UsageError(
 					"the interactive interface needs a terminal; see reminders "
 					"--help for commands");
 			}
-			return run_tui(app.store(), own_folder, g.key_numbers);
+			return run_tui(*library, own_folder, g.key_numbers);
 		}
+		if (auto* c = cmd::find(cmd); c && c->where == cmd::Where::Tui) {
+			throw UsageError(std::format(
+				"“{}” is a command of the interactive interface (type : "
+				"there)",
+				cmd));
+		}
+		cmd::Hooks hooks;
+		hooks.interactive = true;
+		hooks.remember = own_folder;
+		App app(g, *library, std::cout, hooks);
 		auto status = app.run(cmd, parse_args(rest));
-		static constexpr std::string_view kEdits[] = {
-			"add", "edit",	 "done", "undone",	 "move",
-			"mv",  "delete", "rm",	 "new-list", "import"};
-		if (sync && std::ranges::find(kEdits, cmd) != std::end(kEdits)) {
-			sync_servers(*lib);
+		// A command that changes lists sends them back to the servers.
+		if (auto* c = cmd::find(cmd); sync && c && c->edits) {
+			sync_servers(*library);
 		}
 		return status;
 	} catch (const UsageError& e) {

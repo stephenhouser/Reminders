@@ -50,14 +50,14 @@ int App::cmd_import(const Args& a) {
 					   name, imp, a.has("duplicates"));
 	if (g_.json) {
 		if (done.key.empty()) {
-			std::cout
+			out_
 				<< std::format(
 					   R"({{"list":null,"created":false,"added":0,"already":{},"skipped":{}}})",
 					   done.result.already, imp.skipped)
 				<< "\n";
 			return 0;
 		}
-		std::cout
+		out_
 			<< std::format(
 				   R"({{"list":{},"created":{},"added":{},"already":{},"skipped":{}}})",
 				   json_escape(done.key), done.created, done.result.added,
@@ -65,7 +65,7 @@ int App::cmd_import(const Args& a) {
 			<< "\n";
 		return 0;
 	}
-	std::cout << rem::import_summary(store_, done, imp) << "\n";
+	out_ << rem::import_summary(store_, done, imp) << "\n";
 	return 0;
 }
 
@@ -102,15 +102,15 @@ int App::cmd_export(const Args& a) {
 			}
 			auto n = store_.lists().size();
 			if (g_.json) {
-				std::cout << std::format(
-								 R"({{"format":"{}","archive":{},"lists":{}}})",
-								 rem::export_extension(fmt),
-								 json_escape(folder.string()), n)
-						  << "\n";
+				out_ << std::format(
+							R"({{"format":"{}","archive":{},"lists":{}}})",
+							rem::export_extension(fmt),
+							json_escape(folder.string()), n)
+					 << "\n";
 			} else {
-				std::cout << std::format("Exported {} {} to {}\n", n,
-										 n == 1 ? "list" : "lists",
-										 folder.string());
+				out_ << std::format("Exported {} {} to {}\n", n,
+									n == 1 ? "list" : "lists",
+									folder.string());
 			}
 			return 0;
 		}
@@ -125,20 +125,20 @@ int App::cmd_export(const Args& a) {
 			for (auto& f : files) {
 				list += (list.empty() ? "" : ",") + json_escape(f.string());
 			}
-			std::cout << std::format(R"({{"format":"{}","files":[{}]}})",
-									 rem::export_extension(fmt), list)
-					  << "\n";
+			out_ << std::format(R"({{"format":"{}","files":[{}]}})",
+								rem::export_extension(fmt), list)
+				 << "\n";
 		} else {
-			std::cout << std::format("Exported {} {} to {}\n", files.size(),
-									 files.size() == 1 ? "list" : "lists",
-									 folder.string());
+			out_ << std::format("Exported {} {} to {}\n", files.size(),
+								files.size() == 1 ? "list" : "lists",
+								folder.string());
 		}
 		return 0;
 	}
 	auto& list = list_named(join(a.positional));
 	auto text = rem::export_list(list, fmt, options);
 	if (!out || *out == "-") {
-		std::cout << text;
+		out_ << text;
 		return 0;
 	}
 	auto path = folder_arg(*out);
@@ -153,14 +153,14 @@ int App::cmd_export(const Args& a) {
 			std::format("couldn't write {}", path.string()));
 	}
 	if (g_.json) {
-		std::cout << std::format(R"({{"list":{},"format":"{}","file":{}}})",
-								 json_escape(store_.key_of(list)),
-								 rem::export_extension(fmt),
-								 json_escape(path.string()))
-				  << "\n";
+		out_ << std::format(R"({{"list":{},"format":"{}","file":{}}})",
+							json_escape(store_.key_of(list)),
+							rem::export_extension(fmt),
+							json_escape(path.string()))
+			 << "\n";
 	} else {
-		std::cout << std::format("Exported {} to {}\n", store_.label(list),
-								 path.string());
+		out_ << std::format("Exported {} to {}\n", store_.label(list),
+							path.string());
 	}
 	return 0;
 }

@@ -31,7 +31,7 @@ rem::ListFile& App::list_named(const std::string& name) {
 
 // The list or view that last had focus (in the GUI or TUI), if it still exists.
 term::SavedView App::saved_view() {
-	if (!own_folder_) {
+	if (!hooks_.remember) {
 		return {"today", ""};
 	}
 	auto v = term::parse_view_setting(rem::load_setting("view"));
@@ -41,8 +41,12 @@ term::SavedView App::saved_view() {
 	return v;
 }
 
-// For `add` without --list: the list that last had focus, else the first one.
+// For `add` without --list: the list showing (in the terminal interface),
+// else the one that last had focus, else the first one.
 rem::ListFile& App::default_list() {
+	if (auto* l = hooks_.list.empty() ? nullptr : store_.list(hooks_.list)) {
+		return *l;
+	}
 	if (auto v = saved_view(); v.kind == "list") {
 		return *store_.list(v.name);
 	}
@@ -138,7 +142,7 @@ rem::Ref App::resolve(const std::string& text,
 			"{}  ({}{})", term::markdown_line(*c.reminder).text(),
 			list_label(*c.list), c.parent ? " > " + c.parent->title : "");
 	};
-	if (isatty(STDIN_FILENO) && isatty(STDERR_FILENO)) {
+	if (hooks_.interactive && isatty(STDIN_FILENO) && isatty(STDERR_FILENO)) {
 		std::cerr << std::format("“{}” matches {} reminders:\n", text,
 								 best.size());
 		for (std::size_t i = 0; i < best.size(); ++i) {
@@ -166,6 +170,23 @@ rem::Ref App::resolve(const std::string& text,
 	}
 	msg.pop_back();
 	throw std::runtime_error(msg);
+}
+
+std::vector<rem::Ref> App::targets(const std::string& name, const Args& a,
+								   const std::string& what) {
+	if (!name.empty()) {
+		return {resolve(name, a.get("in"))};
+	}
+	std::vector<rem::Ref> refs;
+	for (auto& id : hooks_.selected) {
+		if (auto r = store_.find(id)) {
+			refs.push_back(*r);
+		}
+	}
+	if (refs.empty()) {
+		throw UsageError(what);
+	}
+	return refs;
 }
 
 void App::apply_fields(rem::Reminder& r, const Args& a) {
@@ -244,48 +265,204 @@ void App::apply_fields(rem::Reminder& r, const Args& a) {
 
 void App::report(const std::string& verb, const rem::Ref& ref) {
 	if (g_.json) {
-		std::cout << json_reminder(ref) << "\n";
+		out_ << json_reminder(ref) << "\n";
 		return;
 	}
-	std::cout << verb << ": ";
-	print_reminder(ref, st_, 0, true, today_);
+	out_ << verb << ": ";
+	print_reminder(out_, ref, st_, 0, true, today_);
 }
 
-int App::run(const std::string& cmd, const Args& a) {
-	// Each command, under its names.
-	using Handler = int (*)(App&, const Args&);
-	static const std::pair<std::vector<std::string_view>, Handler> kCommands[] =
-		{
-			{{"lists"}, [](App& app, const Args&) { return app.cmd_lists(); }},
-			{{"list", "ls"},
-			 [](App& app, const Args& a) { return app.cmd_list(a); }},
-			{{"show"}, [](App& app, const Args& a) { return app.cmd_show(a); }},
-			{{"add"}, [](App& app, const Args& a) { return app.cmd_add(a); }},
-			{{"edit"}, [](App& app, const Args& a) { return app.cmd_edit(a); }},
-			{{"done"},
-			 [](App& app, const Args& a) { return app.cmd_done(a, true); }},
-			{{"undone"},
-			 [](App& app, const Args& a) { return app.cmd_done(a, false); }},
-			{{"move", "mv"},
-			 [](App& app, const Args& a) { return app.cmd_move(a); }},
-			{{"delete", "rm"},
-			 [](App& app, const Args& a) { return app.cmd_delete(a); }},
-			{{"search"},
-			 [](App& app, const Args& a) { return app.cmd_search(a); }},
-			{{"new-list"},
-			 [](App& app, const Args& a) { return app.cmd_new_list(a); }},
-			{{"import"},
-			 [](App& app, const Args& a) { return app.cmd_import(a); }},
-			{{"export"},
-			 [](App& app, const Args& a) { return app.cmd_export(a); }},
-		};
-	for (auto& [names, handler] : kCommands) {
-		if (std::ranges::find(names, cmd) != names.end()) {
-			return handler(*this, a);
+void App::report_all(const std::string& verb,
+					 const std::vector<std::string>& ids) {
+	if (ids.size() == 1 || g_.json) {
+		for (auto& id : ids) {
+			if (auto r = store_.find(id)) {
+				report(verb, *r);
+			}
 		}
+		return;
+	}
+	out_ << std::format("{} {} reminders\n", verb, ids.size());
+}
+
+int App::run(const std::string& name, const Args& a) {
+	auto* c = cmd::find(name);
+	auto is = [&](std::string_view n) { return c && c->names.front() == n; };
+	if (is("lists")) {
+		return cmd_lists();
+	} else if (is("list")) {
+		return cmd_list(a);
+	} else if (is("show")) {
+		return cmd_show(a);
+	} else if (is("add")) {
+		return cmd_add(a);
+	} else if (is("edit")) {
+		return cmd_edit(a);
+	} else if (is("done") || is("undone")) {
+		return cmd_done(a, is("done"));
+	} else if (is("move")) {
+		return cmd_move(a);
+	} else if (is("delete")) {
+		return cmd_delete(a);
+	} else if (is("search")) {
+		return cmd_search(a);
+	} else if (is("new-list")) {
+		return cmd_new_list(a);
+	} else if (is("import")) {
+		return cmd_import(a);
+	} else if (is("export")) {
+		return cmd_export(a);
 	}
 	throw UsageError(
-		std::format("unknown command “{}” (see reminders --help)", cmd));
+		std::format("unknown command “{}” (see reminders --help)", name));
 }
 
 }  // namespace cli
+
+namespace cmd {
+
+// Every command, with its names; in this order in the terminal interface's
+// help. main() runs sync, folder and tui itself, the terminal interface the
+// ones only it has.
+std::span<const Command> commands() {
+	static const std::vector<Command> kCommands = {
+		{{"lists"}, "", "the lists, with how many are open in each"},
+		{{"list", "ls"},
+		 "[VIEW] [-a]",
+		 "a list, today, scheduled, all, flagged, completed or #tag",
+		 false,
+		 Where::Both,
+		 Arg::View},
+		{{"show"},
+		 "NAME",
+		 "everything about one reminder",
+		 false,
+		 Where::Both,
+		 Arg::Reminder},
+		{{"add"}, "TEXT… [FIELDS]", "add a reminder", true},
+		{{"edit"},
+		 "NAME [FIELDS]",
+		 "change a reminder (no FIELDS: all of them in $EDITOR)",
+		 true,
+		 Where::Both,
+		 Arg::Reminder},
+		{{"done"}, "NAME", "complete", true, Where::Both, Arg::Reminder},
+		{{"undone"},
+		 "NAME",
+		 "mark as not completed",
+		 true,
+		 Where::Both,
+		 Arg::Reminder},
+		{{"move", "mv"},
+		 "NAME --to LIST [--section S]",
+		 "move to another list",
+		 true,
+		 Where::Both,
+		 Arg::Reminder},
+		{{"delete", "rm"},
+		 "NAME [--yes]",
+		 "delete",
+		 true,
+		 Where::Both,
+		 Arg::Reminder},
+		{{"search"}, "TEXT", "search titles and notes"},
+		{{"new-list"},
+		 "NAME [--color C] [--icon I] [--source S]",
+		 "make a list",
+		 true},
+		{{"import"},
+		 "FILE [--list LIST] [--source S] [--format F] [--duplicates]",
+		 "import reminders from a file (md, txt, todo.txt, csv, ics)",
+		 true,
+		 Where::Both,
+		 Arg::File},
+		{{"export"},
+		 "[LIST] [--format F] [-o FILE] [-a]",
+		 "write a list to a file; without LIST, every list (-o a folder or "
+		 ".zip)",
+		 false,
+		 Where::Both,
+		 Arg::List},
+		{{"sync"},
+		 "[SOURCE]",
+		 "sync CalDAV, WebDAV and git sources now",
+		 false,
+		 Where::Both,
+		 Arg::Source},
+		{{"folder"},
+		 "[PATH]",
+		 "show or set the folder",
+		 false,
+		 Where::Cli,
+		 Arg::File},
+		{{"tui"}, "", "open the interactive interface", false, Where::Cli},
+		{{"go"},
+		 "VIEW",
+		 "show a list, smart list or tag",
+		 false,
+		 Where::Tui,
+		 Arg::View},
+		{{"undo"}, "", "undo the last change", false, Where::Tui},
+		{{"redo"}, "", "redo what was undone", false, Where::Tui},
+		{{"set"},
+		 "[NAME | noNAME | NAME! | NAME=VALUE]",
+		 "show or change completed, sidebar, key-numbers, note-lines",
+		 false,
+		 Where::Tui,
+		 Arg::Setting},
+		{{"help", "h"},
+		 "[COMMAND]",
+		 "the commands, or how to use one",
+		 false,
+		 Where::Tui,
+		 Arg::Command},
+		{{"quit", "q", "wq", "x"}, "", "quit", false, Where::Tui},
+	};
+	return kCommands;
+}
+
+const Command* find(std::string_view name) {
+	for (auto& c : commands()) {
+		if (std::ranges::find(c.names, name) != c.names.end()) {
+			return &c;
+		}
+	}
+	return nullptr;
+}
+
+std::vector<std::string> option_names() {
+	auto all = cli::kValued;
+	all.insert(all.end(), cli::kFlags.begin(), cli::kFlags.end());
+	return all;
+}
+
+bool takes_value(std::string_view option) {
+	return std::ranges::find(cli::kValued, option) != cli::kValued.end();
+}
+
+Arg option_arg(std::string_view option) {
+	if (option == "list" || option == "to" || option == "in") {
+		return Arg::List;
+	}
+	if (option == "source") {
+		return Arg::Source;
+	}
+	if (option == "output") {
+		return Arg::File;
+	}
+	if (option == "parent") {
+		return Arg::Reminder;
+	}
+	return Arg::None;
+}
+
+int run(rem::Library& library, std::span<const std::string> words,
+		std::ostream& out, const Hooks& hooks) {
+	if (words.empty()) {
+		return 0;
+	}
+	cli::App app({}, library, out, hooks);
+	return app.run(words.front(), cli::parse_args(words.subspan(1)));
+}
+
+}  // namespace cmd

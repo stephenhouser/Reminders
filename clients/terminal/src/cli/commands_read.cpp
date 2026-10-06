@@ -5,12 +5,12 @@ namespace cli {
 int App::cmd_lists() {
 	auto lists = store_.lists();
 	if (g_.json) {
-		std::cout << "[";
+		out_ << "[";
 		for (std::size_t i = 0; i < lists.size(); ++i) {
 			int open = 0;
 			lists[i]->doc.walk(
 				[&](rem::Reminder& r, rem::Reminder*) { open += !r.done; });
-			std::cout
+			out_
 				<< (i ? ",\n " : "")
 				<< std::format(
 					   R"({{"name":{},"source":{},"color":"{}","icon":"{}","open":{}}})",
@@ -18,31 +18,31 @@ int App::cmd_lists() {
 					   json_escape(store_.source_of(*lists[i])->config.name),
 					   lists[i]->color(), lists[i]->icon(), open);
 		}
-		std::cout << "]\n";
+		out_ << "]\n";
 		return 0;
 	}
 	// With several sources, under a heading each.
 	bool several = store_.sources().size() > 1;
 	for (auto& source : store_.sources()) {
 		if (several) {
-			print_heading(1, rem::source_title(source.config), std::nullopt,
+			print_heading(out_, 1, rem::source_title(source.config), std::nullopt,
 						  st_);
 		}
 		for (auto* l : store_.lists(source.config.name)) {
 			int open = 0;
 			l->doc.walk(
 				[&](rem::Reminder& r, rem::Reminder*) { open += !r.done; });
-			std::cout << st_.fg(term::color_rgb(l->color())) << l->name
-					  << st_.reset() << st_.dim() << "  (" << open << " open)"
-					  << st_.reset() << "\n";
+			out_ << st_.fg(term::color_rgb(l->color())) << l->name
+				 << st_.reset() << st_.dim() << "  (" << open << " open)"
+				 << st_.reset() << "\n";
 		}
 		if (several && &source != &store_.sources().back()) {
-			std::cout << "\n";
+			out_ << "\n";
 		}
 	}
 	if (!store_.candidates().empty() && !g_.json) {
-		std::cout << st_.dim() << "\nNot lists yet (no “reminders: 1”): "
-				  << join(store_.candidates()) << st_.reset() << "\n";
+		out_ << st_.dim() << "\nNot lists yet (no “reminders: 1”): "
+			 << join(store_.candidates()) << st_.reset() << "\n";
 	}
 	return 0;
 }
@@ -104,15 +104,15 @@ int App::cmd_list(const Args& a) {
 					all.push_back({&l, &r, p});
 				}
 			});
-			print_json(all);
+			print_json(out_, all);
 			return 0;
 		}
-		print_heading(1, l.name, term::color_rgb(l.color()), st_);
+		print_heading(out_, 1, l.name, term::color_rgb(l.color()), st_);
 		int hidden = 0;
 		for (auto& section : l.doc.sections()) {
 			if (section.name) {
-				std::cout << "\n";
-				print_heading(2, *section.name, term::color_rgb(l.color()),
+				out_ << "\n";
+				print_heading(out_, 2, *section.name, term::color_rgb(l.color()),
 							  st_);
 			}
 			for (auto* r : section.reminders) {
@@ -120,31 +120,31 @@ int App::cmd_list(const Args& a) {
 					++hidden;
 					continue;
 				}
-				print_reminder({&l, r, nullptr}, st_, 0, false, today_);
+				print_reminder(out_, {&l, r, nullptr}, st_, 0, false, today_);
 				for (auto& s : r->subtasks) {
 					if (s.done && !with_done) {
 						++hidden;
 						continue;
 					}
-					print_reminder({&l, &s, r}, st_, 2, false, today_);
+					print_reminder(out_, {&l, &s, r}, st_, 2, false, today_);
 				}
 			}
 		}
 		if (hidden) {
-			std::cout << st_.dim() << "\n"
-					  << hidden << " completed (show with -a)" << st_.reset()
-					  << "\n";
+			out_ << st_.dim() << "\n"
+				 << hidden << " completed (show with -a)" << st_.reset()
+				 << "\n";
 		}
 		return 0;
 	}
 
 	if (g_.json) {
-		print_json(refs);
+		print_json(out_, refs);
 		return 0;
 	}
-	print_heading(1, title, std::nullopt, st_);
+	print_heading(out_, 1, title, std::nullopt, st_);
 	if (refs.empty()) {
-		std::cout << st_.dim() << "Nothing here." << st_.reset() << "\n";
+		out_ << st_.dim() << "Nothing here." << st_.reset() << "\n";
 		return 0;
 	}
 	if (by_date) {
@@ -167,38 +167,37 @@ int App::cmd_list(const Args& a) {
 			g = list_label(*ref.list);
 		}
 		if (g != group) {
-			std::cout << "\n";
-			print_heading(
-				2, g,
-				by_date || flat
-					? std::nullopt
-					: std::optional{term::color_rgb(ref.list->color())},
-				st_);
+			out_ << "\n";
+			print_heading(out_,
+						  2, g,
+						  by_date || flat
+							  ? std::nullopt
+							  : std::optional{term::color_rgb(ref.list->color())},
+						  st_);
 			group = g;
 		}
-		print_reminder(ref, st_, 0, by_date || flat, today_);
+		print_reminder(out_, ref, st_, 0, by_date || flat, today_);
 	}
 	return 0;
 }
 
 int App::cmd_show(const Args& a) {
-	if (a.positional.empty()) {
-		throw UsageError("show needs the name of a reminder");
-	}
-	auto ref = resolve(join(a.positional), a.get("in"));
+	auto ref = targets(join(a.positional), a,
+					   "show needs the name of a reminder")
+				   .front();
 	if (g_.json) {
-		std::cout << json_reminder(ref) << "\n";
+		out_ << json_reminder(ref) << "\n";
 		return 0;
 	}
 	auto& r = *ref.reminder;
 	auto row = [&](const char* label, const std::string& value) {
 		if (!value.empty()) {
-			std::cout << st_.dim() << std::format("{:<10}", label)
-					  << st_.reset() << value << "\n";
+			out_ << st_.dim() << std::format("{:<10}", label)
+				 << st_.reset() << value << "\n";
 		}
 	};
-	print_reminder(ref, st_, 0, false, today_);
-	std::cout << "\n";
+	print_reminder(out_, ref, st_, 0, false, today_);
+	out_ << "\n";
 	row("list",
 		list_label(*ref.list) + (ref.parent ? " > " + ref.parent->title : ""));
 	row("section",
@@ -225,9 +224,9 @@ int App::cmd_show(const Args& a) {
 	row("tags", tags);
 	row("url", r.url.value_or(""));
 	if (!r.subtasks.empty()) {
-		std::cout << st_.dim() << "subtasks" << st_.reset() << "\n";
+		out_ << st_.dim() << "subtasks" << st_.reset() << "\n";
 		for (auto& s : r.subtasks) {
-			print_reminder({ref.list, &s, &r}, st_, 2, false, today_);
+			print_reminder(out_, {ref.list, &s, &r}, st_, 2, false, today_);
 		}
 	}
 	return 0;
@@ -240,15 +239,15 @@ int App::cmd_search(const Args& a) {
 	}
 	auto refs = store_.search(q);
 	if (g_.json) {
-		print_json(refs);
+		print_json(out_, refs);
 		return 0;
 	}
 	if (refs.empty()) {
-		std::cout << st_.dim() << "No results." << st_.reset() << "\n";
+		out_ << st_.dim() << "No results." << st_.reset() << "\n";
 		return 1;
 	}
 	for (auto& r : refs) {
-		print_reminder(r, st_, 0, true, today_);
+		print_reminder(out_, r, st_, 0, true, today_);
 	}
 	return 0;
 }

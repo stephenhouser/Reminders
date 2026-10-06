@@ -21,9 +21,11 @@
 #include <string>
 #include <vector>
 
+#include "../commands.hpp"
 #include "../editfile.hpp"
 #include "../text.hpp"
 #include "../tui.hpp"
+#include "reminders/actions.hpp"
 #include "reminders/backend_module.hpp"
 #include "reminders/dates.hpp"
 #include "reminders/exporter.hpp"
@@ -167,30 +169,29 @@ struct Args {
 
 class App {
 	public:
-		// `own_folder`: this is the saved folder, so the saved view applies to
-		// it. `library`: every source, or the --folder one (see
-		// rem::open_library).
-		App(Global g, std::unique_ptr<rem::Library> library, bool own_folder)
+		// `library`: every source, or the --folder one (see rem::open_library),
+		// loaded. Output goes to `out`; `hooks` say how to ask questions and
+		// what a command without a NAME acts on (see commands.hpp).
+		App(Global g, rem::Library& library, std::ostream& out,
+			cmd::Hooks hooks)
 			: g_(g),
 			  st_{g.color},
-			  owned_(std::move(library)),
-			  store_(*owned_),
-			  today_(rem::local_today()),
-			  own_folder_(own_folder) {
-			store_.load_all();
-			g_library = owned_.get();
+			  store_(library),
+			  out_(out),
+			  hooks_(std::move(hooks)),
+			  today_(rem::local_today()) {
+			g_library = &store_;
 		}
 
 		int run(const std::string& cmd, const Args& a);
-		rem::Library& store() { return store_; }
 
 	private:
 		Global g_;
 		Style st_;
-		std::unique_ptr<rem::Library> owned_;
 		rem::Library& store_;
+		std::ostream& out_;
+		cmd::Hooks hooks_;
 		rem::Date today_;
-		bool own_folder_;
 
 		rem::ListFile& list_named(const std::string& name);
 		term::SavedView saved_view();
@@ -198,8 +199,16 @@ class App {
 		// Finds a reminder by name (or id); `in` limits the search to one list.
 		rem::Ref resolve(const std::string& text,
 						 const std::optional<std::string>& in);
+		// The reminders `name` means: the one it names, else (no name) the
+		// ones the caller has selected. `what` is for the error without
+		// either: "done needs the name of a reminder".
+		std::vector<rem::Ref> targets(const std::string& name, const Args& a,
+									  const std::string& what);
 		void apply_fields(rem::Reminder& r, const Args& a);
 		void report(const std::string& verb, const rem::Ref& ref);
+		// One reminder as report() shows it; several, as how many.
+		void report_all(const std::string& verb,
+						const std::vector<std::string>& ids);
 
 		int cmd_lists();
 		int cmd_list(const Args& a);
@@ -223,10 +232,10 @@ bool has_servers(const rem::Library& library);
 std::string json_escape(std::string_view s);
 std::string list_label(const rem::ListFile& l);
 std::string json_reminder(const rem::Ref& ref);
-void print_json(const std::vector<rem::Ref>& refs);
-void print_reminder(const rem::Ref& ref, const Style& st, int indent,
+void print_json(std::ostream& out, const std::vector<rem::Ref>& refs);
+void print_reminder(std::ostream& out, const rem::Ref& ref, const Style& st, int indent,
 					bool show_list, rem::Date today);
-void print_heading(int level, const std::string& text,
+void print_heading(std::ostream& out, int level, const std::string& text,
 				   std::optional<term::Rgb> color, const Style& st);
 Args parse_args(std::span<const std::string> in);
 std::string join(const std::vector<std::string>& v, std::size_t from = 0);
