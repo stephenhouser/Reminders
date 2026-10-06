@@ -211,20 +211,28 @@ void Window::copy_reminders(const std::vector<std::string>& ids) {
 					 : std::format("Copied {} reminders", count));
 }
 
-void Window::delete_reminders(const std::vector<std::string>& ids) {
+// Cutting is copying, then deleting as one undo step: the text is taken
+// before the reminders go.
+void Window::delete_reminders(const std::vector<std::string>& ids, bool cut) {
 	auto gone = outermost(ids);
 	std::erase_if(gone, [this](auto& id) { return !store_->find(id); });
 	if (gone.empty()) {
 		return;
 	}
-	auto step = batch(gone.size() > 1 ? "Delete Reminders" : "Delete Reminder",
-					  [&] { rem::remove(*store_, gone); });
+	if (cut) {
+		gdk_clipboard_set_text(gtk_widget_get_clipboard(window_),
+							   reminders_text(ids).c_str());
+	}
+	auto label = std::format("{} Reminder{}", cut ? "Cut" : "Delete",
+							 gone.size() > 1 ? "s" : "");
+	auto step = batch(label.c_str(), [&] { rem::remove(*store_, gone); });
 	refresh();
 	// The toast's Undo only applies while this deletion is still the latest
 	// step.
+	auto done = cut ? "cut" : "deleted";
 	auto text = gone.size() > 1
-				  ? std::format("{} reminders deleted", gone.size())
-				  : std::string("Reminder deleted");
+				  ? std::format("{} reminders {}", gone.size(), done)
+				  : std::format("Reminder {}", done);
 	if (step) {
 		toast(text, "_Undo", [this, step] {
 			if (history_.next_undo() == step) {
@@ -291,37 +299,45 @@ void Window::indent(const std::string& id, bool in) {
 	refresh();
 }
 
-void Window::paste_reminders() {
+void Window::paste_reminders(std::optional<std::string> anchor) {
 	if (!store_) {
 		return;
 	}
-	auto keep = Obj<GtkWindow>::ref(GTK_WINDOW(window_));
+	// The anchor goes along: from a menu, focus has moved by the time the
+	// text arrives.
+	struct Pending {
+			Obj<GtkWindow> window;
+			std::optional<std::string> anchor;
+	};
 	gdk_clipboard_read_text_async(
 		gtk_widget_get_clipboard(window_), nullptr,
 		[](GObject* source, GAsyncResult* result, gpointer data) {
-			auto* holder = static_cast<Obj<GtkWindow>*>(data);
+			auto* pending = static_cast<Pending*>(data);
 			char* text = gdk_clipboard_read_text_finish(GDK_CLIPBOARD(source),
 														result, nullptr);
-			if (auto* self = Window::from(holder->get()); self && text) {
-				self->add_pasted(text);
+			if (auto* self = Window::from(pending->window.get());
+				self && text) {
+				self->add_pasted(text, rem::TextSplit::Auto, true,
+								 pending->anchor);
 			}
 			g_free(text);
-			delete holder;
+			delete pending;
 		},
-		new Obj<GtkWindow>(std::move(keep)));
+		new Pending{Obj<GtkWindow>::ref(GTK_WINDOW(window_)),
+					std::move(anchor)});
 }
 
 // Ctrl+V: after the focused reminder (in its list and section), else at the
-// end of the list being shown (see add_text).
+// end of the list being shown (see add_text). A reminder's menu passes its
+// own `anchor`: the right-click menu isn't inside the row, so focus can't
+// tell.
 void Window::add_pasted(const std::string& text, rem::TextSplit split,
-						bool offer_switch) {
-	std::optional<std::string> anchor;
-	for (auto* w = gtk_root_get_focus(GTK_ROOT(window_)); w;
+						bool offer_switch, std::optional<std::string> anchor) {
+	for (auto* w = gtk_root_get_focus(GTK_ROOT(window_)); w && !anchor;
 		 w = gtk_widget_get_parent(w)) {
 		if (auto* id = static_cast<const char*>(
 				g_object_get_data(G_OBJECT(w), "reminder-id"))) {
 			anchor = id;
-			break;
 		}
 	}
 	add_text(text, "Paste", {}, anchor, rem::Document::Place::After, split,

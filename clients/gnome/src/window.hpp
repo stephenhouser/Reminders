@@ -172,7 +172,9 @@ class Window {
 						  const std::string& list);
 		void move_step(const std::string& id, bool up);
 		void setup_autoscroll();
-		void delete_reminders(const std::vector<std::string>& ids);
+		// Delete; with `cut`, Ctrl+X: copied first, the same single undo step.
+		void delete_reminders(const std::vector<std::string>& ids,
+							  bool cut = false);
 		// Ctrl+C on reminders; Ctrl+V outside text fields (see clipboard.hpp).
 		void copy_reminders(const std::vector<std::string>& ids);
 		// Selecting several reminders: Ctrl+click, Shift+click, Shift+↑/↓,
@@ -205,10 +207,12 @@ class Window {
 		// long-press.
 		void reminder_context_menu(GtkWidget* row, const std::string& id,
 								   bool in_list, double x, double y);
-		void paste_reminders();
+		// After `anchor` (a reminder's menu), else after the focused one.
+		void paste_reminders(std::optional<std::string> anchor = {});
 		void add_pasted(const std::string& text,
 						rem::TextSplit split = rem::TextSplit::Auto,
-						bool offer_switch = true);
+						bool offer_switch = true,
+						std::optional<std::string> anchor = {});
 		void paste_special();  // Ctrl+Shift+V: asks whether to split the lines
 		// Pasted or dropped text. `offer_switch`: the message after several
 		// lines offers to add them the other way (split / combined).

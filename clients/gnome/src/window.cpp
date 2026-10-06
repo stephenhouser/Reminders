@@ -248,7 +248,11 @@ Window::Window(AdwApplication* app, std::optional<std::filesystem::path> folder)
 				select_all();
 				return TRUE;
 			}
-			if (mask == 0 && keyval == GDK_KEY_Escape && !selection_.empty()) {
+			// Escape, or the HIG's Deselect All (Shift+Ctrl+A).
+			bool deselect = (mask == 0 && keyval == GDK_KEY_Escape) ||
+							(mask == (GDK_CONTROL_MASK | GDK_SHIFT_MASK) &&
+							 gdk_keyval_to_lower(keyval) == GDK_KEY_a);
+			if (deselect && !selection_.empty()) {
 				clear_selection();
 				return TRUE;
 			}

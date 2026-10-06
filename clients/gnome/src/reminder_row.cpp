@@ -230,7 +230,12 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
 	add_action(actions, "flag", [this, id] {
 		idle([this, ids = targets(id)] { toggle_flag(ids); });
 	});
+	add_action(actions, "cut", [this, id] {
+		idle([this, ids = targets(id)] { delete_reminders(ids, true); });
+	});
 	add_action(actions, "copy", [this, id] { copy_reminders(targets(id)); });
+	// After this reminder, whatever is selected (enabled as the menu opens).
+	add_action(actions, "paste", [this, id] { paste_reminders(id); });
 	add_action(actions, "due-today", [this, id] {
 		idle([this, ids = targets(id)] { set_due(ids, 0); });
 	});
@@ -284,6 +289,13 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
 	gtk_widget_set_valign(more, GTK_ALIGN_CENTER);
 	gtk_widget_set_tooltip_text(more, "More");
 	append(box, {details, more});
+	// Menu or Shift+F10 (the HIG's context-menu keys) open the ⋮ menu; it's
+	// allocated even while row-buttons=hover hides it. A shortcut, not the
+	// key handler below: popped up from key-pressed with Shift held, mutter
+	// dismissed the popover at once and GTK reopened it without the
+	// keyboard. A title being edited keeps its own text menu.
+	add_shortcut(row, "<Shift>F10|Menu",
+				 [more] { gtk_menu_button_popup(GTK_MENU_BUTTON(more)); });
 
 	// Right-click and long-press anywhere on the row open the same menu,
 	// where it was clicked; on a row outside the selection, for that row
@@ -512,6 +524,10 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
 					case GDK_KEY_c:
 						copy_reminders(targets(id));
 						return TRUE;
+					case GDK_KEY_x:
+						return later([this, ids = targets(id)] {
+							delete_reminders(ids, true);
+						});
 					case GDK_KEY_bracketright:
 						if (in_list) {
 							return later([this, id] { indent(id, true); });
@@ -538,6 +554,10 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
 					   (key == GDK_KEY_Up || key == GDK_KEY_Down)) {
 				bool up = key == GDK_KEY_Up;
 				return later([this, id, up] { move_step(id, up); });
+			} else if (mask == GDK_ALT_MASK &&
+					   (key == GDK_KEY_Return || key == GDK_KEY_KP_Enter)) {
+				// Alt+Return: the HIG's Properties, beside Ctrl+I.
+				return later([this, id] { show_details(id); });
 			}
 			return FALSE;
 		});
@@ -662,6 +682,18 @@ void Window::select_for_menu(const std::string& id, GtkPopover* popover) {
 // A reminder's ⋮ / right-click menu, for targets(id) as it opens: one
 // reminder, or the selection it's part of.
 GMenuModel* Window::reminder_menu(const std::string& id, bool in_list) {
+	// Paste only with text on the clipboard (ours, or any app's).
+	if (auto it = reminder_rows_.find(id); it != reminder_rows_.end()) {
+		auto* actions = G_ACTION_MAP(
+			g_object_get_data(G_OBJECT(it->second), "reminder-actions"));
+		auto* formats = gdk_content_formats_union_deserialize_gtypes(
+			gdk_content_formats_ref(
+				gdk_clipboard_get_formats(gtk_widget_get_clipboard(window_))));
+		g_simple_action_set_enabled(
+			G_SIMPLE_ACTION(g_action_map_lookup_action(actions, "paste")),
+			gdk_content_formats_contain_gtype(formats, G_TYPE_STRING));
+		gdk_content_formats_unref(formats);
+	}
 	auto ids = targets(id);
 	bool several = ids.size() > 1;
 	bool all_flagged = std::ranges::all_of(ids, [this](auto& i) {
@@ -713,7 +745,11 @@ GMenuModel* Window::reminder_menu(const std::string& id, bool in_list) {
 		g_object_unref(i);
 	}
 	auto* place = menu_section(menu);
+	// No access key yet: c, u and t are all taken here (_Copy, _Unflag, Due
+	// _Today), and a clash stops the letter choosing either item.
+	item(place, "Cut", "reminder.cut", "<Control>x");
 	item(place, "_Copy", "reminder.copy", "<Control>c");
+	item(place, "_Paste", "reminder.paste", "<Control>v");
 	if (g_menu_model_get_n_items(G_MENU_MODEL(lists)) > 0) {
 		g_menu_append_submenu(place, "_Move To", G_MENU_MODEL(lists));
 	}

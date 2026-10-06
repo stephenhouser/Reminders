@@ -48,7 +48,8 @@ void show_shortcuts(GtkApplication* app) {
 		 {"Edit Title", "Return"},
 		 {"Save While Editing", "<Control>s"},
 		 {"Cancel Editing", "Escape"},
-		 {"Details", "<Control>i"},
+		 {"Details", "<Control>i <Alt>Return"},
+		 {"Menu", "Menu <Shift>F10"},
 		 {"Flag / Unflag", "<Control><Shift>f"},
 		 {"Due Today", "<Control>t"},
 		 {"Due Tomorrow", "<Control><Shift>t"},
@@ -57,6 +58,7 @@ void show_shortcuts(GtkApplication* app) {
 		 {"Outdent", "<Control>bracketleft"},
 		 {"Move Up", "<Alt>Up"},
 		 {"Move Down", "<Alt>Down"},
+		 {"Cut", "<Control>x"},
 		 {"Copy", "<Control>c"},
 		 {"Paste as New Reminders", "<Control>v"},
 		 {"Paste Special (One or One per Line)", "<Control><Shift>v"},
@@ -72,7 +74,8 @@ void show_shortcuts(GtkApplication* app) {
 			s, adw_shortcuts_item_new("Extend Selection Up / Down",
 									  "<Shift>Up <Shift>Down"));
 		adw_shortcuts_section_add(
-			s, adw_shortcuts_item_new("Clear the Selection", "Escape"));
+			s, adw_shortcuts_item_new("Clear the Selection",
+									  "Escape <Control><Shift>a"));
 		adw_shortcuts_dialog_add(ADW_SHORTCUTS_DIALOG(dialog), s);
 	}
 	section("Lists", {{"Go To…", "<Control>k"},
@@ -91,8 +94,11 @@ void show_shortcuts(GtkApplication* app) {
 	section("General", {{"Undo", "<Control>z"},
 						{"Redo", "<Control><Shift>z"},
 						{"Search", "<Control>f"},
-						{"Show / Hide Sidebar", "<Control>b"},
+						{"Show / Hide Sidebar", "<Control>b F9"},
 						{"Main Menu", "F10"},
+						{"Sync All", "<Control>r"},
+						{"Import…", "<Control>o"},
+						{"Settings", "<Control>comma"},
 						{"Keyboard Shortcuts", "<Control>question"},
 						{"Close Window", "<Control>w"},
 						{"Quit", "<Control>q"}});
@@ -263,8 +269,11 @@ int main(int argc, char** argv) {
 			});
 		g_action_map_add_action(G_ACTION_MAP(app), G_ACTION(show));
 		g_object_unref(show);
-		auto accel = [gapp](const char* action, const char* key) {
-			const char* accels[] = {key, nullptr};
+		// One or more keys for an action (a second for the HIG's key, where
+		// an older one stays).
+		auto accel = [gapp](const char* action, const char* key,
+							const char* also = nullptr) {
+			const char* accels[] = {key, also, nullptr};
 			gtk_application_set_accels_for_action(gapp, action, accels);
 		};
 		accel("app.quit", "<Control>q");
@@ -275,7 +284,7 @@ int main(int argc, char** argv) {
 		accel("win.search", "<Control>f");
 		accel("win.show-completed", "<Control>h");
 		accel("win.show-hidden", "<Control><Shift>h");
-		accel("win.toggle-sidebar", "<Control>b");
+		accel("win.toggle-sidebar", "<Control>b", "F9");
 		accel("win.toggle-subtasks", "<Control>e");
 		for (int n = 1; n <= 10; ++n) {
 			auto action = std::format("win.go-{}", n);
@@ -288,6 +297,10 @@ int main(int argc, char** argv) {
 		accel("win.previous-view", "<Control>Page_Up");
 		accel("win.undo", "<Control>z");
 		accel("win.redo", "<Control><Shift>z");
+		// The HIG's Reload, Preferences and Open.
+		accel("win.sync-all", "<Control>r");
+		accel("win.settings", "<Control>comma");
+		accel("win.import", "<Control>o");
 	});
 
 	ui::on(app, "activate", [app] { present(app, std::nullopt); });

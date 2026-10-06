@@ -28,7 +28,7 @@ title=Fastmail
   reminders-caldav`, then use the line above; `pass show caldav` works too.
   Use an app-specific password where the server offers them.
 - **When it syncs:** when the app opens, every `interval=` minutes (default
-  15), and a couple of seconds after you change something. **☰ → Sync All**
+  15), and a couple of seconds after you change something. **☰ → Sync All** (Ctrl+R)
   syncs every source straight away; **Sync Now** in the menu of the source's
   sidebar heading (right-click it) syncs just that one. Offline changes wait in the local copy until the
   next sync.

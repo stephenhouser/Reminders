@@ -136,6 +136,8 @@ Subtasks are one level deep, as in Apple Reminders.
 - **Ctrl+C** on a selected reminder (or **Copy** in its menu) copies it as
   the Markdown line from its file, with its notes and subtasks (no id), so it
   also pastes into an editor or a chat as a checklist.
+- **Ctrl+X** (or **Cut** in its menu) copies it the same way and deletes it,
+  as one step: Ctrl+Z, or Undo in the message that appears, puts it back.
 - **Ctrl+V** while not typing in a text field pastes reminders:
   - **A copied reminder** (or any `- [ ] …` checklist lines) comes back with
     every field, notes and subtasks.
@@ -158,17 +160,22 @@ Subtasks are one level deep, as in Apple Reminders.
     into your first list, and are made to show there: due today in Today or
     Scheduled, flagged in Flagged, tagged in a tag's view.
   - Undo with Ctrl+Z.
+- **⋮ → Paste** (or right-click → Paste) pastes the same way, after that
+  reminder. It's greyed out while the clipboard holds no text.
 - **Ctrl+Shift+V** (Paste Special) asks first, when the text has several
   lines: **One Reminder** or **N Reminders**.
 - **Dropped text** from another app is read the same way, with the same
   message (see [Moving and reordering](#moving-and-reordering)).
-- **In a text field** (a title being edited, New Reminder, search), Ctrl+C and
-  Ctrl+V copy and paste text as usual.
+- **In a text field** (a title being edited, New Reminder, search), Ctrl+X,
+  Ctrl+C and Ctrl+V cut, copy and paste text as usual.
 
 ### Deleting
 
 Press Delete, or **⋮ → Delete**. Undo from the message that appears, or with
 Ctrl+Z.
+
+A reminder's **⋮** menu also opens from the keyboard: **Menu** or
+**Shift+F10** on the selected reminder, then the arrow keys and Enter.
 
 ### Selecting several reminders
 
@@ -189,7 +196,8 @@ Select several reminders to change them all at once:
 - **Right-click** (or ⋮) shows the reminder as selected while its menu is
   open, unless it's already part of a selection, which the menu then acts
   on.
-- **Escape** (again, unless you're typing) clears it. So does clicking
+- **Escape** or **Ctrl+Shift+A** (again, unless you're typing) clears it.
+  So does clicking
   anywhere outside the reminders (the empty space below them, the header,
   the sidebar), or going to another list.
 
@@ -197,7 +205,7 @@ Selected rows are tinted, and with two or more the header says how many
 ("4 Selected"). The
 usual keys and the **⋮** or right-click menu of a selected reminder then act
 on all of them: Space, Ctrl+Shift+F, Ctrl+T / Ctrl+Shift+T, Alt+0 … Alt+3,
-Ctrl+C, Delete, and in the menu **Mark as Completed** (or Not Completed)
+Ctrl+X, Ctrl+C, Delete, and in the menu **Mark as Completed** (or Not Completed)
 and **Move To**. Dragging a selected reminder
 drags them all; they land together, in their order. Each change is one step
 for Ctrl+Z.
@@ -212,7 +220,7 @@ for Ctrl+Z.
 
 ## Importing reminders
 
-**☰ → Import…** reads reminders from a file, and so does **dropping a
+**☰ → Import…** (Ctrl+O) reads reminders from a file, and so does **dropping a
 file** on the window, from Files or any other app. Dropped on a list in the
 sidebar, it goes into that list; dropped anywhere else, into the list
 you're viewing. You can still change the list before importing, and
@@ -352,14 +360,16 @@ Press Ctrl+? in the app for this list.
 | Space | Complete / not complete |
 | Enter, F2 | Edit title |
 | Ctrl+S / Esc | Save / cancel while editing |
-| Ctrl+I | Details |
+| Ctrl+I, Alt+Enter | Details |
+| Menu, Shift+F10 | The reminder's ⋮ menu |
 | Ctrl+Shift+F | Flag / unflag |
 | Ctrl+T / Ctrl+Shift+T | Due today / tomorrow |
 | Alt+0 … Alt+3 | Priority none / low / medium / high |
 | Ctrl+] / Ctrl+[ | Indent / outdent |
 | Alt+↑ / Alt+↓ | Move up / down |
+| Ctrl+X | Cut (copy, then delete) |
 | Ctrl+C | Copy (as Markdown) |
-| Ctrl+V | Paste reminders (outside a text field) |
+| Ctrl+V | Paste reminders (outside a text field); ⋮ → Paste puts them after that reminder |
 | Ctrl+Shift+V | Paste Special: one reminder, or one per line |
 | Delete | Delete |
 
@@ -370,7 +380,7 @@ Press Ctrl+? in the app for this list.
 | Ctrl+A | Select all |
 | Ctrl+click | Add to / remove from the selection |
 | Shift+click, Shift+↑ / Shift+↓ | Select a range |
-| Esc | Clear the selection |
+| Esc, Ctrl+Shift+A | Clear the selection |
 
 **Lists**
 
@@ -390,8 +400,11 @@ Press Ctrl+? in the app for this list.
 |---|---|
 | Ctrl+Z / Ctrl+Shift+Z | Undo / redo |
 | Ctrl+F | Search |
-| Ctrl+B | Show / hide sidebar |
+| Ctrl+B, F9 | Show / hide sidebar |
 | F10 | Main menu |
+| Ctrl+R | Sync all (with sources that sync) |
+| Ctrl+O | Import… |
+| Ctrl+, | Settings |
 | Ctrl+? | Keyboard shortcuts |
 | Ctrl+W / Ctrl+Q | Close window / quit |
 
@@ -459,7 +472,7 @@ the local copy).
 
 `$XDG_CONFIG_HOME/reminders/settings.ini` (`~/.config/reminders/settings.ini`) is shared by the GNOME app and the terminal
 client. Most of it is filled in for you; `show-key-numbers` is only set here.
-In the app, **main menu → Settings…** opens it in your default text editor
+In the app, **main menu → Settings…** (Ctrl+,) opens it in your default text editor
 (creating it if needed), and changes apply as soon as you save. In the
 terminal client, `Ctrl+S` opens it in your editor and applies the changes when you
 quit the editor.
