@@ -99,8 +99,11 @@ and overwrites their saved view.
 
 - **GUI:** always `tools/gui-test.sh HOME_DIR [APP_ARGS…]` — private D-Bus
   session, headless mutter on a private Wayland socket, no X11 fallback.
-  Never set `WAYLAND_DISPLAY=wayland-0` or any name not made for the test.
+  Never set `WAYLAND_DISPLAY=wayland-0` or any name not made for the test,
+  for the app *or* the bus (services it starts inherit the bus's display).
   `REMINDERS_SCREENSHOT=out.png` renders the window and quits.
+  Real key presses and clicks: `STEPS=file` (`tools/gui-keys.py`; see
+  `clients/gnome/CLAUDE.md`).
   Actions without input: `gdbus call --session --dest
   com.stephenhouser.Reminders --object-path
   /com/stephenhouser/Reminders/window/1 --method org.gtk.Actions.Activate`.

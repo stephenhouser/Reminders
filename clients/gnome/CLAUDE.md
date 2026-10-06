@@ -41,10 +41,20 @@ The user guide is `docs/USING.md`; the layout follows the GNOME HIG
 
 Launch only through `tools/gui-test.sh` (see the root `CLAUDE.md`).
 `REMINDERS_SCREENSHOT=out.png` renders the window and quits, 1.5 s after
-start-up; drive actions before that with `gdbus` on the private session bus.
+start-up or after `REMINDERS_SCREENSHOT_DELAY` ms. Actions without input:
+`gdbus` on the private session bus.
 
-Keystrokes and mouse drags can't be scripted this way. Put the logic behind
-them in `core/` or `app/` where it can be unit-tested, drive the handler
-directly in a headless check, and say plainly which parts were only compiled.
-Popovers and combo-row lists are separate surfaces and don't appear in the
-screenshot.
+**Real keys and clicks:** `STEPS=steps.txt tools/gui-test.sh HOME LISTS`
+runs `tools/gui-keys.py`, which types and clicks into the app through
+mutter's RemoteDesktop API on the private bus: the same path a person's
+input takes, shortcuts, key handlers and popover grabs included. The step
+syntax and the pointer's starting place are in the script. Check results in
+the list files (undo and paste-back make good checks), or with a screenshot
+delayed past the steps. Run a control too, one that would fail if the
+change didn't work, so a passing test means something.
+
+Not covered yet: mouse *drags* (the tool has no press-and-hold step; mutter's
+API could do one, untried). Popovers and combo-row lists never show in
+screenshots (separate surfaces); test them by what choosing an item does. Keep
+logic in `core/` or `app/` where it can be unit-tested, and say plainly
+which parts were only compiled.

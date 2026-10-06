@@ -1,5 +1,7 @@
 #include <adwaita.h>
 
+#include <algorithm>
+#include <cstdlib>
 #include <filesystem>
 #include <format>
 #include <optional>
@@ -108,10 +110,15 @@ void show_shortcuts(GtkApplication* app) {
 
 // Developer aid: REMINDERS_SCREENSHOT=out.png renders the window to a
 // PNG shortly after start-up and quits (screen capture is locked down on
-// Wayland).
+// Wayland). REMINDERS_SCREENSHOT_DELAY=ms waits longer than the 1.5 s
+// default, for a test that types first (tools/gui-keys.py).
 void schedule_screenshot(GtkWindow* win, std::string path) {
 	auto keep = ui::Obj<GtkWindow>::ref(win);
-	ui::timeout(1500, [keep, path] {
+	unsigned delay = 1500;
+	if (const char* ms = g_getenv("REMINDERS_SCREENSHOT_DELAY")) {
+		delay = static_cast<unsigned>(std::max(0, std::atoi(ms)));
+	}
+	ui::timeout(delay, [keep, path] {
 		auto* widget = GTK_WIDGET(keep.get());
 		int w = gtk_widget_get_width(widget), h = gtk_widget_get_height(widget);
 		auto paintable =
