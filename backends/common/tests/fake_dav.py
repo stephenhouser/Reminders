@@ -100,8 +100,12 @@ class Handler(BaseHTTPRequestHandler):
             getattr(self, "do_" + self.command.lower() + "_")(path)
 
     def do_propfind_(self, path):
-        self.body()
+        body = self.body()
         if path == "/dav/":
+            # Like Fastmail: the principal only when asked for it, so a body
+            # dropped on the /.well-known/caldav redirect finds nothing.
+            if b"current-user-principal" not in body:
+                return self.send(207, multistatus([(path, ["<d:resourcetype><d:collection/></d:resourcetype>"])]))
             props = [f"<d:current-user-principal><d:href>{PRINCIPAL}</d:href></d:current-user-principal>"]
             return self.send(207, multistatus([(path, props)]))
         if path == PRINCIPAL:

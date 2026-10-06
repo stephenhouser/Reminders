@@ -143,6 +143,10 @@ Response Http::request(const std::string& method, const std::string& url,
 	curl_easy_setopt(curl_, CURLOPT_CUSTOMREQUEST, method.c_str());
 	curl_easy_setopt(curl_, CURLOPT_FOLLOWLOCATION, 1L);
 	curl_easy_setopt(curl_, CURLOPT_MAXREDIRS, 5L);
+	// Keep the method and body across a 301/302/303: without this curl drops
+	// the PROPFIND body when /.well-known/caldav redirects (Fastmail does).
+	curl_easy_setopt(curl_, CURLOPT_POSTREDIR,
+					 static_cast<long>(CURL_REDIR_POST_ALL));
 	curl_easy_setopt(curl_, CURLOPT_TIMEOUT, 60L);
 	curl_easy_setopt(curl_, CURLOPT_CONNECTTIMEOUT, 15L);
 	curl_easy_setopt(curl_, CURLOPT_USERAGENT, "Reminders");

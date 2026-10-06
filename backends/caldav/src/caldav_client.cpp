@@ -247,8 +247,10 @@ class CurlRemote : public Remote {
 			return r;
 		}
 
-		// calendar-home-set of `path`, or of its current-user-principal.
-		std::optional<std::string> home_from(const std::string& path) {
+		// calendar-home-set of `path`, or of its current-user-principal; when
+		// there's none, `why` says what the server answered instead.
+		std::optional<std::string> home_from(const std::string& path,
+											 std::string& why) {
 			auto body = std::format(
 				R"(<?xml version="1.0" encoding="utf-8"?><d:propfind {}><d:prop>)"
 				R"(<d:current-user-principal/><c:calendar-home-set/></d:prop></d:propfind>)",
@@ -257,6 +259,7 @@ class CurlRemote : public Remote {
 				"PROPFIND", origin_ + path, body,
 				{"Content-Type: application/xml; charset=utf-8", "Depth: 0"});
 			if (r.status != 207) {
+				why = std::format("HTTP {} at {}", r.status, path);
 				return std::nullopt;
 			}
 			std::optional<std::string> principal;
@@ -269,8 +272,9 @@ class CurlRemote : public Remote {
 				}
 			}
 			if (principal && *principal != path) {
-				return home_from(*principal);
+				return home_from(*principal, why);
 			}
+			why = std::format("no calendar home at {}", path);
 			return std::nullopt;
 		}
 
@@ -289,13 +293,15 @@ class CurlRemote : public Remote {
 				}
 			}
 			auto path = path_of(url_);
-			auto home = home_from(path);
+			std::string why, why_well_known;
+			auto home = home_from(path, why);
 			if (!home) {
-				home = home_from("/.well-known/caldav");
+				home = home_from("/.well-known/caldav", why_well_known);
 			}
 			if (!home) {
 				throw SyncError(
-					std::format("no CalDAV calendars found at {}", url_));
+					std::format("no CalDAV calendars found at {} ({}; {})",
+								url_, why, why_well_known));
 			}
 			home_ = *home;
 			if (!home_.ends_with('/')) {
