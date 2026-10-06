@@ -5,7 +5,8 @@ ncurses TUI. No GTK dependency, so it runs over SSH and on headless machines.
 User guide: `docs/TERMINAL.md`.
 
 - `src/cli/` — the CLI: `App` with a `cmd_*` method per command, dispatched
-  in `App::run` (`app.cpp`); usage text is `kUsage` (`internal.hpp`).
+  in `App::run` (`app.cpp`). `--help` is `usage()`: `kUsage`, then each
+  command's `help` (else `summary`) from the table, wrapped, then `kUsageEnd`.
 - `src/commands.hpp` — the command table (`cmd::commands()`, in `app.cpp`):
   names, usage, `edits`, where each runs, what its words complete to; and
   `cmd::run`, which the TUI's `:` prompt (`tui/command.cpp`) calls on its open
@@ -19,11 +20,11 @@ User guide: `docs/TERMINAL.md`.
 ## Adding things touches more than one place
 
 - **A CLI command:** its entry in `cmd::commands()` and its branch in
-  `App::run` (both `app.cpp`), `kUsage`, `docs/TERMINAL.md`. **Set `edits`
+  `App::run` (both `app.cpp`), `docs/TERMINAL.md`. **Set `edits`
   if it changes any list:** that decides whether the CLI pushes to
   CalDAV/WebDAV/git sources afterwards and whether `:` makes it an undo step.
-  Write to `out_`, never `std::cout`, and ask through `hooks_` (not stdin), or
-  it breaks under the TUI. The `:` prompt gets it for free.
+  Write to `out_`, never `std::cout`, and ask through `hooks_` (`confirm`,
+  `choose`, `edit`; not stdin), or it breaks under the TUI. The `:` prompt gets it for free.
 - **A `:` command only the TUI has:** an entry with `Where::Tui`, handled in
   `Tui::run_command` (`tui/command.cpp`), and the `:` table in
   `docs/TERMINAL.md`.

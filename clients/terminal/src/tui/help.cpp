@@ -110,40 +110,64 @@ void Tui::show_help() {
 	show_text("Reminders: keys", lines);
 }
 
-// `lines` in a box as wide as them (as far as the screen allows), centred,
-// from 1 row below the top of the screen to 2 above the bottom. When they're
-// taller than the box they scroll: Up / Down, j / k, Page Up / Down, Space;
-// any other key closes it.
 void Tui::show_text(const std::string& title,
 					const std::vector<std::string>& lines) {
-	std::vector<const char*> text;
-	for (auto& l : lines) {
-		text.push_back(l.c_str());
-	}
-	const int n = static_cast<int>(text.size());
+	text_box(title, lines, false);
+}
+
+std::optional<std::size_t> Tui::pick(const std::string& title,
+									 const std::vector<std::string>& options) {
+	return text_box(title, options, true);
+}
+
+// `lines` in a box as wide as them (as far as the screen allows), centred,
+// from 1 row below the top of the screen, as tall as them or to 2 rows above
+// the bottom. When they're taller than the box they scroll: Up / Down, j / k,
+// Page Up / Down, Space. Showing, any other key closes it (nullopt).
+// Choosing, Up / Down move a highlight, Enter or 1–9 choose, Esc cancels.
+std::optional<std::size_t> Tui::text_box(const std::string& title,
+										 const std::vector<std::string>& lines,
+										 bool choose) {
+	const int n = static_cast<int>(lines.size());
+	auto hint_for = [&](int top, int rows, int last) {
+		if (choose) {
+			return std::string(" Up / Down, Enter chooses, Esc cancels ");
+		}
+		return last > 0
+				 ? std::format(
+					   " {}-{} of {}  Up / Down scroll, any other key closes ",
+					   top + 1, std::min(n, top + rows), n)
+				 : std::string(" Press any key to close ");
+	};
 	int text_w = 0;
-	for (auto* line : text) {
+	for (auto& line : lines) {
 		text_w = std::max(text_w, text_width(widen(line)));
 	}
-	// As wide as the text (with a space each side), centred; from 1 row
-	// below the top of the screen to 2 rows above the bottom (all of it on a
-	// very short terminal).
+	text_w = std::max(text_w, text_width(widen(hint_for(0, 0, 0))) - 2);
+	// As wide as the text (with a space each side), centred; a blank line
+	// under the top border and above the bottom.
 	int w = std::min(COLS, text_w + 4);
 	int above = LINES >= 10 ? 1 : 0, below = LINES >= 10 ? 2 : 0;
-	int h = LINES - above - below, y = above, x = (COLS - w) / 2;
+	int h = std::min(LINES - above - below, n + 4), y = above,
+		x = (COLS - w) / 2;
 	int inner = w - 2;	// between the borders
-	int rows = h - 4;  // a blank line under the top border and above the bottom
+	int rows = h - 4;
 	int left = std::max(1, (inner - text_w) / 2);  // the text block, centred
 	int top = 0, last = std::max(0, n - rows);
+	int sel = 0;  // choosing: the highlighted line
+	std::optional<std::size_t> chosen;
 	auto* win = newwin(h, w, y, x);
 	while (true) {
+		if (choose) {
+			top = std::clamp(top, sel - std::max(rows, 1) + 1, sel);
+		}
 		// Every row is written in full, so nothing of what was there before
 		// (the lists behind, an earlier page) is left in the box.
 		for (int i = 1; i < h - 1; ++i) {
 			std::wstring row(static_cast<std::size_t>(inner), L' ');
 			int at = i - 2 + top;
 			if (i >= 2 && i < 2 + rows && at < n) {
-				auto line = widen(text[at]);
+				auto line = widen(lines[static_cast<std::size_t>(at)]);
 				while (!line.empty() && left + text_width(line) > inner) {
 					line.pop_back();
 				}
@@ -152,19 +176,21 @@ void Tui::show_text(const std::string& title,
 							   std::max(0, inner - left - text_width(line))),
 						   L' ');
 			}
+			bool lit = choose && at == sel;
+			if (lit) {
+				wattron(win, A_REVERSE);
+			}
 			mvwaddnwstr(win, i, 1, row.c_str(), static_cast<int>(row.size()));
+			if (lit) {
+				wattroff(win, A_REVERSE);
+			}
 		}
 		box_set(win, WACS_VLINE, WACS_HLINE);
 		wattron(win, A_BOLD);
 		mvwaddnwstr(win, 0, 2, widen(" " + title + " ").c_str(),
 					std::max(0, w - 4));
 		wattroff(win, A_BOLD);
-		auto hint =
-			last > 0
-				? std::format(
-					  " {}-{} of {}  Up / Down scroll, any other key closes ",
-					  top + 1, std::min(n, top + rows), n)
-				: std::string(" Press any key to close ");
+		auto hint = hint_for(top, rows, last);
 		wattron(win, A_DIM);
 		mvwaddstr(win, h - 1, std::max(1, (w - text_width(widen(hint))) / 2),
 				  hint.c_str());
@@ -177,6 +203,9 @@ void Tui::show_text(const std::string& title,
 		while ((kind = get_wch(&ch)) == ERR) {
 		}
 		bool fn = kind == KEY_CODE_YES;
+		if (fn && ch == KEY_RESIZE) {
+			break;
+		}
 		int step = fn && ch == KEY_UP	 ? -1
 				 : fn && ch == KEY_DOWN	 ? 1
 				 : fn && ch == KEY_PPAGE ? -rows
@@ -185,8 +214,22 @@ void Tui::show_text(const std::string& title,
 				 : !fn && ch == 'j'		 ? 1
 				 : !fn && ch == ' '		 ? rows
 										 : 0;
-		if (fn && ch == KEY_RESIZE) {
-			break;
+		if (choose) {
+			if ((!fn && (ch == '\n' || ch == '\r')) ||
+				(fn && ch == KEY_ENTER)) {
+				chosen = static_cast<std::size_t>(sel);
+				break;
+			}
+			if (!fn && ch >= '1' && ch <= '9' &&
+				static_cast<int>(ch - '1') < n) {
+				chosen = static_cast<std::size_t>(ch - '1');
+				break;
+			}
+			if (!fn && (ch == 27 || ch == 'q')) {
+				break;
+			}
+			sel = std::clamp(sel + step, 0, std::max(0, n - 1));
+			continue;
 		}
 		if (step == 0 || last == 0) {
 			break;
@@ -199,6 +242,7 @@ void Tui::show_text(const std::string& title,
 	// behind when the terminal drew some character wider than ncurses
 	// expected.
 	clearok(stdscr, TRUE);
+	return chosen;
 }
 
 }  // namespace tui

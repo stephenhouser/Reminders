@@ -4,8 +4,10 @@
 #pragma once
 
 #include <functional>
+#include <optional>
 #include <ostream>
 #include <span>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -26,7 +28,10 @@ enum class Arg { None, File, List, Source, View, Reminder, Command, Setting };
 struct Command {
 		std::vector<std::string_view> names;  // the first is its name
 		std::string_view usage;				  // after the name
-		std::string_view summary;
+		std::string_view summary;			  // a line, for :help
+		// For --help, when there's more to say than `summary`; "\n" starts
+		// a new line.
+		std::string_view help = "";
 		bool edits = false;	 // it changes lists (the CLI syncs after it)
 		Where where = Where::Both;
 		Arg arg = Arg::None;
@@ -51,6 +56,12 @@ struct Hooks {
 		bool remember = true;
 		// Instead of the terminal: asks a yes / no question.
 		std::function<bool(const std::string& question)> confirm;
+		// Instead of the terminal: chooses one of several reminders a NAME
+		// matches (an index into `options`), or nullopt to cancel.
+		std::function<std::optional<std::size_t>(
+			const std::string& question,
+			const std::vector<std::string>& options)>
+			choose;
 		// Instead of the terminal: edits reminder `id` in $EDITOR.
 		std::function<editfile::Outcome(const std::string& id)> edit;
 		// Reminders (ids) that commands given no NAME act on: the marked
@@ -58,6 +69,12 @@ struct Hooks {
 		std::vector<std::string> selected;
 		// The list showing (a key), where `add` adds without --list.
 		std::string list;
+};
+
+// Thrown when the user backs out of a question (Hooks::choose); nothing
+// was changed, and there's nothing to say.
+struct Cancelled : std::runtime_error {
+		Cancelled() : std::runtime_error("cancelled") {}
 };
 
 // Runs `words` (the command, then its arguments, as on the command line).

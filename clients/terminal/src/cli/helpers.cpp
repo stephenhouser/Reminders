@@ -211,6 +211,66 @@ Args parse_args(std::span<const std::string> in) {
 	return a;
 }
 
+std::string usage() {
+	// "  name USAGE" then the help, wrapped, from column 32 (on the next line
+	// when the usage reaches that far).
+	constexpr std::size_t kColumn = 32, kWidth = 79;
+	auto width = [](std::string_view s) {  // in characters
+		return static_cast<std::size_t>(std::ranges::count_if(
+			s, [](char c) { return (c & 0xC0) != 0x80; }));
+	};
+	std::string out = kUsage;
+	for (auto& c : cmd::commands()) {
+		if (c.where == cmd::Where::Tui) {
+			continue;
+		}
+		std::string line = "  " + std::string(c.names.front());
+		if (!c.usage.empty()) {
+			line += " " + std::string(c.usage);
+		}
+		auto text =
+			c.help.empty() ? std::string(c.summary) : std::string(c.help);
+		if (c.help.empty() && !text.empty()) {
+			text[0] = static_cast<char>(std::toupper(text[0]));
+		}
+		if (width(line) >= kColumn - 1) {
+			out += line + "\n";
+			line.clear();
+		}
+		// Word by word; "\n" in the text starts a new line, and a no-break
+		// space (U+00A0) joins two words.
+		std::istringstream paragraphs(text);
+		for (std::string para; std::getline(paragraphs, para);) {
+			std::istringstream words(para);
+			bool first = true;
+			for (std::string w; words >> w;) {
+				if (!first && width(line) + 1 + width(w) > kWidth) {
+					out += line + "\n";
+					line.clear();
+					first = true;
+				}
+				if (first) {
+					line.resize(kColumn + line.size() - width(line), ' ');
+					line += w;
+					first = false;
+				} else {
+					line += " " + w;
+				}
+			}
+			out += line + "\n";
+			line.clear();
+		}
+		if (!line.empty()) {
+			out += line + "\n";
+		}
+	}
+	// A no-break space in the help keeps two words on one line.
+	for (std::size_t at; (at = out.find("\u00a0")) != std::string::npos;) {
+		out.replace(at, 2, " ");
+	}
+	return out + kUsageEnd;
+}
+
 std::string join(const std::vector<std::string>& v, std::size_t from) {
 	std::string out;
 	for (auto i = from; i < v.size(); ++i) {

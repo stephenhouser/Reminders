@@ -142,6 +142,19 @@ rem::Ref App::resolve(const std::string& text,
 			"{}  ({}{})", term::markdown_line(*c.reminder).text(),
 			list_label(*c.list), c.parent ? " > " + c.parent->title : "");
 	};
+	if (hooks_.choose) {
+		std::vector<std::string> options;
+		for (auto& c : best) {
+			options.push_back(describe(c));
+		}
+		auto n = hooks_.choose(
+			std::format("“{}” matches {} reminders", text, best.size()),
+			options);
+		if (!n || *n >= best.size()) {
+			throw cmd::Cancelled();
+		}
+		return best[*n];
+	}
 	if (hooks_.interactive && isatty(STDIN_FILENO) && isatty(STDERR_FILENO)) {
 		std::cerr << std::format("“{}” matches {} reminders:\n", text,
 								 best.size());
@@ -321,102 +334,131 @@ int App::run(const std::string& name, const Args& a) {
 
 namespace cmd {
 
-// Every command, with its names; in this order in the terminal interface's
-// help. main() runs sync, folder and tui itself, the terminal interface the
-// ones only it has.
+// Every command, with its names; in this order in --help and the terminal
+// interface's :help. main() runs sync, folder and tui itself, the terminal
+// interface the ones only it has.
 std::span<const Command> commands() {
 	static const std::vector<Command> kCommands = {
-		{{"lists"}, "", "the lists, with how many are open in each"},
-		{{"list", "ls"},
-		 "[VIEW] [-a]",
-		 "a list, today, scheduled, all, flagged, completed or #tag",
-		 false,
-		 Where::Both,
-		 Arg::View},
-		{{"show"},
-		 "NAME",
-		 "everything about one reminder",
-		 false,
-		 Where::Both,
-		 Arg::Reminder},
-		{{"add"}, "TEXT… [FIELDS]", "add a reminder", true},
-		{{"edit"},
-		 "NAME [FIELDS]",
-		 "change a reminder (no FIELDS: all of them in $EDITOR)",
-		 true,
-		 Where::Both,
-		 Arg::Reminder},
-		{{"done"}, "NAME", "complete", true, Where::Both, Arg::Reminder},
-		{{"undone"},
-		 "NAME",
-		 "mark as not completed",
-		 true,
-		 Where::Both,
-		 Arg::Reminder},
-		{{"move", "mv"},
-		 "NAME --to LIST [--section S]",
-		 "move to another list",
-		 true,
-		 Where::Both,
-		 Arg::Reminder},
-		{{"delete", "rm"},
-		 "NAME [--yes]",
-		 "delete",
-		 true,
-		 Where::Both,
-		 Arg::Reminder},
-		{{"search"}, "TEXT", "search titles and notes"},
-		{{"new-list"},
-		 "NAME [--color C] [--icon I] [--source S]",
-		 "make a list",
-		 true},
-		{{"import"},
-		 "FILE [--list LIST] [--source S] [--format F] [--duplicates]",
-		 "import reminders from a file (md, txt, todo.txt, csv, ics)",
-		 true,
-		 Where::Both,
-		 Arg::File},
-		{{"export"},
-		 "[LIST] [--format F] [-o FILE] [-a]",
-		 "write a list to a file; without LIST, every list (-o a folder or "
-		 ".zip)",
-		 false,
-		 Where::Both,
-		 Arg::List},
-		{{"sync"},
-		 "[SOURCE]",
-		 "sync CalDAV, WebDAV and git sources now",
-		 false,
-		 Where::Both,
-		 Arg::Source},
-		{{"folder"},
-		 "[PATH]",
-		 "show or set the folder",
-		 false,
-		 Where::Cli,
-		 Arg::File},
-		{{"tui"}, "", "open the interactive interface", false, Where::Cli},
-		{{"go"},
-		 "VIEW",
-		 "show a list, smart list or tag",
-		 false,
-		 Where::Tui,
-		 Arg::View},
-		{{"undo"}, "", "undo the last change", false, Where::Tui},
-		{{"redo"}, "", "redo what was undone", false, Where::Tui},
-		{{"set"},
-		 "[NAME | noNAME | NAME! | NAME=VALUE]",
-		 "show or change completed, sidebar, key-numbers, note-lines",
-		 false,
-		 Where::Tui,
-		 Arg::Setting},
-		{{"help", "h"},
-		 "[COMMAND]",
-		 "the commands, or how to use one",
-		 false,
-		 Where::Tui,
-		 Arg::Command},
-		{{"quit", "q", "wq", "x"}, "", "quit", false, Where::Tui},
+		{.names = {"lists"},
+		 .summary = "the lists, with how many are open in each",
+		 .help = "Lists, with how many reminders are open in each"},
+		{.names = {"list", "ls"},
+		 .usage = "[VIEW] [-a]",
+		 .summary = "a list, today, scheduled, all, flagged, completed or #tag",
+		 .help = "Reminders in VIEW: a list name, today, scheduled, all, "
+				 "all-reminders, flagged, completed or #tag.\n"
+				 "Default: the list that last had focus in the app or TUI. "
+				 "-a also shows completed reminders",
+		 .arg = Arg::View},
+		{.names = {"show"},
+		 .usage = "NAME",
+		 .summary = "everything about one reminder",
+		 .arg = Arg::Reminder},
+		{.names = {"add"},
+		 .usage = "TEXT… [FIELDS]",
+		 .summary = "add a reminder",
+		 .help =
+			 "Add a reminder (inline fields like \"#tag\" or "
+			 "\"📅\u00a02026-10-03\" work in TEXT too). Goes to --list, else "
+			 "the list that last had focus",
+		 .edits = true},
+		{.names = {"edit"},
+		 .usage = "NAME [FIELDS]",
+		 .summary = "change a reminder (no FIELDS: all of them in $EDITOR)",
+		 .help = "Change a reminder (no FIELDS: edit them all in $EDITOR)",
+		 .edits = true,
+		 .arg = Arg::Reminder},
+		{.names = {"done"},
+		 .usage = "NAME",
+		 .summary = "complete",
+		 .help = "Complete (repeating reminders roll forward)",
+		 .edits = true,
+		 .arg = Arg::Reminder},
+		{.names = {"undone"},
+		 .usage = "NAME",
+		 .summary = "mark as not completed",
+		 .edits = true,
+		 .arg = Arg::Reminder},
+		{.names = {"move", "mv"},
+		 .usage = "NAME --to LIST [--section S]",
+		 .summary = "move to another list",
+		 .edits = true,
+		 .arg = Arg::Reminder},
+		{.names = {"delete", "rm"},
+		 .usage = "NAME [--yes]",
+		 .summary = "delete",
+		 .edits = true,
+		 .arg = Arg::Reminder},
+		{.names = {"search"},
+		 .usage = "TEXT",
+		 .summary = "search titles and notes"},
+		{.names = {"new-list"},
+		 .usage = "NAME [--color C] [--icon I] [--source S]",
+		 .summary = "make a list",
+		 .help = "Make a list (in source S, when given)",
+		 .edits = true},
+		{.names = {"import"},
+		 .usage = "FILE [--list LIST] [--source S] [--format F] [--duplicates]",
+		 .summary =
+			 "import reminders from a file (md, txt, todo.txt, csv, ics)",
+		 .help = "Import reminders from a file into LIST, made in S if "
+				 "missing (default: the calendar's name, else the file's). "
+				 "F, found from the file if not given: md, txt (a line each), "
+				 "todo.txt, csv or ics. Ones already here are skipped, or "
+				 "with --duplicates added again as copies",
+		 .edits = true,
+		 .arg = Arg::File},
+		{.names = {"export"},
+		 .usage = "[LIST] [--format F] [-o FILE] [-a]",
+		 .summary = "write a list to a file; without LIST, every list (-o a "
+					"folder or .zip)",
+		 .help = "Write LIST as F: md (the list file, the default), txt (a "
+				 "line per open reminder; -a adds completed ones), todo.txt, "
+				 "csv or ics. Without --format, FILE's name says. To FILE (a "
+				 "folder: LIST.EXT in it), else to the terminal. Without "
+				 "LIST: every list, into the folder -o names, or one .zip "
+				 "archive if -o names a .zip file",
+		 .arg = Arg::List},
+		{.names = {"folder"},
+		 .usage = "[PATH]",
+		 .summary = "show or set the folder",
+		 .help = "Show or set the folder (shared with the app)",
+		 .where = Where::Cli,
+		 .arg = Arg::File},
+		{.names = {"sync"},
+		 .usage = "[SOURCE]",
+		 .summary = "sync CalDAV, WebDAV and git sources now",
+		 .help = "Sync CalDAV, WebDAV and git sources now (other commands "
+				 "sync before and after, too)",
+		 .arg = Arg::Source},
+		{.names = {"tui"},
+		 .summary = "open the interactive interface",
+		 .where = Where::Cli},
+		{.names = {"go"},
+		 .usage = "VIEW",
+		 .summary = "show a list, smart list or tag",
+		 .where = Where::Tui,
+		 .arg = Arg::View},
+		{.names = {"undo"},
+		 .summary = "undo the last change",
+		 .where = Where::Tui},
+		{.names = {"redo"},
+		 .summary = "redo what was undone",
+		 .where = Where::Tui},
+		{.names = {"set"},
+		 .usage = "[NAME | noNAME | NAME! | NAME=VALUE]",
+		 .summary =
+			 "show or change completed, sidebar, key-numbers, note-lines",
+		 .where = Where::Tui,
+		 .arg = Arg::Setting},
+		{.names = {"help", "h"},
+		 .usage = "[COMMAND]",
+		 .summary = "the commands, or how to use one",
+		 .where = Where::Tui,
+		 .arg = Arg::Command},
+		{.names = {"quit", "q", "wq", "x"},
+		 .summary = "quit",
+		 .where = Where::Tui},
 	};
 	return kCommands;
 }

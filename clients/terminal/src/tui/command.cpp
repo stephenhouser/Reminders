@@ -20,6 +20,23 @@ constexpr std::size_t kHistorySize = 500;
 
 fs::path history_file() { return rem::state_dir() / "command-history"; }
 
+// "show-completed=on" style values for :set.
+std::optional<bool> parse_bool(const std::string& v) {
+	auto s = term::lower(v);
+	if (s == "on" || s == "true" || s == "yes" || s == "1") {
+		return true;
+	}
+	if (s == "off" || s == "false" || s == "no" || s == "0") {
+		return false;
+	}
+	return std::nullopt;
+}
+
+const std::vector<std::string> kSettings = {"completed", "sidebar",
+											"key-numbers", "note-lines"};
+
+}  // namespace
+
 // `names` that start with `word`, ignoring case, each once, in order.
 std::vector<std::string> starting_with(const std::vector<std::string>& names,
 									   const std::string& word) {
@@ -58,23 +75,6 @@ std::vector<std::string> files_for(const std::string& word) {
 	std::ranges::sort(out);
 	return out;
 }
-
-// "show-completed=on" style values for :set.
-std::optional<bool> parse_bool(const std::string& v) {
-	auto s = term::lower(v);
-	if (s == "on" || s == "true" || s == "yes" || s == "1") {
-		return true;
-	}
-	if (s == "off" || s == "false" || s == "no" || s == "0") {
-		return false;
-	}
-	return std::nullopt;
-}
-
-const std::vector<std::string> kSettings = {"completed", "sidebar",
-											"key-numbers", "note-lines"};
-
-}  // namespace
 
 bool Tui::command_line() {
 	if (!history_read_) {
@@ -256,6 +256,15 @@ bool Tui::run_command(const std::string& line) {
 		hooks.selected = {item_sel_};
 	}
 	hooks.confirm = [this](const std::string& q) { return confirm(q); };
+	hooks.choose = [this](const std::string& q,
+						  const std::vector<std::string>& options) {
+		std::vector<std::string> numbered;
+		for (std::size_t i = 0; i < options.size(); ++i) {
+			numbered.push_back(i < 9 ? std::format("{}  {}", i + 1, options[i])
+									 : "   " + options[i]);
+		}
+		return pick(q, numbered);
+	};
 	hooks.edit = [this](const std::string& id) {
 		def_prog_mode();
 		endwin();
@@ -273,9 +282,12 @@ bool Tui::run_command(const std::string& line) {
 	};
 	std::ostringstream out;
 	std::string error;
+	bool cancelled = false;
 	auto run = [&] {
 		try {
 			cmd::run(store_, words, out, hooks);
+		} catch (const cmd::Cancelled&) {
+			cancelled = true;
 		} catch (const std::exception& e) {
 			error = e.what();
 		}
@@ -286,6 +298,9 @@ bool Tui::run_command(const std::string& line) {
 		batch(label.c_str(), run);
 	} else {
 		run();
+	}
+	if (cancelled) {
+		return true;
 	}
 	if (c->edits && error.empty()) {
 		marked_.clear();

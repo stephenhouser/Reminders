@@ -47,53 +47,18 @@ extern const std::vector<std::string> kFlags;
 
 constexpr const char* kVersion = "0.1.0";
 
+// --help: this, the commands (from cmd::commands()), then kUsageEnd.
 constexpr const char* kUsage =
 	R"(Usage: reminders [--folder PATH] [--json] [--no-color] [COMMAND …]
 
 With no command, opens the interactive (terminal) interface.
 
 Commands:
-  lists                         Lists, with how many reminders are open in each
-  list [VIEW] [-a]              Reminders in VIEW: a list name, today,
-                                scheduled, all, all-reminders, flagged,
-                                completed or #tag.
-                                Default: the list that last had focus in the
-                                app or TUI. -a also shows completed reminders
-  show NAME                     Everything about one reminder
-  add TEXT… [FIELDS]            Add a reminder (inline fields like "#tag" or
-                                "📅 2026-10-03" work in TEXT too). Goes to
-                                --list, else the list that last had focus
-  edit NAME [FIELDS]            Change a reminder (no FIELDS: edit them all
-                                in $EDITOR)
-  done NAME                     Complete (repeating reminders roll forward)
-  undone NAME                   Mark as not completed
-  move NAME --to LIST [--section S]
-                                Move to another list
-  delete NAME [--yes]           Delete
-  search TEXT                   Search titles and notes
-  new-list NAME [--color C] [--icon I]
-  import FILE [--list LIST] [--source S] [--format F] [--duplicates]
-                                Import reminders from a file into LIST,
-                                made in S if missing (default: the
-                                calendar's name, else the file's). F, found
-                                from the file if not given: md, txt (a line
-                                each), todo.txt, csv or ics. Ones already
-                                here are skipped, or with --duplicates
-                                added again as copies
-  export [LIST] [--format F] [-o FILE] [-a]
-                                Write LIST as F: md (the list file, the
-                                default), txt (a line per open reminder; -a
-                                adds completed ones), todo.txt, csv or ics.
-                                Without --format, FILE's name says. To FILE
-                                (a folder: LIST.EXT in it), else to the
-                                terminal. Without LIST: every list, into
-                                the folder -o names, or one .zip archive
-                                if -o names a .zip file
-  folder [PATH]                 Show or set the folder (shared with the app)
-  sync [SOURCE]                 Sync CalDAV, WebDAV and git sources now
-                                (other commands sync before and after, too)
-  tui                           Open the interactive interface
+)";
 
+// After the commands (cmd::commands()) in --help.
+constexpr const char* kUsageEnd =
+	R"(
 NAME is a reminder's title, or enough of it: an exact title wins, then one
 starting with NAME, then one containing it, then one containing all its words.
 Open reminders win over completed ones. --in LIST looks in one list only. If
@@ -239,5 +204,7 @@ void print_heading(std::ostream& out, int level, const std::string& text,
 				   std::optional<term::Rgb> color, const Style& st);
 Args parse_args(std::span<const std::string> in);
 std::string join(const std::vector<std::string>& v, std::size_t from = 0);
+// The whole of --help.
+std::string usage();
 
 }  // namespace cli

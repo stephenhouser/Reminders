@@ -31,7 +31,7 @@ int main(int argc, char** argv) {
 	for (; i < args.size(); ++i) {
 		auto& s = args[i];
 		if (s == "-h" || s == "--help") {
-			std::cout << kUsage;
+			std::cout << usage();
 			return 0;
 		}
 		if (s == "--version") {

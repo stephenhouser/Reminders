@@ -282,6 +282,7 @@ search, go to, due date, `:`):
 | Backspace / Delete | Delete a character |
 | Ctrl+U | Clear the line |
 | Ctrl+K | Cut to the end of the line |
+| Tab | Complete: a file name (`O`), a list (`m`, and `O`'s list), a list or tag (`g`), a tag (`#`), or anything at `:`; when several fit, they're listed above the line |
 
 When you edit a title in place, fields you type into it (`#tag`,
 `📅 2026-10-03`, `🚩`) are applied, and clearing the title deletes the reminder
@@ -342,8 +343,8 @@ use one.
   view, the next one is selected. Other commands' output goes in the status
   bar when it's one line, or a box (any key closes it) when it's more, such
   as `:show` or `:lists`.
-- When a NAME matches several reminders, the box lists them: type more of
-  the title, or add `--in LIST`.
+- When a NAME matches several reminders, you choose one from a list (↑ / ↓
+  and Enter, or its number; Esc cancels).
 - **Tab completes** the command, `--options`, file names (for `import`,
   `-o`), list names, sources and the titles of open reminders. When several
   fit, they're listed above the line. **↑ / ↓** go back through earlier

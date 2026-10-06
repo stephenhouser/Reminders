@@ -85,6 +85,9 @@ struct SidebarEntry {
 // being completed starts in it.
 struct LineHooks {
 		std::vector<std::string>* history = nullptr;  // oldest first
+		// Words are shell words (the : line): quoted when completed, and
+		// followed by a space. Otherwise the line is one name, as typed.
+		bool shell_words = true;
 		std::function<std::vector<std::string>(const std::string& before,
 											   std::size_t& begin)>
 			complete;
@@ -100,6 +103,16 @@ struct Line {
 		std::string due{}, after{}, where{};
 		bool done = false, overdue = false;
 };
+
+// `names` that start with `word`, ignoring case, each once, in order.
+std::vector<std::string> starting_with(const std::vector<std::string>& names,
+									   const std::string& word);
+// Files and folders for a path being typed ("~/Doc", "../x"); folders end
+// in "/". As typed: "~" stays "~".
+std::vector<std::string> files_for(const std::string& word);
+
+// What a prompt's Tab completes (Tui::line_hooks).
+enum class Completes { Files, Lists, Views, Tags };
 
 class Tui {
 	public:
@@ -177,7 +190,16 @@ class Tui {
 		void draw_items(int x, int width, int height);
 		void draw_status();
 		std::optional<std::string> prompt(const std::string& label,
-										  const std::string& initial = "");
+										  const std::string& initial = "",
+										  const LineHooks* hooks = nullptr);
+		// A prompt for one of `what`, which Tab completes.
+		std::optional<std::string> prompt(const std::string& label,
+										  const std::string& initial,
+										  Completes what) {
+			auto hooks = line_hooks(what);
+			return prompt(label, initial, &hooks);
+		}
+		LineHooks line_hooks(Completes what);
 		std::optional<std::string> edit_line(int y, int x, int width,
 											 const std::string& initial,
 											 attr_t attr,
@@ -191,6 +213,12 @@ class Tui {
 		void show_help();
 		void show_text(const std::string& title,
 					   const std::vector<std::string>& lines);
+		// One of `options`, chosen in a box (nullopt: cancelled).
+		std::optional<std::size_t> pick(
+			const std::string& title, const std::vector<std::string>& options);
+		std::optional<std::size_t> text_box(
+			const std::string& title, const std::vector<std::string>& lines,
+			bool choose);
 		// ":" — reads a command and runs it; false: it was quit.
 		bool command_line();
 		bool run_command(const std::string& line);

@@ -141,7 +141,8 @@ bool Tui::act_on_marked(wint_t key) {
 			});
 			return true;
 		case '#':
-			if (auto t = prompt(std::format("Tag for {} (-tag removes):", n));
+			if (auto t = prompt(std::format("Tag for {} (-tag removes):", n),
+								"", Completes::Tags);
 				t && !t->empty()) {
 				auto tag = *t;
 				bool remove = tag.starts_with('-');
@@ -155,7 +156,8 @@ bool Tui::act_on_marked(wint_t key) {
 			}
 			return true;
 		case 'm':
-			if (auto name = prompt(std::format("Move {} to list:", n));
+			if (auto name = prompt(std::format("Move {} to list:", n), "",
+								   Completes::Lists);
 				name && !name->empty()) {
 				rem::ListFile* dest = nullptr;
 				for (auto* l : store_.lists()) {

@@ -182,15 +182,20 @@ void Tui::complete_word(std::wstring& text, std::size_t& cur,
 		auto n = std::ranges::mismatch(common, f).in1 - common.begin();
 		common.resize(static_cast<std::size_t>(n));
 	}
-	auto typed = rem::split_words(before.substr(begin), true);
-	auto word = typed.empty() ? std::string() : typed.front().text;
+	std::string word = before.substr(begin);
+	if (hooks.shell_words) {
+		auto typed = rem::split_words(word, true);
+		word = typed.empty() ? std::string() : typed.front().text;
+	}
 	if (found.size() == 1) {
 		common = found.front();
 	} else if (common.size() < word.size()) {
 		common = word;	// they differ only in case from what's typed
 	}
-	auto with = rem::quote_word(common);
-	if (found.size() > 1 || common.ends_with('/')) {
+	auto with = hooks.shell_words ? rem::quote_word(common) : common;
+	if (!hooks.shell_words) {
+		// As typed: no quotes, and nothing after it.
+	} else if (found.size() > 1 || common.ends_with('/')) {
 		// Not finished: leave the closing quote off, to type on.
 		if (with.ends_with('"') && with.size() > 1 && with != "\"\"") {
 			with.pop_back();
@@ -216,13 +221,48 @@ void Tui::complete_word(std::wstring& text, std::size_t& cur,
 }
 
 std::optional<std::string> Tui::prompt(const std::string& label,
-									   const std::string& initial) {
+									   const std::string& initial,
+									   const LineHooks* hooks) {
 	attron(COLOR_PAIR(kStatus));
 	mvhline(LINES - 1, 0, ' ', COLS);
 	int used = put(LINES - 1, 0, " " + label + " ", COLS);
 	attroff(COLOR_PAIR(kStatus));
 	return edit_line(LINES - 1, used, std::max(1, COLS - used - 1), initial,
-					 COLOR_PAIR(kStatus));
+					 COLOR_PAIR(kStatus), hooks);
+}
+
+LineHooks Tui::line_hooks(Completes what) {
+	LineHooks hooks;
+	hooks.shell_words = false;
+	hooks.complete = [this, what](const std::string& before,
+								  std::size_t& begin) {
+		begin = 0;
+		std::vector<std::string> names;
+		switch (what) {
+			case Completes::Files:
+				return files_for(before);
+			case Completes::Lists:
+				for (auto* l : store_.lists()) {
+					names.push_back(store_.label(*l));
+				}
+				break;
+			case Completes::Views:
+				for (auto& v : sidebar_.all(true)) {
+					names.push_back(entry_for(v).title);
+				}
+				break;
+			case Completes::Tags:
+				// After "-" (removes it) and "#".
+				begin = before.find_first_not_of("-#");
+				if (begin == std::string::npos) {
+					begin = before.size();
+				}
+				names = store_.tags();
+				break;
+		}
+		return starting_with(names, before.substr(begin));
+	};
+	return hooks;
 }
 
 // Enter / F2: edit the selected reminder's title where it's shown. As in the

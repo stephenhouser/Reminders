@@ -51,7 +51,7 @@ std::string Tui::selected_source() {
 // then in any (or "source/name"); one that isn't there is made in the
 // selected source.
 void Tui::import_file() {
-	auto file = prompt("Import file:");
+	auto file = prompt("Import file:", "", Completes::Files);
 	if (!file || file->empty()) {
 		return;
 	}
@@ -74,7 +74,8 @@ void Tui::import_file() {
 				   rem::reminder_count(imp) == 1
 					   ? std::string("1 reminder")
 					   : std::format("{} reminders", rem::reminder_count(imp))),
-			   showing ? showing->name : rem::import_list_name(imp, path));
+			   showing ? showing->name : rem::import_list_name(imp, path),
+			   Completes::Lists);
 	if (!name || name->empty()) {
 		return;
 	}
@@ -345,7 +346,8 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
 				}
 				return true;
 			case 'g':
-				if (auto q = prompt("Go to:"); q && !q->empty()) {
+				if (auto q = prompt("Go to:", "", Completes::Views);
+					q && !q->empty()) {
 					if (auto v = find_view(*q)) {
 						select_view(*v);
 					} else {
@@ -599,7 +601,8 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
 			});
 			break;
 		case '#':
-			if (auto t = prompt("Tag (-tag removes):"); t && !t->empty()) {
+			if (auto t = prompt("Tag (-tag removes):", "", Completes::Tags);
+				t && !t->empty()) {
 				auto tag = *t;
 				bool remove = tag.starts_with('-');
 				if (remove) {
@@ -613,7 +616,8 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
 			}
 			break;
 		case 'm':
-			if (auto name = prompt("Move to list:"); name && !name->empty()) {
+			if (auto name = prompt("Move to list:", "", Completes::Lists);
+				name && !name->empty()) {
 				rem::ListFile* dest = nullptr;
 				for (auto* l : store_.lists()) {
 					if (term::lower(store_.label(*l))
