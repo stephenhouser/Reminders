@@ -194,15 +194,21 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
 	// Tab switches between the sidebar and the reminders. (A terminal sends
 	// Ctrl+I as Tab.)
 	if (!fn && key == '\t') {
+		if (focus_items_) {
+			end_search();
+		}
 		focus_items_ = !focus_items_;
 		return true;
 	}
 
-	// Esc on its own unmarks everything.
+	// Esc on its own unmarks everything; with nothing marked, it ends a
+	// search.
 	if (!fn && key == 27) {
 		if (!marked_.empty()) {
 			marked_.clear();
 			message_ = "Unmarked";
+		} else {
+			end_search();
 		}
 		return true;
 	}
@@ -390,6 +396,9 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
 				focus_items_ = true;
 				return true;
 			case KEY_LEFT:
+				if (focus_items_) {
+					end_search();
+				}
 				focus_items_ = false;
 				return true;
 		}

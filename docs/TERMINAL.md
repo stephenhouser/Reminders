@@ -216,7 +216,7 @@ within a second.
 | Enter | Open the selected sidebar entry |
 | 1–9, 0 | Jump to sidebar entry 1–10 (Today, Scheduled, All, All Reminders, Flagged, Completed, your lists); `0` is the 10th |
 | g | Go to a list or tag by typing part of its name |
-| / | Search |
+| / | Search; Esc, or Tab / ← back to the sidebar, ends it and shows the sidebar entry selected before |
 | c | Show / hide completed |
 | J / K, Ctrl+↓ / Ctrl+↑ | In the sidebar: move the selected smart list, list or tag down / up in its group (on a heading: the group) |
 | Ctrl+Shift+↓ / Ctrl+Shift+↑ | In the sidebar: move the selected entry's group down / up |

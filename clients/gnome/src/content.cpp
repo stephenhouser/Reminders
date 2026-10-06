@@ -444,21 +444,22 @@ void Window::toggle_subtasks(const std::string& id) {
 	rebuild_content();
 }
 
-void Window::focus_results() {
+bool Window::focus_results() {
 	// The entry waits a moment before reporting changes; catch up first.
 	auto text = trim(gtk_editable_get_text(GTK_EDITABLE(search_entry_)));
 	if (text.empty()) {
-		return;
+		return false;
 	}
 	if (!(view_ == View{View::Search, text})) {
 		select(View{View::Search, text});
 	}
 	show_content();
 	if (!first_row_) {
-		return;
+		return false;
 	}
 	auto keep = Obj<GtkWidget>::ref(first_row_);
 	idle([keep] { gtk_widget_grab_focus(keep.get()); });
+	return true;
 }
 
 void Window::focus_content() {

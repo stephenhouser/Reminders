@@ -328,8 +328,8 @@ A list can be divided into sections (they are `## Headings` in the file).
 | **Completed** | Completed reminders, newest first |
 | **#tag** | Reminders with that tag (one entry per tag in use) |
 
-- **Search** (Ctrl+F, or 🔍) looks in titles and notes. Press Enter or ↓ to
-  move into the results.
+- **Search** (Ctrl+F, or 🔍) looks in titles and notes. Press Enter, ↓ or Tab
+  to move into the results.
 - **Go To** (Ctrl+K) jumps to any list, smart list or tag by typing part of
   its name. The last entry searches for what you typed.
 - **Ctrl+Page Down / Ctrl+Page Up** step to the next or previous sidebar entry.

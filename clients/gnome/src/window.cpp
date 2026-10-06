@@ -403,20 +403,22 @@ void Window::build() {
 	g_object_bind_property(
 		search_toggle, "active", search_bar_, "search-mode-enabled",
 		GBindingFlags(G_BINDING_BIDIRECTIONAL | G_BINDING_SYNC_CREATE));
-	// Enter (or ↓) moves into the results, to go through them with the arrow
-	// keys.
+	// Enter (or ↓, or Tab) moves into the results, to go through them with
+	// the arrow keys.
 	on(search_entry_, "activate", [this] { focus_results(); });
 	auto* search_keys = gtk_event_controller_key_new();
 	connect<gboolean(GtkEventControllerKey*, guint, guint, GdkModifierType)>(
 		search_keys, "key-pressed",
 		[this](GtkEventControllerKey*, guint key, guint,
 			   GdkModifierType mods) -> gboolean {
-			if (key != GDK_KEY_Down ||
+			if ((key != GDK_KEY_Down && key != GDK_KEY_Tab &&
+				 key != GDK_KEY_KP_Tab) ||
 				(mods & gtk_accelerator_get_default_mod_mask())) {
 				return FALSE;
 			}
-			focus_results();
-			return TRUE;
+			// With nothing to go to (no text, no matches), Tab moves on
+			// as usual.
+			return focus_results() || key == GDK_KEY_Down;
 		});
 	gtk_widget_add_controller(search_entry_, search_keys);
 	on(search_entry_, "search-changed", [this] {

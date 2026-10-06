@@ -157,8 +157,10 @@ class Window {
 		void step_view(int delta);
 		void set_due(const std::vector<std::string>& ids, int days_from_today);
 		void toggle_subtasks(const std::string& id);
-		void show_content();   // on narrow windows, hides the overlaid sidebar
-		void focus_results();  // from the search entry into the search results
+		void show_content();  // on narrow windows, hides the overlaid sidebar
+		// From the search entry into the search results; false when there
+		// are none.
+		bool focus_results();
 		// Focus on the first reminder (or New Reminder) of what's shown.
 		void focus_content();
 		// Drag and drop (several reminders land together, in order).

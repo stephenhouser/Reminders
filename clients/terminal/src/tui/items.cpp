@@ -385,6 +385,23 @@ void Tui::select_view(const View& v) {
 	}
 }
 
+// Esc, or Tab / ← back to the sidebar: the search is over, and the sidebar
+// entry still selected from before it shows again.
+bool Tui::end_search() {
+	if (view_.kind != View::Search) {
+		return false;
+	}
+	auto entries = sidebar();
+	if (side_sel_ >= 0 && side_sel_ < static_cast<int>(entries.size()) &&
+		entries[static_cast<std::size_t>(side_sel_)].kind ==
+			SidebarEntry::Item) {
+		select_view(entries[static_cast<std::size_t>(side_sel_)].view);
+	} else {
+		select_view(home_view());
+	}
+	return true;
+}
+
 void Tui::move_selection(int delta) {
 	if (!focus_items_) {
 		// Steps over plain headings; stops on a collapsible group's heading

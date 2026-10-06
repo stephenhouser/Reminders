@@ -187,6 +187,9 @@ class Tui {
 		void step_sidebar(int delta);
 		void move_selection(int delta);
 		void select_view(const View& v);
+		// Leaves search results for the selected sidebar entry; false when
+		// not searching.
+		bool end_search();
 		void restore_view();
 		void remember_view();
 		void check_folder();

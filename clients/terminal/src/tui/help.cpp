@@ -46,7 +46,7 @@ void Tui::show_help() {
 		{"1-9, 0", "go to sidebar entry 1-10"},
 		{"Ctrl+PgUp / PgDn", "previous / next sidebar entry"},
 		{"g, Ctrl+K", "go to a list by name"},
-		{"/, Ctrl+F", "search"},
+		{"/, Ctrl+F", "search (esc, or tab back to the sidebar, ends it)"},
 		{"enter", "on a collapsible group's heading: fold / unfold"},
 		{"J / K, Ctrl+Up / Down", "in the sidebar: move the entry down / up"},
 		{"Ctrl+Shift+Up / Down", "in the sidebar: move its group"},
