@@ -337,8 +337,11 @@ use one.
   one.** `:move Work`, `:done`, `:delete`, `:edit --due fri --flag`, `:show`.
 - **A command that changes lists is one undo step** (`u`, or `:undo`), and
   the background sync sends the changes on, as for a key.
-- **What a command prints** goes in the status bar when it's one line, or a
-  box (any key closes it) when it's more, such as `:show` or `:lists`.
+- **`:done` and `:undone` say nothing**, as `x` doesn't; other changes say
+  what they did in the status bar. When the selected reminder leaves the
+  view, the next one is selected. Other commands' output goes in the status
+  bar when it's one line, or a box (any key closes it) when it's more, such
+  as `:show` or `:lists`.
 - When a NAME matches several reminders, the box lists them: type more of
   the title, or add `--in LIST`.
 - **Tab completes** the command, `--options`, file names (for `import`,

@@ -280,14 +280,41 @@ bool Tui::run_command(const std::string& line) {
 			error = e.what();
 		}
 	};
+	auto shown = shown_items();
 	if (c->edits) {
 		auto label = ":" + name;
 		batch(label.c_str(), run);
 	} else {
 		run();
 	}
-	if (c->edits && !marked_.empty() && error.empty()) {
+	if (c->edits && error.empty()) {
 		marked_.clear();
+		// The selected reminder went (completed, moved, deleted): keep the
+		// place by selecting the nearest one still there, as x does.
+		auto now = shown_items();
+		auto still = [&](const std::string& id) {
+			return std::ranges::find(now, id) != now.end();
+		};
+		auto at = std::ranges::find(shown, item_sel_);
+		if (at != shown.end() && !still(item_sel_)) {
+			if (auto next = std::find_if(at, shown.end(), still);
+				next != shown.end()) {
+				item_sel_ = *next;
+			} else if (auto prev = std::find_if(std::make_reverse_iterator(at),
+												shown.rend(), still);
+					   prev != shown.rend()) {
+				item_sel_ = *prev;
+			}
+		}
+		// Done and undone say nothing, like x; other edits say what they
+		// did in the status bar (its first line: not the notes after it).
+		if (name == "done" || name == "undone") {
+			return true;
+		}
+		std::string first;
+		std::getline(std::istringstream(out.str()) >> std::ws, first);
+		message_ = first;
+		return true;
 	}
 	// What it printed: a line in the status bar, more in a box.
 	std::vector<std::string> lines;
