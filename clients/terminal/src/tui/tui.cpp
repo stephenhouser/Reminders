@@ -79,7 +79,8 @@ int Tui::run() {
 	initscr();
 	cbreak();
 	// Ctrl+S / Ctrl+Q are XOFF / XON (pause / resume output) in a terminal;
-	// turn that off so they reach the app (Ctrl+S saves while editing). ncurses
+	// turn that off so Ctrl+Q reaches the app and quits. (Ctrl+S is no key of
+	// ours: a terminal that keeps flow control just freezes on it.) ncurses
 	// restores it on exit.
 	termios tio{};
 	if (tcgetattr(STDIN_FILENO, &tio) == 0) {

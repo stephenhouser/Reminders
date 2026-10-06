@@ -33,8 +33,10 @@ User guide: `docs/TERMINAL.md`.
 - `setlocale(LC_ALL, "")` before `initscr()`, then wide characters
   throughout: `get_wch`, `WACS_*` box drawing. Plain `getch` / `ACS_*` break on
   non-ASCII titles.
-- **Ctrl+S is XOFF** in a terminal — it froze the TUI the first time. `run()`
-  clears `IXON`; ncurses restores it on exit.
+- **Ctrl+S / Ctrl+Q are XOFF / XON** in a terminal — Ctrl+S froze the TUI the
+  first time. `run()` clears `IXON` so Ctrl+Q can quit; ncurses restores it on
+  exit. Ctrl+S is no key of the TUI's: bound to anything, it's lost wherever
+  flow control is still on.
 - **Alt+key arrives as Esc then the key.** `set_escdelay(25)` and a
   non-blocking second `get_wch` tell the two apart; a bare Esc is one with
   nothing after it.

@@ -29,7 +29,7 @@ namespace tui {
 
 // Edits one line of text in `width` cells at (y, x), with a cursor: ←/→,
 // Home/End (Ctrl+A/E), Backspace/Delete, Ctrl+U clears, Ctrl+K cuts to the
-// end. Enter or Ctrl+S accepts, Esc cancels (nullopt).
+// end. Enter accepts, Esc cancels (nullopt).
 std::optional<std::string> Tui::edit_line(int y, int x, int width,
 										  const std::string& initial,
 										  attr_t attr) {
@@ -106,8 +106,7 @@ std::optional<std::string> Tui::edit_line(int y, int x, int width,
 		if (ch == 27) {
 			break;	// Esc: cancel
 		}
-		if (ch == '\n' || ch == '\r' ||
-			ch == 19) {	 // Enter, or Ctrl+S as in the GNOME app
+		if (ch == '\n' || ch == '\r') {	 // Enter
 			result = narrow(text);
 			break;
 		}

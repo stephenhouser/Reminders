@@ -274,7 +274,7 @@ search, go to, due date):
 
 | Key | Action |
 |---|---|
-| Enter, Ctrl+S | Accept |
+| Enter | Accept |
 | Esc | Cancel |
 | ← → | Move the cursor |
 | Home / End, Ctrl+A / Ctrl+E | Jump to the start / end |
