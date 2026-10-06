@@ -56,6 +56,8 @@ using View = rem::View;	 // what the interface shows (reminders/view.hpp)
 // Ctrl+Shift+↑ / ↓ (move the sidebar group), as internal keys outside the
 // range of characters.
 constexpr wint_t kGroupUp = 0x110010, kGroupDown = 0x110011;
+// Shift+→ / Shift+←: show / hide the selected reminder's subtasks.
+constexpr wint_t kShowSubtasks = 0x110012, kHideSubtasks = 0x110013;
 
 constexpr wint_t kDelete =
 	0x110000;  // the Delete key, outside the range of characters
@@ -113,7 +115,8 @@ class Tui {
 		View view_;
 		bool focus_items_ = false;
 		bool show_completed_ = false;
-		bool hide_subtasks_ = false;  // Ctrl+E
+		std::set<std::string>
+			collapsed_;	 // reminders whose subtasks are hidden
 		bool hide_sidebar_ = !rem::load_bool_setting(
 			"show-sidebar", true);	// Ctrl+B; shared with the app
 		bool show_key_numbers_ = rem::load_bool_setting("show-key-numbers");

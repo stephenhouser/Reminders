@@ -46,6 +46,16 @@ std::vector<Line> Tui::lines() {
 		Line line{Line::Item, r.id, md.before, ref.list->color(), depth};
 		line.due = md.due;
 		line.after = md.after;
+		// Folded (Shift+→ or + shows them): how many subtasks there are.
+		if (view_.kind == View::List && collapsed_.contains(r.id)) {
+			auto n = std::ranges::count_if(r.subtasks, [this](auto& s) {
+				return show_completed_ || !s.done;
+			});
+			if (n > 0) {
+				line.after +=
+					std::format("{}▸ {}", line.after.empty() ? "" : " ", n);
+			}
+		}
 		if (show_list) {
 			line.where = "(" + store_.label(*ref.list) +
 						 (ref.parent ? " > " + ref.parent->title : "") + ")";
@@ -84,7 +94,7 @@ std::vector<Line> Tui::lines() {
 					continue;
 				}
 				item({l, r, nullptr}, 0, false);
-				if (hide_subtasks_) {
+				if (collapsed_.contains(r->id)) {
 					continue;
 				}
 				for (auto& s : r->subtasks) {

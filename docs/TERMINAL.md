@@ -220,14 +220,15 @@ within a second.
 | c | Show / hide completed |
 | J / K, Ctrl+↓ / Ctrl+↑ | In the sidebar: move the selected smart list, list or tag down / up in its group (on a heading: the group) |
 | Ctrl+Shift+↓ / Ctrl+Shift+↑ | In the sidebar: move the selected entry's group down / up |
-| s | Sync the selected source now: the selected list's, else the list showing's, else the default source (CalDAV, WebDAV and git sources; like Sync Now in the app) |
-| S | Sync every source now (like ☰ → Sync All in the app) |
+| s | Sync the selected source now: the selected sidebar list's or heading's, else the list showing's; on a smart list, tag or search, every source (CalDAV, WebDAV and git sources; like Ctrl+S in the app) |
+| S | Sync every source now (like Ctrl+Shift+S, ☰ → Sync All, in the app) |
 | `,`, Ctrl+, | Edit the settings file in your editor (applied when you quit it) |
 | h | Hide the selected list, smart list or tag from the sidebar; on a hidden one, show it again |
 | H | Show / stop showing hidden lists, smart lists and tags (dimmed), like the app's Show Hidden Lists |
 | N | New list |
 | O, Ctrl+O | Import a file: asks for its path (`~` works; others are from where you started `reminders`), then the list, filled in with the list showing, else a new one named after the calendar or the file. A name is looked for in the selected source first, then in any (`source/name` picks one); a new list goes in the selected source. One undo step |
 | u / r | Undo / redo |
+| Ctrl+L | Redraw the screen |
 | ? | Help (scrolls with ↑↓ when the terminal is short; any other key closes it) |
 | q | Quit |
 
@@ -247,6 +248,7 @@ On the selected reminder:
 | m | Move to another list (type the start of its name) |
 | J / K, Ctrl+↓ / Ctrl+↑ | Move down / up (in a list) |
 | ] / [ | Indent / outdent (in a list) |
+| +, Shift+→ / Shift+← | Show / hide its subtasks; folded, it shows `▸ N` (in a list; on a subtask, its parent's) |
 | Delete | Delete (asks first; undo with u) |
 
 **Several reminders at once.** Mark them, then use the keys above:
@@ -293,7 +295,8 @@ When you edit a title in place, fields you type into it (`#tag`,
 | Ctrl+K | Go to |
 | Ctrl+F | Search |
 | Ctrl+H | Show / hide completed |
-| Ctrl+E | Show / hide subtasks |
+| Ctrl+E | Edit every field (the app's Details) |
+| Ctrl+D | Flag / unflag |
 | Ctrl+B | Show / hide the sidebar |
 | F2 | Edit the title in place |
 | F1 | Help |
@@ -306,10 +309,10 @@ When you edit a title in place, fields you type into it (`#tag`,
 Some GUI shortcuts can't reach a terminal app, so their letter keys above stand
 in for them:
 
-- **Ctrl+Shift+letter** arrives as plain Ctrl+letter. So Ctrl+Shift+N, F, T,
-  H and Z are `N`, `f`, `T`, `H` and `r` (Ctrl+E toggles, as in the app).
-- **Ctrl+I** is the same as Tab, which switches panes, so editing every field
-  is `e`.
+- **Ctrl+L** redraws the screen, as in other terminal programs; Tab does
+  what it does in the app (switch between the sidebar and the reminders).
+- **Ctrl+Shift+letter** arrives as plain Ctrl+letter. So Ctrl+Shift+N, T, H
+  and Z are `N`, `T`, `H` and `r`.
 - **Ctrl+]** and **Ctrl+[** (indent / outdent) are `]` and `[`: Ctrl+[ is the
   same as Esc.
 - **Ctrl+1–9 and Ctrl+0** usually arrive as plain digits, so sidebar entries

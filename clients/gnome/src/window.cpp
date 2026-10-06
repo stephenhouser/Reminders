@@ -363,6 +363,7 @@ void Window::build() {
 	g_menu_append(s1, "_Export…", "win.export");
 	g_menu_append(s1, "S_ources…", "win.sources");
 	auto* sync_item = g_menu_item_new("S_ync All", "win.sync-all");
+	g_menu_item_set_attribute(sync_item, "accel", "s", "<Control><Shift>s");
 	g_menu_item_set_attribute(
 		sync_item, "hidden-when", "s",
 		"action-disabled");	 // no CalDAV, WebDAV or git sources
@@ -567,6 +568,22 @@ void Window::build() {
 			return TRUE;
 		});
 	gtk_widget_add_controller(window_, paste_keys);
+	// Ctrl+S syncs this source, also as the key bubbles up: a title or
+	// dialog being edited takes it first, as Save.
+	auto* sync_keys = gtk_event_controller_key_new();
+	connect<gboolean(GtkEventControllerKey*, guint, guint, GdkModifierType)>(
+		sync_keys, "key-pressed",
+		[this](GtkEventControllerKey*, guint key, guint,
+			   GdkModifierType mods) -> gboolean {
+			auto mask = mods & gtk_accelerator_get_default_mod_mask();
+			if (mask != GDK_CONTROL_MASK ||
+				gdk_keyval_to_lower(key) != GDK_KEY_s) {
+				return FALSE;
+			}
+			g_action_activate(G_ACTION(sync_one_action_), nullptr);
+			return TRUE;
+		});
+	gtk_widget_add_controller(window_, sync_keys);
 	auto* sidebar_scroller = gtk_scrolled_window_new();
 	gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(sidebar_scroller),
 								   GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
@@ -615,6 +632,8 @@ void Window::build() {
 	auto* list_menu = g_menu_new();
 	auto* m1 = menu_section(list_menu);
 	g_menu_append(m1, "_Show Completed", "win.show-completed");
+	g_menu_append(m1, "Show _All Subtasks", "win.show-all-subtasks");
+	g_menu_append(m1, "_Hide All Subtasks", "win.hide-all-subtasks");
 	auto* m2 = menu_section(list_menu);
 	g_menu_append(m2, "Add _Section…", "win.add-section");
 	g_menu_append(m2, "List _Info…", "win.list-info");
@@ -754,6 +773,47 @@ void Window::build() {
 									   toasts_);
 }
 
+// Ctrl+S: the source of the focused sidebar row, else of the list shown.
+// What spans sources (smart lists, tags, search) syncs them all.
+void Window::sync_current() {
+	if (!sync_ || !store_) {
+		return;
+	}
+	std::optional<std::string> source;
+	auto list_source = [](const View& v) -> std::optional<std::string> {
+		if (v.kind != View::List) {
+			return std::nullopt;
+		}
+		return v.name.substr(0, v.name.find('/'));
+	};
+	auto* focus = gtk_root_get_focus(GTK_ROOT(window_));
+	auto* row = focus && gtk_widget_is_ancestor(focus, sidebar_list_)
+				  ? gtk_widget_get_ancestor(focus, GTK_TYPE_LIST_BOX_ROW)
+				  : nullptr;
+	if (row && row_view(GTK_LIST_BOX_ROW(row))) {
+		source = list_source(*row_view(GTK_LIST_BOX_ROW(row)));
+	} else if (auto g = row ? row_group(GTK_LIST_BOX_ROW(row)) : std::nullopt;
+			   g && g->kind == rem::SidebarGroup::Lists) {
+		source = g->source;
+	} else if (!row) {
+		source = list_source(view_);
+	}
+	if (!source) {
+		sync_->sync_now();
+		return;
+	}
+	for (auto& s : store_->sources()) {
+		if (s.config.name == *source) {
+			if (rem::syncs(s.config)) {
+				sync_->sync_now(*source);
+			} else {
+				toast("“" + *source + "” isn’t synced by Reminders");
+			}
+			return;
+		}
+	}
+}
+
 void Window::add_actions() {
 	add_action(window_, "change-folder", [this] { choose_folder(); });
 	add_action(window_, "add-source", [this] { add_source(); });
@@ -769,6 +829,8 @@ void Window::add_actions() {
 		}
 	});
 	g_simple_action_set_enabled(sync_action_, FALSE);
+	sync_one_action_ = add_action(window_, "sync", [this] { sync_current(); });
+	g_simple_action_set_enabled(sync_one_action_, FALSE);
 	add_action(window_, "settings", [this] { open_settings(); });
 	add_action(window_, "go-to", [this] {
 		if (store_) {
@@ -780,20 +842,41 @@ void Window::add_actions() {
 		adw_overlay_split_view_set_show_sidebar(
 			split, !adw_overlay_split_view_get_show_sidebar(split));
 	});
-	// Ctrl+E: hide every reminder's subtasks, or show them all if any are
-	// hidden.
-	add_action(window_, "toggle-subtasks", [this] {
+	// Ctrl+L: from the sidebar to the reminders, or from anywhere else to
+	// the sidebar's selected entry (showing the sidebar if it's hidden).
+	add_action(window_, "switch-focus", [this] {
 		if (!store_) {
 			return;
 		}
-		if (!collapsed_.empty()) {
-			collapsed_.clear();
+		auto* focus = gtk_root_get_focus(GTK_ROOT(window_));
+		auto* split = ADW_OVERLAY_SPLIT_VIEW(split_);
+		if (focus && gtk_widget_is_ancestor(focus, sidebar_list_) &&
+			adw_overlay_split_view_get_show_sidebar(split)) {
+			show_content();
+			focus_content();
+			return;
+		}
+		adw_overlay_split_view_set_show_sidebar(split, TRUE);
+		auto* row = gtk_list_box_get_selected_row(GTK_LIST_BOX(sidebar_list_));
+		if (row) {
+			gtk_widget_grab_focus(GTK_WIDGET(row));
 		} else {
-			for (auto* l : store_->lists()) {
-				for (auto* r : l->doc.reminders()) {
-					if (!r->subtasks.empty()) {
-						collapsed_.insert(r->id);
-					}
+			gtk_widget_child_focus(sidebar_list_, GTK_DIR_TAB_FORWARD);
+		}
+	});
+	// The list menu's Show / Hide All Subtasks.
+	add_action(window_, "show-all-subtasks", [this] {
+		collapsed_.clear();
+		rebuild_content();
+	});
+	add_action(window_, "hide-all-subtasks", [this] {
+		if (!store_) {
+			return;
+		}
+		for (auto* l : store_->lists()) {
+			for (auto* r : l->doc.reminders()) {
+				if (!r->subtasks.empty()) {
+					collapsed_.insert(r->id);
 				}
 			}
 		}

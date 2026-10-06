@@ -266,6 +266,7 @@ void Window::start_sync() {
 	}
 	sync_ = std::make_unique<rem::SyncRunner>(*store_);
 	g_simple_action_set_enabled(sync_action_, sync_->active());
+	g_simple_action_set_enabled(sync_one_action_, sync_->active());
 	if (!sync_->active()) {
 		return;
 	}

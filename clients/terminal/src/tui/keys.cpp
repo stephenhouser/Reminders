@@ -134,6 +134,10 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
 			return step_sidebar(1), true;
 		} else if (ctrl_page_up_ && static_cast<int>(key) == ctrl_page_up_) {
 			return step_sidebar(-1), true;
+		} else if (key == KEY_SRIGHT) {
+			key = kShowSubtasks, fn = false;
+		} else if (key == KEY_SLEFT) {
+			key = kHideSubtasks, fn = false;
 		} else if (key == KEY_F(1)) {
 			key = '?', fn = false;
 		} else if (key == KEY_F(2)) {
@@ -160,12 +164,13 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
 			case 23:
 				key = 'q';
 				break;	// Ctrl+Q, Ctrl+W: quit
-			case 5:		// Ctrl+E: show/hide subtasks
-				hide_subtasks_ = !hide_subtasks_;
-				message_ =
-					hide_subtasks_ ? "Subtasks hidden" : "Subtasks shown";
-				return true;
-			case 2:	 // Ctrl+B: show/hide sidebar
+			case 5:
+				key = 'e';
+				break;	// Ctrl+E: edit (the app's Details)
+			case 4:
+				key = 'f';
+				break;	// Ctrl+D: flag
+			case 2:		// Ctrl+B: show/hide sidebar
 				hide_sidebar_ = !hide_sidebar_;
 				if (hide_sidebar_) {
 					focus_items_ = true;
@@ -180,11 +185,14 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
 			case 15:
 				key = 'O';
 				break;	// Ctrl+O: import
+			case 12:	// Ctrl+L: redraw the whole screen, as terminal apps do
+				clearok(curscr, TRUE);
+				return true;
 		}
 	}
 
 	// Tab switches between the sidebar and the reminders. (A terminal sends
-	// Ctrl+I as Tab, so Ctrl+I can't also edit, as it does in the GNOME app.)
+	// Ctrl+I as Tab.)
 	if (!fn && key == '\t') {
 		focus_items_ = !focus_items_;
 		return true;
@@ -220,8 +228,27 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
 				show_completed_ = !show_completed_;
 				return true;
 			case 's':
-				{  // sync the selected source now (Sync Now in the app)
-					auto name = selected_source();
+				{  // sync the selected source now (Ctrl+S in the app): the
+				   // selected sidebar entry's, else the list showing's; a
+				   // smart list, tag or search syncs every source
+					std::optional<std::string> source;
+					auto entries = sidebar();
+					if (!focus_items_ && side_sel_ >= 0 &&
+						side_sel_ < static_cast<int>(entries.size())) {
+						auto& g =
+							entries[static_cast<std::size_t>(side_sel_)].group;
+						if (g.kind == rem::SidebarGroup::Lists) {
+							source = g.source;
+						}
+					} else if (auto* l = view_.kind == View::List
+										   ? store_.list(view_.name)
+										   : nullptr) {
+						source = store_.source_of(*l)->config.name;
+					}
+					if (!source) {
+						return handle_key('S', false);
+					}
+					auto name = *source;
 					const rem::SourceConfig* config = nullptr;
 					for (auto& src : store_.sources()) {
 						if (src.config.name == name) {
@@ -618,6 +645,33 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
 				}
 			});
 			break;
+		case '+':  // fold / unfold
+		case kShowSubtasks:
+		case kHideSubtasks:
+			{
+				if (!in_list) {
+					break;
+				}
+				// On a subtask, its parent's (as in the app).
+				auto target = !r.subtasks.empty() ? id
+							: ref->parent		  ? ref->parent->id
+												  : std::string();
+				if (target.empty()) {
+					break;
+				}
+				bool hide = key == '+' ? !collapsed_.contains(target)
+									   : key == kHideSubtasks;
+				if (hide && target != id && collapsed_.contains(target)) {
+					break;
+				}
+				if (hide) {
+					collapsed_.insert(target);
+					item_sel_ = target;	 // its subtasks are gone
+				} else {
+					collapsed_.erase(target);
+				}
+				break;
+			}
 		case kDelete:
 			if (confirm(std::format("Delete “{}”?", r.title))) {
 				move_selection(1);

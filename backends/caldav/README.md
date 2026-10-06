@@ -28,9 +28,9 @@ title=Fastmail
   reminders-caldav`, then use the line above; `pass show caldav` works too.
   Use an app-specific password where the server offers them.
 - **When it syncs:** when the app opens, every `interval=` minutes (default
-  15), and a couple of seconds after you change something. **☰ → Sync All** (Ctrl+R)
+  15), and a couple of seconds after you change something. **☰ → Sync All** (Ctrl+Shift+S)
   syncs every source straight away; **Sync Now** in the menu of the source's
-  sidebar heading (right-click it) syncs just that one. Offline changes wait in the local copy until the
+  sidebar heading (right-click it), or Ctrl+S in one of its lists, syncs just that one. Offline changes wait in the local copy until the
   next sync.
 - **The local copy** is in `$XDG_DATA_HOME/reminders/caldav/NAME/`
   (`~/.local/share/…` when `$XDG_DATA_HOME` isn't set; `folder=` moves it): one Markdown file per task list, like any other

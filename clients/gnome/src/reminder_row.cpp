@@ -457,9 +457,11 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
 	auto* keys = gtk_event_controller_key_new();
 	connect<gboolean(GtkEventControllerKey*, guint, guint, GdkModifierType)>(
 		keys, "key-pressed",
-		[this, id, title, check, in_list](GtkEventControllerKey*, guint keyval,
-										  guint,
-										  GdkModifierType mods) -> gboolean {
+		[this, id, title, check, in_list,
+		 parent = ref.parent ? ref.parent->id : std::string(),
+		 has_subtasks = !r.subtasks.empty()](GtkEventControllerKey*,
+											 guint keyval, guint,
+											 GdkModifierType mods) -> gboolean {
 			if (gtk_editable_label_get_editing(GTK_EDITABLE_LABEL(title))) {
 				return FALSE;
 			}
@@ -519,6 +521,16 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
 					   (key == GDK_KEY_Up || key == GDK_KEY_Down)) {
 				extend_selection(id, key == GDK_KEY_Up);
 				return TRUE;
+			} else if (mask == GDK_SHIFT_MASK && in_list &&
+					   (key == GDK_KEY_Right || key == GDK_KEY_Left)) {
+				// Shift+→ shows a reminder's subtasks, Shift+← hides them
+				// (on a subtask, its parent's), as GtkTreeView does.
+				bool show = key == GDK_KEY_Right;
+				auto target = has_subtasks ? id : show ? std::string() : parent;
+				if (target.empty() || collapsed_.contains(target) != show) {
+					return FALSE;
+				}
+				return later([this, target] { toggle_subtasks(target); });
 			} else if (mask == GDK_CONTROL_MASK && key >= GDK_KEY_0 &&
 					   key <= GDK_KEY_3) {
 				auto p = static_cast<rem::Priority>(key - GDK_KEY_0);
@@ -529,8 +541,11 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
 					case GDK_KEY_t:
 						return later(
 							[this, ids = targets(id)] { set_due(ids, 0); });
-					case GDK_KEY_i:
+					case GDK_KEY_e:
 						return later([this, id] { show_details(id); });
+					case GDK_KEY_d:
+						return later(
+							[this, ids = targets(id)] { toggle_flag(ids); });
 					case GDK_KEY_c:
 						copy_reminders(targets(id));
 						return TRUE;
@@ -558,14 +573,11 @@ GtkWidget* Window::build_reminder_row(const rem::Ref& ref, bool show_list) {
 						break;
 				}
 			} else if (mask == (GDK_CONTROL_MASK | GDK_SHIFT_MASK) &&
-					   key == GDK_KEY_f) {
-				return later([this, ids = targets(id)] { toggle_flag(ids); });
-			} else if (mask == (GDK_CONTROL_MASK | GDK_SHIFT_MASK) &&
 					   key == GDK_KEY_t) {
 				return later([this, ids = targets(id)] { set_due(ids, 1); });
 			} else if (mask == GDK_ALT_MASK &&
 					   (key == GDK_KEY_Return || key == GDK_KEY_KP_Enter)) {
-				// Alt+Return: the HIG's Properties, beside Ctrl+I.
+				// Alt+Return: the HIG's Properties, beside Ctrl+E.
 				return later([this, id] { show_details(id); });
 			}
 			return FALSE;
@@ -733,10 +745,10 @@ GMenuModel* Window::reminder_menu(const std::string& id, bool in_list) {
 	item(menu, all_done ? "Mark as Not _Completed" : "Mark as _Completed",
 		 "reminder.complete", "space");
 	if (!several) {
-		item(menu, "_Details…", "reminder.details", "<Control>i");
+		item(menu, "_Details…", "reminder.details", "<Control>e");
 	}
 	item(menu, all_flagged ? "_Unflag" : "_Flag", "reminder.flag",
-		 "<Control><Shift>f");
+		 "<Control>d");
 	auto* dates = menu_section(menu);
 	item(dates, "Due _Today", "reminder.due-today", "<Control>t");
 	item(dates, "Due To_morrow", "reminder.due-tomorrow", "<Control><Shift>t");

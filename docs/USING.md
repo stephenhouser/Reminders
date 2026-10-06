@@ -59,7 +59,7 @@ the shortcuts below set the same fields without any emoji.
 - **Title:** click it, or select the reminder and press Enter or F2. Enter,
   Ctrl+S or clicking anywhere else saves; Esc puts back the old title.
   Clearing the title deletes the reminder.
-- **Everything else:** double-click the reminder, the ✏ button (shown on hover), Ctrl+I, or **Details…**
+- **Everything else:** double-click the reminder, the ✏ button (shown on hover), Ctrl+E, or **Details…**
   in the ⋮ menu. The details dialog has the title, notes, URL, date, time,
   repeat, flag, priority, list, tags and subtasks. **Done** or Ctrl+S saves;
   **Cancel** or Esc discards.
@@ -94,7 +94,7 @@ Every view has a count under its name, of what it contains:
 | | |
 |---|---|
 | Due today / tomorrow | Ctrl+T / Ctrl+Shift+T (keeps any time already set) |
-| Flag / unflag | Ctrl+Shift+F, or click the flag at the right of the row (it shows when you point at an unflagged reminder) |
+| Flag / unflag | Ctrl+D, or click the flag at the right of the row (it shows when you point at an unflagged reminder) |
 | Priority none / low / medium / high | Ctrl+0 / Ctrl+1 / Ctrl+2 / Ctrl+3 |
 
 Overdue dates show in red. Priority shows as `!`, `!!` or `!!!` before the title.
@@ -106,8 +106,9 @@ Subtasks are one level deep, as in Apple Reminders.
 - **Make a reminder a subtask** of the one above: Ctrl+], or **⋮ → Indent**.
 - **Make it top-level again:** Ctrl+[, or **⋮ → Outdent**.
 - **Add subtasks** from the details dialog, under *Subtasks*.
-- **Collapse or expand** with the ⌄/› button. Ctrl+E hides every reminder's
-  subtasks, and pressing it again shows them all.
+- **Collapse or expand** with the ⌄/› button, or Shift+← / Shift+→ on the
+  reminder (Shift+← on a subtask collapses its parent). The list's ⋮ menu
+  has **Show All Subtasks** and **Hide All Subtasks**.
 
 ### Moving and reordering
 
@@ -204,7 +205,7 @@ Select several reminders to change them all at once:
 Selected rows are tinted, and with two or more the header says how many
 ("4 Selected"). The
 usual keys and the **⋮** or right-click menu of a selected reminder then act
-on all of them: Space, Ctrl+Shift+F, Ctrl+T / Ctrl+Shift+T, Ctrl+0 … Ctrl+3,
+on all of them: Space, Ctrl+D, Ctrl+T / Ctrl+Shift+T, Ctrl+0 … Ctrl+3,
 Ctrl+X, Ctrl+C, Delete, and in the menu **Mark as Completed** (or Not Completed)
 and **Move To**. Dragging a selected reminder
 drags them all; they land together, in their order. Each change is one step
@@ -361,9 +362,10 @@ Press Ctrl+? in the app for this list.
 | Space | Complete / not complete |
 | Enter, F2 | Edit title |
 | Ctrl+S / Esc | Save / cancel while editing |
-| Ctrl+I, Alt+Enter | Details |
+| Ctrl+E, Alt+Enter | Details |
 | Menu, Shift+F10 | The reminder's ⋮ menu |
-| Ctrl+Shift+F | Flag / unflag |
+| Ctrl+D | Flag / unflag |
+| Shift+→ / Shift+← | Show / hide its subtasks (on a subtask, Shift+← hides its parent's) |
 | Ctrl+T / Ctrl+Shift+T | Due today / tomorrow |
 | Ctrl+0 … Ctrl+3 | Priority none / low / medium / high |
 | Ctrl+] / Ctrl+[ | Indent / outdent |
@@ -395,7 +397,6 @@ Press Ctrl+? in the app for this list.
 | Ctrl+Shift+N | New list |
 | Ctrl+H | Show / hide completed |
 | Ctrl+Shift+H | Show / hide hidden lists, smart lists and tags |
-| Ctrl+E | Show / hide all subtasks |
 
 **General**
 
@@ -404,8 +405,10 @@ Press Ctrl+? in the app for this list.
 | Ctrl+Z / Ctrl+Shift+Z | Undo / redo |
 | Ctrl+F | Search |
 | Ctrl+B, F9 | Show / hide sidebar |
+| Ctrl+L | Switch between the sidebar and the reminders |
 | F10 | Main menu |
-| Ctrl+R | Sync all (with sources that sync) |
+| Ctrl+S | Sync this source: the focused sidebar heading or list's, else the list shown's (a smart list, tag or search syncs them all); while editing, Ctrl+S saves instead |
+| Ctrl+Shift+S | Sync all (with sources that sync) |
 | Ctrl+O | Import… |
 | Ctrl+, | Settings |
 | Ctrl+? | Keyboard shortcuts |
@@ -682,7 +685,8 @@ folder as `~/…`, so the file works on another computer with a different home.
   first. The app won't erase the filesystem's root, your home folder, or a
   folder holding it.
 - **Right-click a source's group heading** for **New List…** in that source,
-  **Sync Now** (CalDAV, WebDAV and git sources) and its **Source Info…**.
+  **Sync Now** (CalDAV, WebDAV and git sources; Ctrl+S with the heading
+  focused) and its **Source Info…**.
 - **`reminders folder PATH`** (and the first-run Choose Folder…) sets the
   default source's folder, creating the source if there's none.
 - **`default-source=`** in `[general]` is the default source; without it,

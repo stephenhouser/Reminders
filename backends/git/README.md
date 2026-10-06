@@ -41,8 +41,9 @@ title=Notes
   one, set up a key or a credential helper first.
 - **When it syncs:** when the app opens, every `interval=` minutes (default
   15), and a couple of seconds after you change something; **☰ → Sync
-  All** (Ctrl+R) syncs every source straight away, and **Sync Now** in the menu of
-  the source's sidebar heading (right-click it) just this one. Each sync commits the lists that changed, as
+  All** (Ctrl+Shift+S) syncs every source straight away, and **Sync Now** in the menu of
+  the source's sidebar heading (right-click it), or Ctrl+S in one of its
+  lists, just this one. Each sync commits the lists that changed, as
   "Reminders (this computer): Groceries, Home", then pulls and pushes.
 - **Changes on both sides** of a list are merged by Reminders, reminder by
   reminder, field by field, as for [Syncthing conflicts](../syncthing/README.md), not line by line

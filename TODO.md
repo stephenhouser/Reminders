@@ -9,7 +9,7 @@
 
 ## To reconsider (GNOME keys vs the HIG)
 
-- Keys with other HIG meanings: Ctrl+H, Ctrl+B, Ctrl+I, Ctrl+E, Ctrl+Shift+F.
+- Keys with other HIG meanings: Ctrl+H, Ctrl+B, Ctrl+D, Ctrl+E, Ctrl+L.
 - Access keys: none in dialog fields; ⋮ menu clashes on c, d, m; Cut has none.
 - Keyboard Shortcuts dialog: General section should come first.
 

@@ -49,9 +49,9 @@ void show_shortcuts(GtkApplication* app) {
 			 {"Edit Title", "Return"},
 			 {"Save While Editing", "<Control>s"},
 			 {"Cancel Editing", "Escape"},
-			 {"Details", "<Control>i <Alt>Return"},
+			 {"Details", "<Control>e <Alt>Return"},
 			 {"Menu", "Menu <Shift>F10"},
-			 {"Flag / Unflag", "<Control><Shift>f"},
+			 {"Flag / Unflag", "<Control>d"},
 			 {"Due Today", "<Control>t"},
 			 {"Due Tomorrow", "<Control><Shift>t"},
 			 {"Priority: None, Low, Medium, High",
@@ -90,13 +90,15 @@ void show_shortcuts(GtkApplication* app) {
 			 {"New List", "<Control><Shift>n"},
 			 {"Show / Hide Completed", "<Control>h"},
 			 {"Show / Hide Hidden Lists", "<Control><Shift>h"},
-			 {"Show / Hide All Subtasks", "<Control>e"}});
+			 {"Show / Hide Subtasks", "<Shift>Right <Shift>Left"}});
 	section("General", {{"Undo", "<Control>z"},
 						{"Redo", "<Control><Shift>z"},
 						{"Search", "<Control>f"},
 						{"Show / Hide Sidebar", "<Control>b F9"},
+						{"Switch Between Sidebar and Reminders", "<Control>l"},
 						{"Main Menu", "F10"},
-						{"Sync All", "<Control>r"},
+						{"Sync This Source", "<Control>s"},
+						{"Sync All", "<Control><Shift>s"},
 						{"Import…", "<Control>o"},
 						{"Settings", "<Control>comma"},
 						{"Keyboard Shortcuts", "<Control>question"},
@@ -259,14 +261,15 @@ int main(int argc, char** argv) {
 		accel("win.show-completed", "<Control>h");
 		accel("win.show-hidden", "<Control><Shift>h");
 		accel("win.toggle-sidebar", "<Control>b", "F9");
-		accel("win.toggle-subtasks", "<Control>e");
+		accel("win.switch-focus", "<Control>l");
 		accel("win.go-to", "<Control>k");
 		accel("win.next-view", "<Control>Page_Down");
 		accel("win.previous-view", "<Control>Page_Up");
 		accel("win.undo", "<Control>z");
 		accel("win.redo", "<Control><Shift>z");
-		// The HIG's Reload, Preferences and Open.
-		accel("win.sync-all", "<Control>r");
+		// The HIG's Preferences and Open. Ctrl+S (Sync) is the window's,
+		// after a title or dialog being edited has had it as Save.
+		accel("win.sync-all", "<Control><Shift>s");
 		accel("win.settings", "<Control>comma");
 		accel("win.import", "<Control>o");
 	});
