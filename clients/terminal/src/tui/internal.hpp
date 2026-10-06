@@ -135,8 +135,9 @@ class Tui {
 		rem::Selection marked_;
 		int item_scroll_ = 0;
 		std::string message_;
-		std::map<std::string, std::pair<fs::file_time_type, std::uintmax_t>>
-			seen_;	// folder signature
+		std::optional<std::map<std::string,
+							   std::pair<fs::file_time_type, std::uintmax_t>>>
+			seen_;	// folder signature; none until the first look
 
 		std::vector<SidebarEntry> sidebar();  // every row, headings included
 		std::vector<SidebarEntry>

@@ -59,7 +59,10 @@ void Tui::check_folder() {
 	if (now == seen_) {
 		return;
 	}
-	bool first = seen_.empty();
+	// The first look only records what's there. (Not "nothing seen yet": a
+	// folder that starts empty, as before a git source's first clone, would
+	// then never be reloaded.)
+	bool first = !seen_;
 	seen_ = std::move(now);
 	if (first) {
 		return;
