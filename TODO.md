@@ -6,11 +6,6 @@
   smart lists in the sidebar.
 - TUI: export, matching the GNOME app's Export… (lists, formats); `:export` covers it for now.
 
-## To reconsider (GNOME keys vs the HIG)
-
-- Keys with other HIG meanings: Ctrl+H, Ctrl+B, Ctrl+D, Ctrl+E, Ctrl+L.
-- Access keys: none in dialog fields; ⋮ menu clashes on c, d, m; Cut has none.
-
 ## Known gaps
 
 - CalDAV and WebDAV untested against real servers (only the fake one).
