@@ -115,40 +115,19 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
 	// The GNOME app's shortcuts, as far as a terminal can send them; they map
 	// onto the TUI's own keys below. (Ctrl+Shift+letter arrives as
 	// Ctrl+letter, Ctrl+I as Tab and Ctrl+[ as Esc, so those keep their
-	// letter keys.)
+	// letter keys; Ctrl+, arrives as a comma. Ctrl+0…3 can't all be told
+	// apart, so priority is 0…3 alone.) Like the app, no Alt keys.
 	if (alt) {
-		if (!fn && key >= '0' && key <= '3') {	// Alt+0…3: priority
-			if (focus_items_ && !marked_.empty()) {
-				act_on_marked(key);
-			} else if (ref) {
-				undoable("Priority", [&] {
-					rem::set_priority(store_, {id},
-									  static_cast<rem::Priority>(key - '0'));
-				});
-			}
-			return true;
-		}
-		if (fn && key == KEY_UP) {
-			key = 'K', fn = false;	// Alt+↑ (sent as Esc, ↑)
-		} else if (fn && key == KEY_DOWN) {
-			key = 'J', fn = false;	// Alt+↓
-		} else if (fn && key == KEY_SR) {
-			key = kGroupUp, fn = false;	 // Alt+Shift+↑ (Esc, Shift+↑)
-		} else if (fn && key == KEY_SF) {
-			key = kGroupDown, fn = false;  // Alt+Shift+↓
-		} else {
-			return true;
-		}
-		// In the sidebar they move the selected group; J / K below.
+		return true;
 	} else if (fn) {
-		if (alt_up_ && static_cast<int>(key) == alt_up_) {
+		if (ctrl_up_ && static_cast<int>(key) == ctrl_up_) {
 			key = 'K', fn = false;
-		} else if (alt_down_ && static_cast<int>(key) == alt_down_) {
+		} else if (ctrl_down_ && static_cast<int>(key) == ctrl_down_) {
 			key = 'J', fn = false;
-		} else if (alt_shift_up_ && static_cast<int>(key) == alt_shift_up_) {
+		} else if (ctrl_shift_up_ && static_cast<int>(key) == ctrl_shift_up_) {
 			key = kGroupUp, fn = false;
-		} else if (alt_shift_down_ &&
-				   static_cast<int>(key) == alt_shift_down_) {
+		} else if (ctrl_shift_down_ &&
+				   static_cast<int>(key) == ctrl_shift_down_) {
 			key = kGroupDown, fn = false;
 		} else if (ctrl_page_down_ &&
 				   static_cast<int>(key) == ctrl_page_down_) {
@@ -198,9 +177,9 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
 					// It just won't be remembered.
 				}
 				return true;
-			case 19:  // Ctrl+S: edit settings.ini
-				edit_settings();
-				return true;
+			case 15:
+				key = 'O';
+				break;	// Ctrl+O: import
 		}
 	}
 
@@ -328,8 +307,11 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
 					}
 				}
 				return true;
-			case 'I':
+			case 'O':
 				import_file();
+				return true;
+			case ',':  // and Ctrl+, (sent as a comma), as in the app
+				edit_settings();
 				return true;
 			case 'N':
 				// Into the source whose group is selected, else the default
@@ -399,8 +381,8 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
 			toggle_fold(entries[static_cast<std::size_t>(side_sel_)].group);
 			return true;
 		}
-		// Alt+↑/↓ (J / K) move the selected entry within its group (on a
-		// heading, the group); Alt+Shift+↑/↓ move its group. As in the app.
+		// Ctrl+↑/↓ (J / K) move the selected entry within its group (on a
+		// heading, the group); Ctrl+Shift+↑/↓ move its group. As in the app.
 		if (!fn && (key == 'J' || key == 'K')) {
 			if (heading == SidebarEntry::Item) {
 				move_entry(key == 'K' ? -1 : 1);

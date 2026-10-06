@@ -200,8 +200,8 @@ for scripts.
 Run `reminders` with no command. The sidebar (smart lists, your lists, tags)
 is on the left, and the selected view on the right. When a group is set to
 `collapsible`, move onto its heading and press Enter or Space to fold or
-unfold it. Alt+↑ / Alt+↓ (or `K` / `J`) move the selected entry within its group, and
-Alt+Shift+↑ / Alt+Shift+↓ move the group, as in the app. Which groups show, and in what order,
+unfold it. Ctrl+↑ / Ctrl+↓ (or `K` / `J`) move the selected entry within its group, and
+Ctrl+Shift+↑ / Ctrl+Shift+↓ move the group, as in the app. Which groups show, and in what order,
 follow the same settings as the app (see
 [the settings file](USING.md#the-settings-file)). It opens on the last list
 you had open, here or in the GNOME app, with its reminders selected, so ↑ / ↓
@@ -218,15 +218,15 @@ within a second.
 | g | Go to a list or tag by typing part of its name |
 | / | Search |
 | c | Show / hide completed |
-| J / K, Alt+↓ / Alt+↑ | In the sidebar: move the selected smart list, list or tag down / up in its group (on a heading: the group) |
-| Alt+Shift+↓ / Alt+Shift+↑ | In the sidebar: move the selected entry's group down / up |
+| J / K, Ctrl+↓ / Ctrl+↑ | In the sidebar: move the selected smart list, list or tag down / up in its group (on a heading: the group) |
+| Ctrl+Shift+↓ / Ctrl+Shift+↑ | In the sidebar: move the selected entry's group down / up |
 | s | Sync the selected source now: the selected list's, else the list showing's, else the default source (CalDAV, WebDAV and git sources; like Sync Now in the app) |
 | S | Sync every source now (like ☰ → Sync All in the app) |
-| Ctrl+S | Edit the settings file in your editor (applied when you quit it) |
+| `,`, Ctrl+, | Edit the settings file in your editor (applied when you quit it) |
 | h | Hide the selected list, smart list or tag from the sidebar; on a hidden one, show it again |
 | H | Show / stop showing hidden lists, smart lists and tags (dimmed), like the app's Show Hidden Lists |
 | N | New list |
-| I | Import a file: asks for its path (`~` works; others are from where you started `reminders`), then the list, filled in with the list showing, else a new one named after the calendar or the file. A name is looked for in the selected source first, then in any (`source/name` picks one); a new list goes in the selected source. One undo step |
+| O, Ctrl+O | Import a file: asks for its path (`~` works; others are from where you started `reminders`), then the list, filled in with the list showing, else a new one named after the calendar or the file. A name is looked for in the selected source first, then in any (`source/name` picks one); a new list goes in the selected source. One undo step |
 | u / r | Undo / redo |
 | ? | Help (scrolls with ↑↓ when the terminal is short; any other key closes it) |
 | q | Quit |
@@ -245,7 +245,7 @@ On the selected reminder:
 | 0 1 2 3 | Priority none / low / medium / high |
 | # | Add a tag (`-tag` removes it) |
 | m | Move to another list (type the start of its name) |
-| J / K | Move down / up (in a list) |
+| J / K, Ctrl+↓ / Ctrl+↑ | Move down / up (in a list) |
 | ] / [ | Indent / outdent (in a list) |
 | Delete | Delete (asks first; undo with u) |
 
@@ -258,8 +258,8 @@ On the selected reminder:
 | Esc | Unmark them all |
 
 Marked reminders have a `*` in the margin, and the title line says how many
-("3 marked"). While any are marked, x / Space, f, t / T, d, 0–3 (and
-Alt+0–3), #, m and Delete act on all of them, each as one undo step (u).
+("3 marked"). While any are marked, x / Space, f, t / T, d, 0–3, #,
+m and Delete act on all of them, each as one undo step (u).
 Completing and flagging set them all alike: all done (or all not done, when
 they all already were); likewise flagged. A marked reminder's subtasks go
 with it when moving or deleting. The other keys (Enter, e, J / K, ] / [)
@@ -297,8 +297,9 @@ When you edit a title in place, fields you type into it (`#tag`,
 | Ctrl+B | Show / hide the sidebar |
 | F2 | Edit the title in place |
 | F1 | Help |
-| Alt+0 … Alt+3 | Priority none / low / medium / high |
-| Alt+↑ / Alt+↓ | Move up / down |
+| Ctrl+↑ / Ctrl+↓ | Move up / down; in the sidebar, the entry (Ctrl+Shift: its group) |
+| Ctrl+, | Edit the settings file |
+| Ctrl+O | Import a file |
 | Ctrl+Page Up / Down | Previous / next sidebar entry |
 | Ctrl+Q, Ctrl+W | Quit |
 
@@ -312,7 +313,9 @@ in for them:
 - **Ctrl+]** and **Ctrl+[** (indent / outdent) are `]` and `[`: Ctrl+[ is the
   same as Esc.
 - **Ctrl+1–9 and Ctrl+0** usually arrive as plain digits, so sidebar entries
-  are `1`–`9` and `0`.
+  are `1`–`9` and `0`. For the same reason the app's priority keys,
+  Ctrl+0–3, are `0`–`3` here (Ctrl+2 and Ctrl+3 arrive as NUL and Esc).
+- **Ctrl+,** arrives as a plain comma, which is why `,` edits the settings.
 - **Ctrl+Z** still suspends the program, as in any terminal app (`fg` brings it
   back). Undo is `u`.
 
@@ -363,8 +366,8 @@ subtasks:
 ## Showing the number keys
 
 Add `show-key-numbers=true` to `$XDG_CONFIG_HOME/reminders/settings.ini` to label the
-first ten sidebar entries with their key: `(1)Today` … `(0)…` in the TUI, and
-`Ctrl+1` … `Ctrl+0` after the names in the GNOME app. See [the settings file](USING.md#the-settings-file).
+first ten sidebar entries with their key: `(1)Today` … `(0)…` (the GNOME app has
+no number keys, so it ignores the setting). See [the settings file](USING.md#the-settings-file).
 
 For a single run, `reminders --show-key-numbers` or
 `reminders --hide-key-numbers` overrides the setting without changing it.

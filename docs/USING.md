@@ -269,8 +269,8 @@ Then:
   to bring back an export as a second set.
 - **Undo** (Ctrl+Z) takes the whole import back.
 
-In a terminal: `reminders import FILE [--list LIST] [--format F]`, or `I` in
-the interactive interface (see [TERMINAL.md](TERMINAL.md)).
+In a terminal: `reminders import FILE [--list LIST] [--format F]`, or `O`
+(Ctrl+O) in the interactive interface (see [TERMINAL.md](TERMINAL.md)).
 
 ## Exporting lists
 
@@ -477,7 +477,7 @@ the local copy).
 client. Most of it is filled in for you; `show-key-numbers` (terminal only) is only set here.
 In the app, **main menu → Settings…** (Ctrl+,) opens it in your default text editor
 (creating it if needed), and changes apply as soon as you save. In the
-terminal client, `Ctrl+S` opens it in your editor and applies the changes when you
+terminal client, `,` (Ctrl+,) opens it in your editor and applies the changes when you
 quit the editor.
 [settings.example.ini](settings.example.ini) lists every setting with its
 default, ready to copy. Settings go under the `[general]` line, except
@@ -557,8 +557,8 @@ the file:
   unless it's collapsible, so move it by dragging another group above it
   (or with the keys). The same menu's **Collapsible** item
   switches the group between `visible` and `collapsible`.
-- **In the terminal client:** select a sidebar entry and press Alt+Shift+↑ /
-  Alt+Shift+↓ (or `K` / `J` on the group's heading).
+- **In the terminal client:** select a sidebar entry and press Ctrl+Shift+↑ /
+  Ctrl+Shift+↓ (or `K` / `J` on the group's heading).
 
 Right-clicking (or long-pressing) one of your lists in the sidebar shows the
 same menu as **⋮** in the header, for that list, without opening it: Show
@@ -603,12 +603,13 @@ entry goes.
   `show-hidden`.
 - **The terminal client** follows the same settings.
 
-**Reordering entries.** The app uses Ctrl, the terminal client Alt:
+**Reordering entries.** The same keys work in the app and the terminal
+client:
 
 | Keys | Moves |
 |---|---|
-| Ctrl+↑ / Ctrl+↓ (terminal: Alt+↑ / Alt+↓) | The selected smart list, list or tag, within its group (in the terminal, also `K` / `J`); on a group's heading, the group |
-| Ctrl+Shift+↑ / Ctrl+Shift+↓ (terminal: Alt+Shift+↑ / Alt+Shift+↓) | Its whole group |
+| Ctrl+↑ / Ctrl+↓ | The selected smart list, list or tag, within its group (in the terminal, also `K` / `J`); on a group's heading, the group |
+| Ctrl+Shift+↑ / Ctrl+Shift+↓ | Its whole group |
 
 In the app, an entry's right-click menu has **Move Up** / **Move Down** too,
 and a heading's moves its group.

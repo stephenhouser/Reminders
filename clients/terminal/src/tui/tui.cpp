@@ -76,7 +76,8 @@ int Tui::run() {
 	initscr();
 	cbreak();
 	// Ctrl+S / Ctrl+Q are XOFF / XON (pause / resume output) in a terminal;
-	// turn that off so Ctrl+S reaches the app. ncurses restores it on exit.
+	// turn that off so they reach the app (Ctrl+S saves while editing). ncurses
+	// restores it on exit.
 	termios tio{};
 	if (tcgetattr(STDIN_FILENO, &tio) == 0) {
 		tio.c_iflag &= ~static_cast<tcflag_t>(IXON);
@@ -88,7 +89,8 @@ int Tui::run() {
 	curs_set(0);
 	timeout(1000);	// wake up every second to look for changes
 	// Modified keys that terminals send as escape sequences ncurses knows by
-	// these capability names (kUP3 = Alt+↑, kNXT5 = Ctrl+Page Down, …).
+	// these capability names (kUP5 = Ctrl+↑, kUP6 = Ctrl+Shift+↑, kNXT5 =
+	// Ctrl+Page Down, …).
 	auto code = [](const char* cap) {
 		const char* seq = tigetstr(cap);
 		if (!seq || seq == reinterpret_cast<const char*>(-1)) {
@@ -97,10 +99,10 @@ int Tui::run() {
 		int c = key_defined(seq);
 		return c > 0 ? c : 0;
 	};
-	alt_up_ = code("kUP3");
-	alt_down_ = code("kDN3");
-	alt_shift_up_ = code("kUP4");
-	alt_shift_down_ = code("kDN4");
+	ctrl_up_ = code("kUP5");
+	ctrl_down_ = code("kDN5");
+	ctrl_shift_up_ = code("kUP6");
+	ctrl_shift_down_ = code("kDN6");
 	ctrl_page_down_ = code("kNXT5");
 	ctrl_page_up_ = code("kPRV5");
 	setup_colors();

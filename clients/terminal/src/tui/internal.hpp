@@ -53,7 +53,7 @@ enum Pair : short {
 
 using View = rem::View;	 // what the interface shows (reminders/view.hpp)
 
-// Alt+Shift+↑ / ↓ (move the sidebar group), as internal keys outside the
+// Ctrl+Shift+↑ / ↓ (move the sidebar group), as internal keys outside the
 // range of characters.
 constexpr wint_t kGroupUp = 0x110010, kGroupDown = 0x110011;
 
@@ -123,8 +123,8 @@ class Tui {
 		rem::Sidebar sidebar_{store_};	// the sidebar's layout (settings.ini)
 		// Extended key codes for the GUI's modified keys, 0 if the terminal
 		// lacks them.
-		int alt_up_ = 0, alt_down_ = 0, alt_shift_up_ = 0, alt_shift_down_ = 0,
-			ctrl_page_down_ = 0, ctrl_page_up_ = 0;
+		int ctrl_up_ = 0, ctrl_down_ = 0, ctrl_shift_up_ = 0,
+			ctrl_shift_down_ = 0, ctrl_page_down_ = 0, ctrl_page_up_ = 0;
 		int side_sel_ = 0;
 		std::string item_sel_;	// selected reminder id
 		// Marked reminders (v, * marks all, Esc clears): while any are marked,

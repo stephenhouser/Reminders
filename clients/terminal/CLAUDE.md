@@ -21,7 +21,8 @@ User guide: `docs/TERMINAL.md`.
 - **A TUI key:** `handle_key` in `keys.cpp`, the entries in `help.cpp`, the key
   table in `docs/TERMINAL.md`. If it should also work on marked reminders,
   `act_on_marked` in `marks.cpp`. Check for a collision first — `s` / `S` sync,
-  Ctrl+S is settings, `e` edits; `i` used to edit and is now unbound.
+  `,` is settings, `O` imports, `e` edits; `i` and `I` are unbound. No Alt
+  keys, as in the GNOME app.
 - **Anything the GNOME app also does:** match its rules rather than inventing
   new ones — complete and flag act on all alike, move and delete take the
   outermost reminders, every multi-reminder change goes through `batch()` so
@@ -37,8 +38,8 @@ User guide: `docs/TERMINAL.md`.
 - **Alt+key arrives as Esc then the key.** `set_escdelay(25)` and a
   non-blocking second `get_wch` tell the two apart; a bare Esc is one with
   nothing after it.
-- **Modified arrows aren't keypad codes.** Alt+↑ etc. are looked up by
-  terminfo capability (`kUP3`, `kDN3`, `kNXT5`, …) through
+- **Modified arrows aren't keypad codes.** Ctrl+↑ etc. are looked up by
+  terminfo capability (`kUP5`, `kDN6`, `kNXT5`, …) through
   `tigetstr` + `key_defined`, so they depend on `TERM` being right.
 - `timeout(1000)` makes the loop wake every second to poll sync and the folder,
   even with no key pressed.
@@ -52,9 +53,9 @@ tmux -L reminders-test -f /dev/null new-session -d -x 90 -y 24 \
   "env HOME=<scratch>/home XDG_CONFIG_HOME= build/bin/reminders --folder <dir>; sleep 3"
 ```
 
-- **Leave `TERM` alone.** Under `screen-256color` the `kUP3` family isn't
-  defined, so Alt+arrows silently do nothing.
-- `send-keys -l` for literal text (otherwise "Home" is the Home key); `M-Up`
-  for Alt keys; `capture-pane -p` to read the screen.
+- **Leave `TERM` alone.** Under `screen-256color` the `kUP5` family isn't
+  defined, so Ctrl+arrows silently do nothing (`tmux-256color` has them).
+- `send-keys -l` for literal text (otherwise "Home" is the Home key); `C-Up`,
+  `C-S-Up` for modified keys; `capture-pane -p` to read the screen.
 - The CLI needs no terminal — test it straight from the shell, with
   `--json` for output that's easy to check.
