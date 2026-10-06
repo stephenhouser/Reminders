@@ -233,8 +233,8 @@ std::string json_escape(std::string_view s);
 std::string list_label(const rem::ListFile& l);
 std::string json_reminder(const rem::Ref& ref);
 void print_json(std::ostream& out, const std::vector<rem::Ref>& refs);
-void print_reminder(std::ostream& out, const rem::Ref& ref, const Style& st, int indent,
-					bool show_list, rem::Date today);
+void print_reminder(std::ostream& out, const rem::Ref& ref, const Style& st,
+					int indent, bool show_list, rem::Date today);
 void print_heading(std::ostream& out, int level, const std::string& text,
 				   std::optional<term::Rgb> color, const Style& st);
 Args parse_args(std::span<const std::string> in);

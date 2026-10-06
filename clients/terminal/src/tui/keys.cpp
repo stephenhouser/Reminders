@@ -105,6 +105,61 @@ void Tui::import_file() {
 	}
 }
 
+// Sync one source now (by name), or say why it can't be.
+void Tui::sync_source(const std::string& name) {
+	const rem::SourceConfig* config = nullptr;
+	for (auto& src : store_.sources()) {
+		if (src.config.name == name) {
+			config = &src.config;
+		}
+	}
+	if (!config) {
+		message_ = std::format("No source called “{}”", name);
+		return;
+	}
+	auto title = rem::source_title(*config);
+	if (!sync_ || !rem::syncs(*config)) {
+		message_ = std::format("“{}” isn't synced by the app", title);
+		return;
+	}
+	sync_->sync_now(name);
+	sync_asked_ = std::chrono::system_clock::now();
+	message_ = std::format("Syncing “{}”…", title);
+}
+
+void Tui::sync_all() {
+	if (!sync_ || !sync_->active()) {
+		message_ = "No sources the app syncs";
+		return;
+	}
+	sync_->sync_now();
+	sync_asked_ = std::chrono::system_clock::now();
+	message_ = "Syncing all sources…";
+}
+
+// The sidebar entry `q` names, folded groups' too: one called that, else
+// one starting with it, else one containing it ("#" optional for tags).
+std::optional<View> Tui::find_view(const std::string& q) {
+	std::optional<View> best;
+	int best_score = 3;
+	auto s = term::lower(q);
+	for (auto& v : sidebar_.all(true)) {
+		auto e = entry_for(v);
+		auto t = term::lower(e.title);
+		if (t.starts_with('#') && !s.starts_with('#')) {
+			t.erase(0, 1);
+		}
+		int score = t == s						   ? -1
+				  : t.starts_with(s)			   ? 0
+				  : t.find(s) != std::string::npos ? 1
+												   : 3;
+		if (score < best_score) {
+			best_score = score, best = e.view;
+		}
+	}
+	return best;
+}
+
 bool Tui::handle_key(wint_t key, bool fn, bool alt) {
 	message_.clear();
 	auto today = rem::local_today();
@@ -221,6 +276,8 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
 			case '?':
 				show_help();
 				return true;
+			case ':':
+				return command_line();
 			case 'h':
 				toggle_hidden();
 				return true;
@@ -254,35 +311,11 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
 					if (!source) {
 						return handle_key('S', false);
 					}
-					auto name = *source;
-					const rem::SourceConfig* config = nullptr;
-					for (auto& src : store_.sources()) {
-						if (src.config.name == name) {
-							config = &src.config;
-						}
-					}
-					if (!config) {
-						return true;
-					}
-					auto title = rem::source_title(*config);
-					if (!sync_ || !rem::syncs(*config)) {
-						message_ =
-							std::format("“{}” isn't synced by the app", title);
-						return true;
-					}
-					sync_->sync_now(name);
-					sync_asked_ = std::chrono::system_clock::now();
-					message_ = std::format("Syncing “{}”…", title);
+					sync_source(*source);
 					return true;
 				}
 			case 'S':  // sync every source now (Sync All in the app)
-				if (!sync_ || !sync_->active()) {
-					message_ = "No sources the app syncs";
-					return true;
-				}
-				sync_->sync_now();
-				sync_asked_ = std::chrono::system_clock::now();
-				message_ = "Syncing all sources…";
+				sync_all();
 				return true;
 			case 'H':
 				toggle_show_hidden();
@@ -313,28 +346,8 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
 				return true;
 			case 'g':
 				if (auto q = prompt("Go to:"); q && !q->empty()) {
-					// Best match: a name starting with it, else containing it.
-					std::optional<View> best;
-					int best_score = 3;
-					std::vector<SidebarEntry>
-						findable;  // folded groups' entries too
-					for (auto& v : sidebar_.all(true)) {
-						findable.push_back(entry_for(v));
-					}
-					for (auto& e : findable) {
-						auto t = term::lower(e.title), s = term::lower(*q);
-						if (t.starts_with('#') && !s.starts_with('#')) {
-							t.erase(0, 1);
-						}
-						int score = t.starts_with(s)			   ? 0
-								  : t.find(s) != std::string::npos ? 1
-																   : 3;
-						if (score < best_score) {
-							best_score = score, best = e.view;
-						}
-					}
-					if (best) {
-						select_view(*best);
+					if (auto v = find_view(*q)) {
+						select_view(*v);
 					} else {
 						message_ = std::format("Nothing called “{}”", *q);
 					}

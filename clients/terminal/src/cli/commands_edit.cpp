@@ -125,8 +125,8 @@ int App::cmd_move(const Args& a) {
 }
 
 int App::cmd_delete(const Args& a) {
-	auto refs = targets(join(a.positional), a,
-						"delete needs the name of a reminder");
+	auto refs =
+		targets(join(a.positional), a, "delete needs the name of a reminder");
 	std::vector<std::string> ids;
 	for (auto& r : refs) {
 		ids.push_back(r.reminder->id);
@@ -136,7 +136,8 @@ int App::cmd_delete(const Args& a) {
 		if (hooks_.confirm) {
 			auto question =
 				ids.size() == 1
-					? std::format("Delete “{}”?", store_.find(ids[0])->reminder->title)
+					? std::format("Delete “{}”?",
+								  store_.find(ids[0])->reminder->title)
 					: std::format("Delete {} reminders?", ids.size());
 			if (!hooks_.confirm(question)) {
 				return 1;
@@ -192,8 +193,7 @@ int App::cmd_new_list(const Args& a) {
 	store_.create_list(source, name, color, icon);
 	if (!g_.json) {
 		out_ << "Created " << name
-			 << (store_.sources().size() > 1 ? " in " + source : "")
-			 << "\n";
+			 << (store_.sources().size() > 1 ? " in " + source : "") << "\n";
 	}
 	return 0;
 }

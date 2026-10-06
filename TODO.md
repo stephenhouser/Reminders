@@ -4,8 +4,9 @@
 
 - Query language, SQL-like, for the CLI (`reminders query "…"`) and for saved
   smart lists in the sidebar.
-- TUI: export, matching the GNOME app's Export… (lists, formats).
-- TUI: tab completion for filenames on import/export?
+- TUI: export, matching the GNOME app's Export… (lists, formats); `:export` covers it for now.
+- TUI: `:` — a pick list when a NAME matches several reminders (today an error).
+- TUI: Tab completion for the `O` import prompt (`:` has it).
 
 ## To reconsider (GNOME keys vs the HIG)
 

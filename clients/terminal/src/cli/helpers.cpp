@@ -7,9 +7,9 @@ const std::vector<std::string> kFlags = {
 
 // Options that take a value; anything else starting with "--" is a flag.
 const std::vector<std::string> kValued = {
-	"title", "list", "section", "parent", "due", "time", "priority",
-	"tag", "untag", "repeat", "notes", "url", "color", "icon",
-	"in", "to", "source", "format", "output"};
+	"title", "list",  "section", "parent", "due",	"time",	 "priority",
+	"tag",	 "untag", "repeat",	 "notes",  "url",	"color", "icon",
+	"in",	 "to",	  "source",	 "format", "output"};
 
 // The open library, for showing list names: a list's name, or "source/name"
 // when another source has a list of that name (see Library::label).
@@ -132,8 +132,8 @@ void print_json(std::ostream& out, const std::vector<rem::Ref>& refs) {
 
 // One reminder as it looks in its file: "- [ ] Milk #errands 📅 2026-10-03".
 // Notes follow on indented lines.
-void print_reminder(std::ostream& out, const rem::Ref& ref, const Style& st, int indent,
-					bool show_list, rem::Date today) {
+void print_reminder(std::ostream& out, const rem::Ref& ref, const Style& st,
+					int indent, bool show_list, rem::Date today) {
 	auto& r = *ref.reminder;
 	auto md = term::markdown_line(r);
 	std::string line(static_cast<std::size_t>(indent), ' ');
@@ -154,8 +154,7 @@ void print_reminder(std::ostream& out, const rem::Ref& ref, const Style& st, int
 	for (std::size_t s = 0; !r.notes.empty();) {
 		auto nl = r.notes.find('\n', s);
 		out << std::string(static_cast<std::size_t>(indent) + 2, ' ')
-			<< st.dim() << r.notes.substr(s, nl - s) << st.reset()
-			<< "\n";
+			<< st.dim() << r.notes.substr(s, nl - s) << st.reset() << "\n";
 		if (nl == std::string::npos) {
 			break;
 		}
@@ -167,8 +166,8 @@ void print_reminder(std::ostream& out, const rem::Ref& ref, const Style& st, int
 void print_heading(std::ostream& out, int level, const std::string& text,
 				   std::optional<term::Rgb> color, const Style& st) {
 	out << st.bold() << (color ? st.fg(*color) : "")
-		<< std::string(static_cast<std::size_t>(level), '#') << " "
-		<< text << st.reset() << "\n";
+		<< std::string(static_cast<std::size_t>(level), '#') << " " << text
+		<< st.reset() << "\n";
 }
 
 Args parse_args(std::span<const std::string> in) {

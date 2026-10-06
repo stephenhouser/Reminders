@@ -29,12 +29,24 @@ namespace tui {
 
 // Edits one line of text in `width` cells at (y, x), with a cursor: ←/→,
 // Home/End (Ctrl+A/E), Backspace/Delete, Ctrl+U clears, Ctrl+K cuts to the
-// end. Enter accepts, Esc cancels (nullopt).
+// end. Enter accepts, Esc cancels (nullopt). With `hooks`, Up / Down step
+// through earlier lines and Tab completes the word before the cursor.
 std::optional<std::string> Tui::edit_line(int y, int x, int width,
 										  const std::string& initial,
-										  attr_t attr) {
+										  attr_t attr, const LineHooks* hooks) {
 	auto text = widen(initial);
 	std::size_t cur = text.size();
+	auto* history = hooks ? hooks->history : nullptr;
+	std::size_t back = 0;  // how far back in the history; 0: the line typed
+	std::wstring typed;	   // the line typed, while looking back
+	auto recall = [&](std::size_t to) {
+		if (back == 0) {
+			typed = text;
+		}
+		back = to;
+		text = back == 0 ? typed : widen((*history)[history->size() - back]);
+		cur = text.size();
+	};
 	curs_set(1);
 	std::optional<std::string> result;
 	while (true) {
@@ -68,6 +80,16 @@ std::optional<std::string> Tui::edit_line(int y, int x, int width,
 		}
 		if (kind == KEY_CODE_YES) {
 			switch (ch) {
+				case KEY_UP:
+					if (history && back < history->size()) {
+						recall(back + 1);
+					}
+					break;
+				case KEY_DOWN:
+					if (history && back > 0) {
+						recall(back - 1);
+					}
+					break;
 				case KEY_LEFT:
 					if (cur > 0) {
 						--cur;
@@ -110,6 +132,10 @@ std::optional<std::string> Tui::edit_line(int y, int x, int width,
 			result = narrow(text);
 			break;
 		}
+		if (ch == '\t' && hooks && hooks->complete) {
+			complete_word(text, cur, *hooks, y);
+			continue;
+		}
 		switch (ch) {
 			case 127:
 			case 8:
@@ -137,6 +163,56 @@ std::optional<std::string> Tui::edit_line(int y, int x, int width,
 	}
 	curs_set(0);
 	return result;
+}
+
+// Tab on a line with `hooks`: one candidate replaces the word before the
+// cursor (quoted if need be, then a space unless it's a folder); several
+// extend it as far as they agree and are listed on the row above.
+void Tui::complete_word(std::wstring& text, std::size_t& cur,
+						const LineHooks& hooks, int y) {
+	auto before = narrow(text.substr(0, cur));
+	std::size_t begin = before.size();
+	auto found = hooks.complete(before, begin);
+	if (found.empty()) {
+		beep();
+		return;
+	}
+	auto common = found.front();
+	for (auto& f : found) {
+		auto n = std::ranges::mismatch(common, f).in1 - common.begin();
+		common.resize(static_cast<std::size_t>(n));
+	}
+	auto typed = rem::split_words(before.substr(begin), true);
+	auto word = typed.empty() ? std::string() : typed.front().text;
+	if (found.size() == 1) {
+		common = found.front();
+	} else if (common.size() < word.size()) {
+		common = word;	// they differ only in case from what's typed
+	}
+	auto with = rem::quote_word(common);
+	if (found.size() > 1 || common.ends_with('/')) {
+		// Not finished: leave the closing quote off, to type on.
+		if (with.ends_with('"') && with.size() > 1 && with != "\"\"") {
+			with.pop_back();
+		} else if (with == "\"\"") {
+			with.clear();
+		}
+	} else {
+		with += ' ';
+	}
+	auto head = widen(before.substr(0, begin) + with);
+	text = head + text.substr(cur);
+	cur = head.size();
+	if (found.size() > 1 && y > 0) {
+		std::string all;
+		for (auto& f : found) {
+			all += (all.empty() ? " " : "  ") + f;
+		}
+		attron(A_DIM);
+		mvhline(y - 1, 0, ' ', COLS);
+		put(y - 1, 0, all, COLS);
+		attroff(A_DIM);
+	}
 }
 
 std::optional<std::string> Tui::prompt(const std::string& label,

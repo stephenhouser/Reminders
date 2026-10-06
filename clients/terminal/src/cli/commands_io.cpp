@@ -109,8 +109,7 @@ int App::cmd_export(const Args& a) {
 					 << "\n";
 			} else {
 				out_ << std::format("Exported {} {} to {}\n", n,
-									n == 1 ? "list" : "lists",
-									folder.string());
+									n == 1 ? "list" : "lists", folder.string());
 			}
 			return 0;
 		}

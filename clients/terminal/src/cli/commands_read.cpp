@@ -25,8 +25,8 @@ int App::cmd_lists() {
 	bool several = store_.sources().size() > 1;
 	for (auto& source : store_.sources()) {
 		if (several) {
-			print_heading(out_, 1, rem::source_title(source.config), std::nullopt,
-						  st_);
+			print_heading(out_, 1, rem::source_title(source.config),
+						  std::nullopt, st_);
 		}
 		for (auto* l : store_.lists(source.config.name)) {
 			int open = 0;
@@ -112,8 +112,8 @@ int App::cmd_list(const Args& a) {
 		for (auto& section : l.doc.sections()) {
 			if (section.name) {
 				out_ << "\n";
-				print_heading(out_, 2, *section.name, term::color_rgb(l.color()),
-							  st_);
+				print_heading(out_, 2, *section.name,
+							  term::color_rgb(l.color()), st_);
 			}
 			for (auto* r : section.reminders) {
 				if (r->done && !with_done) {
@@ -168,12 +168,12 @@ int App::cmd_list(const Args& a) {
 		}
 		if (g != group) {
 			out_ << "\n";
-			print_heading(out_,
-						  2, g,
-						  by_date || flat
-							  ? std::nullopt
-							  : std::optional{term::color_rgb(ref.list->color())},
-						  st_);
+			print_heading(
+				out_, 2, g,
+				by_date || flat
+					? std::nullopt
+					: std::optional{term::color_rgb(ref.list->color())},
+				st_);
 			group = g;
 		}
 		print_reminder(out_, ref, st_, 0, by_date || flat, today_);
@@ -182,9 +182,9 @@ int App::cmd_list(const Args& a) {
 }
 
 int App::cmd_show(const Args& a) {
-	auto ref = targets(join(a.positional), a,
-					   "show needs the name of a reminder")
-				   .front();
+	auto ref =
+		targets(join(a.positional), a, "show needs the name of a reminder")
+			.front();
 	if (g_.json) {
 		out_ << json_reminder(ref) << "\n";
 		return 0;
@@ -192,8 +192,8 @@ int App::cmd_show(const Args& a) {
 	auto& r = *ref.reminder;
 	auto row = [&](const char* label, const std::string& value) {
 		if (!value.empty()) {
-			out_ << st_.dim() << std::format("{:<10}", label)
-				 << st_.reset() << value << "\n";
+			out_ << st_.dim() << std::format("{:<10}", label) << st_.reset()
+				 << value << "\n";
 		}
 	};
 	print_reminder(out_, ref, st_, 0, false, today_);

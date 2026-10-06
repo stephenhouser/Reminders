@@ -27,10 +27,7 @@
 
 namespace tui {
 
-// The keys, one per line, in a box as wide as the text, centred, from 1
-// row below the top of the screen to 2 above the bottom. When the text is
-// taller than the box it scrolls: Up / Down, j / k, Page Up / Down, Space;
-// any other key closes it.
+// The keys, one per line, in a box (show_text).
 void Tui::show_help() {
 	// {key, description}; a heading has no description, a blank line neither.
 	struct Entry {
@@ -46,6 +43,7 @@ void Tui::show_help() {
 		{"1-9, 0", "go to sidebar entry 1-10"},
 		{"Ctrl+PgUp / PgDn", "previous / next sidebar entry"},
 		{"g, Ctrl+K", "go to a list by name"},
+		{":", "type a command (:help lists them, tab completes)"},
 		{"/, Ctrl+F", "search (esc, or tab back to the sidebar, ends it)"},
 		{"enter", "on a collapsible group's heading: fold / unfold"},
 		{"J / K, Ctrl+Up / Down", "in the sidebar: move the entry down / up"},
@@ -109,6 +107,15 @@ void Tui::show_help() {
 			lines.push_back(key + e.text);
 		}
 	}
+	show_text("Reminders: keys", lines);
+}
+
+// `lines` in a box as wide as them (as far as the screen allows), centred,
+// from 1 row below the top of the screen to 2 above the bottom. When they're
+// taller than the box they scroll: Up / Down, j / k, Page Up / Down, Space;
+// any other key closes it.
+void Tui::show_text(const std::string& title,
+					const std::vector<std::string>& lines) {
 	std::vector<const char*> text;
 	for (auto& l : lines) {
 		text.push_back(l.c_str());
@@ -149,7 +156,8 @@ void Tui::show_help() {
 		}
 		box_set(win, WACS_VLINE, WACS_HLINE);
 		wattron(win, A_BOLD);
-		mvwaddstr(win, 0, 2, " Reminders: keys ");
+		mvwaddnwstr(win, 0, 2, widen(" " + title + " ").c_str(),
+					std::max(0, w - 4));
 		wattroff(win, A_BOLD);
 		auto hint =
 			last > 0

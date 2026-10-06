@@ -4,8 +4,12 @@ One binary, `reminders`: with a command it's the CLI, with none it's the
 ncurses TUI. No GTK dependency, so it runs over SSH and on headless machines.
 User guide: `docs/TERMINAL.md`.
 
-- `src/cli/` — the CLI: `App` with a `cmd_*` method per command, registered in
-  `kCommands` (`app.cpp`); usage text is `kUsage` (`internal.hpp`).
+- `src/cli/` — the CLI: `App` with a `cmd_*` method per command, dispatched
+  in `App::run` (`app.cpp`); usage text is `kUsage` (`internal.hpp`).
+- `src/commands.hpp` — the command table (`cmd::commands()`, in `app.cpp`):
+  names, usage, `edits`, where each runs, what its words complete to; and
+  `cmd::run`, which the TUI's `:` prompt (`tui/command.cpp`) calls on its open
+  library with `Hooks` for questions, `$EDITOR` and the selection.
 - `src/tui/` — the TUI: `tui.cpp` (setup, event loop), `keys.cpp`
   (`handle_key`), `help.cpp` (the `?` box), `marks.cpp` (`v` / `*` marks),
   `sidebar.cpp`, `items.cpp`, `editing.cpp`.
@@ -14,15 +18,20 @@ User guide: `docs/TERMINAL.md`.
 
 ## Adding things touches more than one place
 
-- **A CLI command:** `kCommands` in `app.cpp`, `kUsage`, `docs/TERMINAL.md` —
-  and, **if it changes any list, `kEdits` in `src/cli/main.cpp`**. That list
-  decides which commands push to CalDAV/WebDAV/git sources afterwards; a write
-  command missing from it saves locally and silently never syncs.
+- **A CLI command:** its entry in `cmd::commands()` and its branch in
+  `App::run` (both `app.cpp`), `kUsage`, `docs/TERMINAL.md`. **Set `edits`
+  if it changes any list:** that decides whether the CLI pushes to
+  CalDAV/WebDAV/git sources afterwards and whether `:` makes it an undo step.
+  Write to `out_`, never `std::cout`, and ask through `hooks_` (not stdin), or
+  it breaks under the TUI. The `:` prompt gets it for free.
+- **A `:` command only the TUI has:** an entry with `Where::Tui`, handled in
+  `Tui::run_command` (`tui/command.cpp`), and the `:` table in
+  `docs/TERMINAL.md`.
 - **A TUI key:** `handle_key` in `keys.cpp`, the entries in `help.cpp`, the key
   table in `docs/TERMINAL.md`. If it should also work on marked reminders,
   `act_on_marked` in `marks.cpp`. Check for a collision first — `s` / `S` sync,
-  `,` is settings, `O` imports, `e` edits; `i` and `I` are unbound. No Alt
-  keys, as in the GNOME app.
+  `,` is settings, `O` imports, `e` edits, `:` is the command line; `i` and
+  `I` are unbound. No Alt keys, as in the GNOME app.
 - **Anything the GNOME app also does:** match its rules rather than inventing
   new ones — complete and flag act on all alike, move and delete take the
   outermost reminders, every multi-reminder change goes through `batch()` so

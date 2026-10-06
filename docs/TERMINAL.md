@@ -216,6 +216,7 @@ within a second.
 | Enter | Open the selected sidebar entry |
 | 1–9, 0 | Jump to sidebar entry 1–10 (Today, Scheduled, All, All Reminders, Flagged, Completed, your lists); `0` is the 10th |
 | g | Go to a list or tag by typing part of its name |
+| : | Type a command (see [Commands at the `:` prompt](#commands-at-the--prompt)) |
 | / | Search; Esc, or Tab / ← back to the sidebar, ends it and shows the sidebar entry selected before |
 | c | Show / hide completed |
 | J / K, Ctrl+↓ / Ctrl+↑ | In the sidebar: move the selected smart list, list or tag down / up in its group (on a heading: the group) |
@@ -270,7 +271,7 @@ does completing them when completed reminders are hidden. The same as
 selecting several in the GNOME app, with v instead of Ctrl+click.
 
 **Editing text**, whether a title in place or a prompt at the bottom (add,
-search, go to, due date):
+search, go to, due date, `:`):
 
 | Key | Action |
 |---|---|
@@ -321,6 +322,45 @@ in for them:
 - **Ctrl+,** arrives as a plain comma, which is why `,` edits the settings.
 - **Ctrl+Z** still suspends the program, as in any terminal app (`fg` brings it
   back). Undo is `u`.
+
+### Commands at the `:` prompt
+
+As in vi, `:` opens a command line at the bottom of the screen. It takes the
+same commands as `reminders` in a shell, with the same options, so
+`:import ~/Downloads/work.ics --list Work` does here what
+`reminders import ~/Downloads/work.ics --list Work` does there. Words are
+split as a shell would: quote a name with spaces (`"Big Plans"`) or put
+`\` before the space. `:help` lists the commands; `:help import` shows how to
+use one.
+
+- **A command given no NAME acts on the marked reminders, else the selected
+  one.** `:move Work`, `:done`, `:delete`, `:edit --due fri --flag`, `:show`.
+- **A command that changes lists is one undo step** (`u`, or `:undo`), and
+  the background sync sends the changes on, as for a key.
+- **What a command prints** goes in the status bar when it's one line, or a
+  box (any key closes it) when it's more, such as `:show` or `:lists`.
+- When a NAME matches several reminders, the box lists them: type more of
+  the title, or add `--in LIST`.
+- **Tab completes** the command, `--options`, file names (for `import`,
+  `-o`), list names, sources and the titles of open reminders. When several
+  fit, they're listed above the line. **↑ / ↓** go back through earlier
+  commands, kept in `$XDG_STATE_HOME/reminders/command-history`
+  (`~/.local/state/…` when `XDG_STATE_HOME` isn't set).
+- `Esc` cancels.
+
+Some commands work their own way here, and some are only here:
+
+| Command | Action |
+|---|---|
+| `:list VIEW`, `:ls`, `:go VIEW` | Show a list, smart list or tag (`-a` also shows completed reminders), as `g` does |
+| `:search TEXT` | Search, as `/` does |
+| `:sync [SOURCE]` | Sync now: with no SOURCE, as `s` does; `:sync all` as `S` does |
+| `:undo`, `:redo` | As `u` / `r` |
+| `:set` | Show the settings below. `:set NAME` turns one on, `:set noNAME` off, `:set NAME!` toggles it, `:set NAME=VALUE` sets it: `completed` (show completed), `sidebar`, `key-numbers`, `note-lines=N` (0: all). All but `completed` are saved in the settings file |
+| `:help [COMMAND]` | The commands, or how to use one |
+| `:q`, `:quit`, `:wq`, `:x` | Quit (everything is already saved) |
+
+`folder` and `tui` are for the shell only.
 
 ### Editing a reminder
 

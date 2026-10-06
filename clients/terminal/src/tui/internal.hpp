@@ -14,6 +14,7 @@
 #include <cwchar>
 #include <format>
 #include <fstream>
+#include <functional>
 #include <map>
 #include <optional>
 #include <set>
@@ -24,6 +25,7 @@
 #include "../text.hpp"
 #include "../tui.hpp"
 #include "reminders/actions.hpp"
+#include "reminders/command_line.hpp"
 #include "reminders/dates.hpp"
 #include "reminders/format.hpp"
 #include "reminders/history.hpp"
@@ -75,6 +77,17 @@ struct SidebarEntry {
 			rem::SidebarGroup::smart_lists();  // the group the row belongs to
 		bool hidden = false;  // hidden in settings.ini, showing because of
 							  // show-hidden (dimmed)
+};
+
+// What a line being edited can do besides edit: Up / Down through earlier
+// lines, Tab to complete. `complete` gets the text before the cursor and
+// returns the words that could be there, setting `begin` to where the word
+// being completed starts in it.
+struct LineHooks {
+		std::vector<std::string>* history = nullptr;  // oldest first
+		std::function<std::vector<std::string>(const std::string& before,
+											   std::size_t& begin)>
+			complete;
 };
 
 struct Line {
@@ -167,12 +180,30 @@ class Tui {
 										  const std::string& initial = "");
 		std::optional<std::string> edit_line(int y, int x, int width,
 											 const std::string& initial,
-											 attr_t attr);
+											 attr_t attr,
+											 const LineHooks* hooks = nullptr);
+		void complete_word(std::wstring& text, std::size_t& cur,
+						   const LineHooks& hooks, int y);
 		void edit_title_in_place(const std::string& id);
 		// Where the selected reminder's title is on screen (set while drawing).
 		int title_y_ = -1, title_x_ = 0, title_width_ = 0;
 		bool confirm(const std::string& question);
 		void show_help();
+		void show_text(const std::string& title,
+					   const std::vector<std::string>& lines);
+		// ":" — reads a command and runs it; false: it was quit.
+		bool command_line();
+		bool run_command(const std::string& line);
+		// Words that could come next on the ":" line (LineHooks::complete).
+		std::vector<std::string> complete_command(const std::string& before,
+												  std::size_t& begin);
+		// :set NAME, noNAME, NAME!, NAME=VALUE
+		void set_option(const std::string& word);
+		std::vector<std::string> command_history_;	// oldest first
+		bool history_read_ = false;
+		void sync_source(const std::string& name);
+		void sync_all();
+		std::optional<View> find_view(const std::string& q);
 		// Edits every field of a reminder in the user's editor.
 		void edit_in_editor(const std::string& id);
 		bool handle_key(wint_t key, bool is_function_key, bool alt = false);

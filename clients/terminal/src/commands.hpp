@@ -18,19 +18,10 @@ namespace cmd {
 // Where a command can be typed. The terminal interface runs some of the
 // shared ones its own way (list and search change the view; sync starts
 // the background sync).
-enum class Where { Both,
-				   Cli,
-				   Tui };
+enum class Where { Both, Cli, Tui };
 
 // What a command's words are, for completing them on the ":" prompt.
-enum class Arg { None,
-				 File,
-				 List,
-				 Source,
-				 View,
-				 Reminder,
-				 Command,
-				 Setting };
+enum class Arg { None, File, List, Source, View, Reminder, Command, Setting };
 
 struct Command {
 		std::vector<std::string_view> names;  // the first is its name
