@@ -43,6 +43,19 @@ void show_shortcuts(GtkApplication* app) {
 		}
 		adw_shortcuts_dialog_add(ADW_SHORTCUTS_DIALOG(dialog), s);
 	};
+	section("General", {{"Undo", "<Control>z"},
+						{"Redo", "<Control><Shift>z"},
+						{"Search", "<Control>f"},
+						{"Show / Hide Sidebar", "<Control>b F9"},
+						{"Switch Between Sidebar and Reminders", "<Control>l"},
+						{"Main Menu", "F10"},
+						{"Sync This Source", "<Control>s"},
+						{"Sync All", "<Control><Shift>s"},
+						{"Import…", "<Control>o"},
+						{"Settings", "<Control>comma"},
+						{"Keyboard Shortcuts", "<Control>question"},
+						{"Close Window", "<Control>w"},
+						{"Quit", "<Control>q"}});
 	section("Reminders",
 			{{"New Reminder", "<Control>n"},
 			 {"Complete / Not Complete", "space"},
@@ -91,19 +104,6 @@ void show_shortcuts(GtkApplication* app) {
 			 {"Show / Hide Completed", "<Control>h"},
 			 {"Show / Hide Hidden Lists", "<Control><Shift>h"},
 			 {"Show / Hide Subtasks", "<Shift>Right <Shift>Left"}});
-	section("General", {{"Undo", "<Control>z"},
-						{"Redo", "<Control><Shift>z"},
-						{"Search", "<Control>f"},
-						{"Show / Hide Sidebar", "<Control>b F9"},
-						{"Switch Between Sidebar and Reminders", "<Control>l"},
-						{"Main Menu", "F10"},
-						{"Sync This Source", "<Control>s"},
-						{"Sync All", "<Control><Shift>s"},
-						{"Import…", "<Control>o"},
-						{"Settings", "<Control>comma"},
-						{"Keyboard Shortcuts", "<Control>question"},
-						{"Close Window", "<Control>w"},
-						{"Quit", "<Control>q"}});
 	adw_dialog_present(ADW_DIALOG(dialog),
 					   GTK_WIDGET(gtk_application_get_active_window(app)));
 }
