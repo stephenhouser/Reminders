@@ -1,9 +1,8 @@
 # Reminders
 
-A to-do app modelled on Apple Reminders, whose data is a folder of plain
+A multi-platform reminder/to-do app, whose data is a folder of plain
 Markdown files. No account, no server, no database: every list is a `.md` file you can read and edit in any text editor. You can of course use one of
-several synchronization back-ends including Syncthing, CalDAV, WebDAV and git to connect
-your reminders with all your devices.
+several synchronization back-ends including Syncthing, CalDAV, WebDAV and git to connect your reminders with all your devices.
 
 The app can show several *sources* at once, for example a Syncthing folder
 shared with your phone beside a local folder that stays on this computer, or
