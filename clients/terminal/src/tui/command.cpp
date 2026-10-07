@@ -33,7 +33,7 @@ std::optional<bool> parse_bool(const std::string& v) {
 }
 
 const std::vector<std::string> kSettings = {"completed", "sidebar",
-											"key-numbers", "note-lines"};
+											"note-lines"};
 
 }  // namespace
 
@@ -426,14 +426,6 @@ void Tui::set_option(const std::string& word) {
 		}
 		if (message_.empty()) {
 			show(w, hide_sidebar_ ? "off" : "on");
-		}
-	} else if (w == "key-numbers") {
-		if (auto b = flag(show_key_numbers_)) {
-			show_key_numbers_ = *b, key_numbers_override_ = *b;
-			save("show-key-numbers", *b ? "true" : "false");
-		}
-		if (message_.empty()) {
-			show(w, show_key_numbers_ ? "on" : "off");
 		}
 	} else if (w == "note-lines") {
 		if (value && !ask) {

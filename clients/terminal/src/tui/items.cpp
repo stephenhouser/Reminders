@@ -309,10 +309,7 @@ void Tui::draw_status() {
 
 void Tui::draw() {
 	erase();
-	int extra = show_key_numbers_ ? 4 : 0;	// room for "(1) "
-	int side = hide_sidebar_
-				 ? 0
-				 : std::min(28 + extra, std::max(18 + extra, COLS / 4));
+	int side = hide_sidebar_ ? 0 : std::min(28, std::max(18, COLS / 4));
 	if (!hide_sidebar_) {
 		draw_sidebar(side, LINES);
 	}

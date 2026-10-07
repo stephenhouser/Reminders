@@ -13,10 +13,6 @@ int main(int argc, char** argv) {
 		if (s == "--json") {
 			return g.json = true;
 		}
-		if (s == "--show-key-numbers" || s == "--hide-key-numbers") {
-			g.key_numbers = s == "--show-key-numbers";
-			return true;
-		}
 		if (s == "--no-color") {
 			return !(g.color = false);
 		}
@@ -126,7 +122,7 @@ int main(int argc, char** argv) {
 					"the interactive interface needs a terminal; see reminders "
 					"--help for commands");
 			}
-			return run_tui(*library, own_folder, g.key_numbers);
+			return run_tui(*library, own_folder);
 		}
 		if (auto* c = cmd::find(cmd); c && c->where == cmd::Where::Tui) {
 			throw UsageError(std::format(

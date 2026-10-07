@@ -418,7 +418,7 @@ the local copy).
 ## The settings file
 
 `$XDG_CONFIG_HOME/reminders/settings.ini` (`~/.config/reminders/settings.ini`) is shared by the GNOME app and the terminal
-client. Most of it is filled in for you; `show-key-numbers` (terminal only) is only set here.
+client. Most of it is filled in for you.
 In the app, **main menu → Settings…** (Ctrl+,) opens it in your default text editor
 (creating it if needed), and changes apply as soon as you save. In the
 terminal client, `,` (Ctrl+,) opens it in your editor and applies the changes when you
@@ -435,8 +435,6 @@ default-source=personal
 view=list:Groceries
 # Whether the sidebar is shown (Ctrl+B in either app)
 show-sidebar=true
-# Terminal client: show each sidebar entry's jump key ((1) …)
-show-key-numbers=true
 # The order of the sidebar's groups
 sidebar-order=smart-lists, local-lists, tags
 # Which smart lists to show, in this order
@@ -466,11 +464,6 @@ tags-collapsed=false
 ```
 
 Comments go on their own lines, starting with `#`.
-
-`show-key-numbers` labels the terminal client's first ten sidebar entries with
-the key that jumps to them, as a prefix, e.g. `(1)Today`, for the keys `1`–`9`
-and `0`. The GNOME app has no such keys (the HIG gives Ctrl+number to other
-uses), so it ignores the setting. It accepts `true`, `yes` or `1`, and is off when missing.
 
 `row-buttons` sets when a reminder row's buttons (its flag, Details and ⋮)
 show in the GNOME app: `hover` (the default) while you point at the row or
@@ -528,9 +521,8 @@ in `collapsible` mode. `local-lists-display` applies to every source's group.
 
 - **`smart-lists`** chooses which smart lists appear and in what order, e.g.
   `smart-lists=today, flagged`.
-- **Numbering:** Ctrl+Page Up/Down, and the terminal client's number keys and
-  their labels, follow what's showing, in order. So hiding or folding the
-  smart lists makes your lists start at `1`.
+- **Ctrl+Page Up/Down** goes through what's showing, in order, skipping
+  hidden and folded groups.
 - **Go To (Ctrl+K)** still finds entries in folded groups, but not in hidden
   ones.
 
@@ -572,9 +564,6 @@ it a colour and icon, as for a list. They're saved in settings.ini
 (`tag-color.NAME`, `tag-icon.NAME`), so they're per computer.
 - **A hidden last list:** if the list you last had open is now hidden, the app
   opens on Today or the first entry showing.
-
-For one run, `reminders --show-key-numbers` or `--hide-key-numbers` on the
-terminal client's command line overrides it without changing the file.
 
 ### Sources
 

@@ -61,7 +61,6 @@ In the terminal interface, *marked* reminders; then x / Space, f, t / T, d,
 | GNOME | Terminal | CLI | Action |
 |---|---|---|---|
 | Ctrl+K | g, Ctrl+K | `list VIEW` | Go to a list, smart list or tag |
-| — | 1–9, 0 | `list VIEW` | Jump to sidebar entry 1–10 |
 | Enter (in the sidebar) | Enter | — | Open the sidebar entry |
 | Ctrl+Page Down / Ctrl+Page Up | Ctrl+Page Down / Ctrl+Page Up | — | Next / previous sidebar entry |
 | Ctrl+↑ / Ctrl+↓ (in the sidebar) | K / J, Ctrl+↑ / Ctrl+↓ | — | Move the sidebar entry up / down |

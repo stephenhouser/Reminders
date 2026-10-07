@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cctype>
-#include <format>
 
 #include "reminders/model.hpp"
 
@@ -37,18 +36,6 @@ std::string trimmed(std::string_view s) {
 	auto e = s.find_last_not_of(" \t");
 	return std::string(s.substr(b, e - b + 1));
 }
-
-}  // namespace
-
-std::string with_key_number(const std::string& title, std::size_t index,
-							bool show) {
-	if (!show || index >= 10) {
-		return title;
-	}
-	return std::format("({}) {}", (index + 1) % 10, title);
-}
-
-namespace {
 
 // "visible" (the default), "collapsible" (or "collapsable") or "hidden".
 GroupDisplay load_display(const std::string& key) {

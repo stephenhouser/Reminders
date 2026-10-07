@@ -116,8 +116,7 @@ void Tui::draw_sidebar(int width, int height) {
 	attron(A_BOLD);
 	put(0, 1, "Reminders", width - 2);
 	attroff(A_BOLD);
-	int y = 2;				 // a blank line under the title
-	std::size_t number = 0;	 // key numbers follow the lists that are showing
+	int y = 2;	// a blank line under the title
 	for (int i = 0; i < static_cast<int>(entries.size()) && y < height - 1;
 		 ++i, ++y) {
 		auto& e = entries[static_cast<std::size_t>(i)];
@@ -157,8 +156,7 @@ void Tui::draw_sidebar(int width, int height) {
 		if (colored) {
 			attron(list_color(e.color));
 		}
-		put(y, 1, rem::with_key_number(e.title, number++, show_key_numbers_),
-			width - 8);
+		put(y, 1, e.title, width - 8);
 		if (colored) {
 			attroff(list_color(e.color));
 		}
@@ -239,8 +237,6 @@ void Tui::move_entry(int delta) {
 }
 
 void Tui::load_layout() {
-	show_key_numbers_ = key_numbers_override_.value_or(
-		rem::load_bool_setting("show-key-numbers"));
 	note_lines_ = rem::load_note_lines();
 	sidebar_.reload();
 }

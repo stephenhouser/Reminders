@@ -79,10 +79,6 @@ Options:
   --json             Machine-readable output
   --no-color         No colours (also when NO_COLOR is set or not a terminal)
   --offline          Don't sync CalDAV, WebDAV or git sources
-  --show-key-numbers Label sidebar entries with their number key, e.g.
-                     "(1)Today" (interactive interface; overrides the
-                     show-key-numbers setting)
-  --hide-key-numbers Don't label them
   -h, --help         This help
   --version          Show the version
 )";
@@ -94,8 +90,6 @@ struct UsageError : std::runtime_error {
 struct Global {
 		std::optional<rem::fs::path> folder;
 		bool json = false;
-		std::optional<bool>
-			key_numbers;  // --show-key-numbers / --hide-key-numbers
 		bool color = false;
 		bool offline = false;  // --offline: no CalDAV or WebDAV syncing
 };

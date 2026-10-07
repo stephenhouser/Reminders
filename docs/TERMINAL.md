@@ -215,7 +215,6 @@ within a second.
 | ↑ ↓ / j k, Page Up/Down | Move |
 | Tab, ← → | Switch between the sidebar and the reminders (`l` also moves to the reminders) |
 | Enter | Open the selected sidebar entry |
-| 1–9, 0 | Jump to sidebar entry 1–10 (Today, Scheduled, All, All Reminders, Flagged, Completed, your lists); `0` is the 10th |
 | g | Go to a list or tag by typing part of its name |
 | : | Type a command (see [Commands at the `:` prompt](#commands-at-the--prompt)) |
 | / | Search; Esc, or Tab / ← back to the sidebar, ends it and shows the sidebar entry selected before |
@@ -321,9 +320,8 @@ in for them:
   and Z are `N`, `T`, `H` and `r`.
 - **Ctrl+]** and **Ctrl+[** (indent / outdent) are `]` and `[`: Ctrl+[ is the
   same as Esc.
-- **Ctrl+1–9 and Ctrl+0** usually arrive as plain digits, so sidebar entries
-  are `1`–`9` and `0`. For the same reason the app's priority keys,
-  Ctrl+0–3, are `0`–`3` here (Ctrl+2 and Ctrl+3 arrive as NUL and Esc).
+- **Ctrl+0–3** (priority) usually arrive as plain digits, so they're
+  `0`–`3` here (Ctrl+2 and Ctrl+3 arrive as NUL and Esc).
 - **Ctrl+,** arrives as a plain comma, which is why `,` edits the settings.
 - **Ctrl+Z** still suspends the program, as in any terminal app (`fg` brings it
   back). Undo is `u`.
@@ -364,7 +362,7 @@ Some commands work their own way here, and some are only here:
 | `:search TEXT` | Search, as `/` does |
 | `:sync [SOURCE]` | Sync now: with no SOURCE, as `s` does; `:sync all` as `S` does |
 | `:undo`, `:redo` | As `u` / `r` |
-| `:set` | Show the settings below. `:set NAME` turns one on, `:set noNAME` off, `:set NAME!` toggles it, `:set NAME=VALUE` sets it: `completed` (show completed), `sidebar`, `key-numbers`, `note-lines=N` (0: all). All but `completed` are saved in the settings file |
+| `:set` | Show the settings below. `:set NAME` turns one on, `:set noNAME` off, `:set NAME!` toggles it, `:set NAME=VALUE` sets it: `completed` (show completed), `sidebar`, `note-lines=N` (0: all). All but `completed` are saved in the settings file |
 | `:help [COMMAND]` | The commands, or how to use one |
 | `:q`, `:quit`, `:wq`, `:x` | Quit (everything is already saved) |
 
@@ -432,15 +430,6 @@ reminders and notes (the format is in [FORMAT.md](FORMAT.md)). Without LIST,
   the same thing, yours wins.
 - **The file must stay a list.** If the front matter loses `reminders: 1`,
   you're asked `Edit it again, or revert to how it was? [E/r]`, as above.
-
-## Showing the number keys
-
-Add `show-key-numbers=true` to `$XDG_CONFIG_HOME/reminders/settings.ini` to label the
-first ten sidebar entries with their key: `(1)Today` … `(0)…` (the GNOME app has
-no number keys, so it ignores the setting). See [the settings file](USING.md#the-settings-file).
-
-For a single run, `reminders --show-key-numbers` or
-`reminders --hide-key-numbers` overrides the setting without changing it.
 
 ## Running both clients at once
 

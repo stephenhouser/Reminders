@@ -457,8 +457,7 @@ std::span<const Command> commands() {
 		 .where = Where::Tui},
 		{.names = {"set"},
 		 .usage = "[NAME | noNAME | NAME! | NAME=VALUE]",
-		 .summary =
-			 "show or change completed, sidebar, key-numbers, note-lines",
+		 .summary = "show or change completed, sidebar, note-lines",
 		 .where = Where::Tui,
 		 .arg = Arg::Setting},
 		{.names = {"help", "h"},

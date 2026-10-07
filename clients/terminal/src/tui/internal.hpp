@@ -119,9 +119,6 @@ class Tui {
 		Tui(rem::Library& store, bool remember)
 			: store_(store), remember_(remember) {}
 		int run();
-		void set_show_key_numbers(bool on) {
-			show_key_numbers_ = on, key_numbers_override_ = on;
-		}
 
 	private:
 		rem::Library& store_;  // every source
@@ -145,10 +142,7 @@ class Tui {
 			collapsed_;	 // reminders whose subtasks are hidden
 		bool hide_sidebar_ = !rem::load_bool_setting(
 			"show-sidebar", true);	// Ctrl+B; shared with the app
-		bool show_key_numbers_ = rem::load_bool_setting("show-key-numbers");
 		std::size_t note_lines_ = rem::load_note_lines();  // note-lines
-		std::optional<bool>
-			key_numbers_override_;	// --show-key-numbers / --hide-key-numbers
 		rem::Sidebar sidebar_{store_};	// the sidebar's layout (settings.ini)
 		// Extended key codes for the GUI's modified keys, 0 if the terminal
 		// lacks them.

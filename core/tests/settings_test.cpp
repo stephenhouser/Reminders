@@ -26,9 +26,9 @@ TEST(settings_round_trip_keeps_other_lines) {
 		"# "
 		"mine\n[other]\nfolder=x\n[general]\nview=today\nfolder=/tmp/lists\n");
 	CHECK(device_name().find('-') != std::string::npos);
-	CHECK(!load_bool_setting("show-key-numbers"));
-	save_setting("show-key-numbers", "Yes");
-	CHECK(load_bool_setting("show-key-numbers"));
+	CHECK(!load_bool_setting("show-hidden"));
+	save_setting("show-hidden", "Yes");
+	CHECK(load_bool_setting("show-hidden"));
 	unsetenv("XDG_CONFIG_HOME");
 	fs::remove_all(dir);
 }

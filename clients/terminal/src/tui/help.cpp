@@ -40,7 +40,6 @@ void Tui::show_help() {
 		{"Page Up / Down", "move a page"},
 		{"tab", "switch between the sidebar and the reminders"},
 		{"Ctrl+L", "redraw the screen"},
-		{"1-9, 0", "go to sidebar entry 1-10"},
 		{"Ctrl+PgUp / PgDn", "previous / next sidebar entry"},
 		{"g, Ctrl+K", "go to a list by name"},
 		{":", "type a command (:help lists them, tab completes)"},

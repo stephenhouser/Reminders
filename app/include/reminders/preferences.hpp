@@ -11,12 +11,6 @@
 
 namespace rem {
 
-// With the "show-key-numbers" setting, the terminal client shows sidebar
-// entries 1–10 with the number key that jumps to them: "(1) Today" … "(0) …".
-// `index` is 0-based.
-std::string with_key_number(const std::string& title, std::size_t index,
-							bool show);
-
 // How a sidebar group appears: shown (with a plain heading, except the group
 // at the top, which has none), under a heading that folds the group, or not
 // at all.

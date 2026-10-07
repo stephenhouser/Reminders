@@ -41,7 +41,7 @@ class Sidebar {
 		std::vector<ListFile*> lists(const std::string& source);
 		std::vector<std::string> tags();
 		// Every entry, in sidebar order; `include_folded` adds those of
-		// folded groups (Go To finds them; the number keys skip them).
+		// folded groups (Go To finds them).
 		std::vector<View> all(bool include_folded = false);
 		// Where to land when there's nothing better: Today, unless it's
 		// hidden, else the first entry.

@@ -13,10 +13,6 @@ TEST(preferences_sidebar_and_order) {
 	setenv("XDG_CONFIG_HOME", dir.c_str(), 1);
 	fs::create_directories(dir / "reminders");
 	std::ofstream(dir / "reminders" / "settings.ini") << "[general]\n";
-	CHECK_EQ(with_key_number("Today", 0, true), "(1) Today");
-	CHECK_EQ(with_key_number("Tenth", 9, true), "(0) Tenth");
-	CHECK_EQ(with_key_number("Eleventh", 10, true), "Eleventh");
-	CHECK_EQ(with_key_number("Today", 0, false), "Today");
 
 	// Group order: smart lists, each source's lists, tags by default;
 	// missing ones go last.

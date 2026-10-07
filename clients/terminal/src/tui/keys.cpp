@@ -385,15 +385,6 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
 				return true;
 		}
 	}
-	if (!fn && key >= '0' && key <= '9' &&
-		!focus_items_) {  // 1…9, then 0 for the 10th
-		auto entries = sidebar_items();
-		auto n = static_cast<std::size_t>(key == '0' ? 9 : key - '1');
-		if (n < entries.size()) {
-			select_view(entries[n].view);
-		}
-		return true;
-	}
 	if (fn) {
 		switch (key) {
 			case KEY_UP:

@@ -157,11 +157,7 @@ int Tui::run() {
 
 }  // namespace tui
 
-int run_tui(rem::Library& store, bool remember,
-			std::optional<bool> key_numbers) {
+int run_tui(rem::Library& store, bool remember) {
 	tui::Tui tui(store, remember);
-	if (key_numbers) {
-		tui.set_show_key_numbers(*key_numbers);
-	}
 	return tui.run();
 }
