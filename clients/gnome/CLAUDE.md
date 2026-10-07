@@ -8,6 +8,13 @@ C++ object's lifetime to a widget.
 The user guide is `docs/USING.md`; the layout follows the GNOME HIG
 (navigation sidebar, boxed lists, list colour as accent, round checkboxes).
 
+**A new or changed key** touches: its accelerator (`accel()` in `main.cpp`,
+or the row's key handler in `reminder_row.cpp`), the menu item showing it,
+the shortcuts dialog (`show_shortcuts()` in `main.cpp`), `docs/KEYS.md`, and
+`docs/USING.md` where it's described. No Alt keys and no Ctrl+number jumps
+(the HIG gives those to other uses). Check the terminal client's
+equivalent too.
+
 ## Pitfalls met here, each one already paid for
 
 - **Arrays passed to C functions must end in `nullptr`.**

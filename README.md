@@ -251,6 +251,7 @@ docs/
   FORMAT.md            The on-disk format: the contract every client implements
   USING.md             User guide for the GNOME app
   TERMINAL.md          Guide to the terminal client (CLI and TUI)
+  KEYS.md              Every key in both clients, side by side, with the CLI equivalents
 core/                  Platform-neutral C++23 library (standard library only)
   include/reminders/   model, format, merge, recurrence, store, library, backend registry, sources, …
   src/
@@ -269,7 +270,7 @@ clients/               One directory per client; each builds into build/bin/
 CLAUDE.md              Working notes: build, test and formatting rules (plus one per client)
 INSTRUCTIONS.md        The original brief, the decisions behind the project, and where it stands
 TODO.md                What's still to do
-docs/rebuild-prompt.md The prompt the first version was built from (frozen)
+docs/rebuild-prompt.md A prompt and build order for building it again from scratch
 ```
 
 ### The core library
@@ -356,4 +357,4 @@ library after every change, which keeps the code simple. Lists are small.
 
 ## License
 
-Not chosen yet.
+See [LICENSE](LICENSE) File

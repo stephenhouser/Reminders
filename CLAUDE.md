@@ -11,8 +11,10 @@ one of these is the basis of the project — the Markdown files are, and a back
 end is a module that can be added or left out.
 
 Decisions and why, and a short state of play: `INSTRUCTIONS.md`. The to-do
-list: `TODO.md`. The format: `docs/FORMAT.md`. Each back end:
-`backends/<id>/README.md`. Each client has its own notes, loaded when you
+list: `TODO.md`. The format: `docs/FORMAT.md`. Every key in both clients:
+`docs/KEYS.md`. Each back end: `backends/<id>/README.md`. A prompt for
+rebuilding it all from scratch: `docs/rebuild-prompt.md` (a summary, brought
+up to date when asked, not with every change). Each client has its own notes, loaded when you
 work there: `clients/gnome/CLAUDE.md` (GTK) and `clients/terminal/CLAUDE.md`
 (CLI and ncurses).
 
@@ -67,7 +69,7 @@ Install steps and build options are in the README.
 ## Rules
 
 - **Formatting.** All C/C++ follows the user's own `~/.clang-format` (Google
-  base, tabs, width 4, `ColumnLimit 0`, `InsertBraces`). After any C/C++ edit
+  base, tabs, width 4, `ColumnLimit 80`, `InsertBraces`). After any C/C++ edit
   — including one written by a sed or Python patch script, which writes spaces
   — run `clang-format -i --style=file` on the changed files until a pass
   changes nothing, then build and test. Brace every `if`/`for`/`while` body.

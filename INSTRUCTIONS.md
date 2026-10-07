@@ -35,10 +35,13 @@ plus a short state of play. It is not a to-do list and not a changelog.
 - **What to do next** → `TODO.md`, which owns that list outright.
 - **How to work in this repo** (build, test, format, the mandates, isolated
   test launches) → `CLAUDE.md`, plus one per client in `clients/<name>/`.
-- **What the apps do** → `README.md`, `docs/USING.md`, `docs/TERMINAL.md`.
+- **What the apps do** → `README.md`, `docs/USING.md`, `docs/TERMINAL.md`,
+  and every key in both, side by side, in `docs/KEYS.md`.
 - **The file format** → `docs/FORMAT.md`, the contract every client implements.
 - **Each back end** → `backends/<id>/README.md`.
-- **How it was first built** → `docs/rebuild-prompt.md`, frozen and unmaintained.
+- **How to build it again from scratch** → `docs/rebuild-prompt.md`, a summary
+  prompt and build order (brought up to date 2026-10-07; the code wins where
+  they differ).
 - **What changed when** → `git log`.
 
 ## Decisions already made
@@ -104,13 +107,13 @@ result and `git log` is the record. Tags to diff from:
 | `before-stage-2` … `before-stage-5` | each later stage of that refactor |
 | `before-clang-format` | the whole tree being reformatted |
 
-## State of play (2026-10-05)
+## State of play (2026-10-07)
 
 - **Built and working:** the core library and format with byte-for-byte round
   trips; the GNOME app and the terminal client (CLI and TUI) with the brief's
   features and shortcuts, multiple sources, multi-select, drag and drop,
   import/export (Markdown, text, ics, todo.txt, CSV); all five back ends.
-  Tests green: core 106, app 12, back ends 41 including 10 against the fake DAV
+  Tests green: core 106, app 15, back ends 51 including 10 against the fake DAV
   server.
 - **Not verified against the real thing:** CalDAV and WebDAV have only been run
   against the fake Python server. Git has been tried against a hosted
@@ -123,6 +126,5 @@ result and `git log` is the record. Tags to diff from:
   RRULEs beyond `docs/FORMAT.md`'s rules are kept but not shown; a notes line
   written `- [ ] …` reads back as a subtask because the format has no escape
   for it (combining pasted text writes `☐ …` instead to dodge it).
-- **The app icon** is waiting on the user: `clients/gnome/data` has the `.desktop` file
-  and hicolor SVG, but nothing installs them, so GNOME shows a generic icon.
-  It'll come with a proper install step.
+- **Installing:** `cmake --install` puts both executables, the `.desktop`
+  file and the hicolor icon under the prefix (see `README.md`).

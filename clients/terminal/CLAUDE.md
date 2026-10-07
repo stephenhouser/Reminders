@@ -20,7 +20,8 @@ User guide: `docs/TERMINAL.md`.
 ## Adding things touches more than one place
 
 - **A CLI command:** its entry in `cmd::commands()` and its branch in
-  `App::run` (both `app.cpp`), `docs/TERMINAL.md`. **Set `edits`
+  `App::run` (both `app.cpp`), `docs/TERMINAL.md`, and the CLI column of
+  `docs/KEYS.md` if a key does the same. **Set `edits`
   if it changes any list:** that decides whether the CLI pushes to
   CalDAV/WebDAV/git sources afterwards and whether `:` makes it an undo step.
   Write to `out_`, never `std::cout`, and ask through `hooks_` (`confirm`,
@@ -29,7 +30,7 @@ User guide: `docs/TERMINAL.md`.
   `Tui::run_command` (`tui/command.cpp`), and the `:` table in
   `docs/TERMINAL.md`.
 - **A TUI key:** `handle_key` in `keys.cpp`, the entries in `help.cpp`, the key
-  table in `docs/TERMINAL.md`. If it should also work on marked reminders,
+  table in `docs/TERMINAL.md`, and its row in `docs/KEYS.md`. If it should also work on marked reminders,
   `act_on_marked` in `marks.cpp`. Check for a collision first — `s` / `S` sync,
   `,` is settings, `O` imports, `e` edits, `E` edits the list file, `:` is
   the command line; `i` and `I` are unbound. No Alt keys, as in the GNOME app.
