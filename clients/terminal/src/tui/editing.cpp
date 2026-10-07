@@ -389,4 +389,48 @@ void Tui::edit_in_editor(const std::string& id) {
 	}
 }
 
+// Edits a list's Markdown file in $EDITOR: the list highlighted in the
+// sidebar, else the one showing, else the selected reminder's.
+void Tui::edit_list_in_editor() {
+	std::string key;
+	auto entries = sidebar();
+	if (!focus_items_ && side_sel_ >= 0 &&
+		side_sel_ < static_cast<int>(entries.size()) &&
+		entries[static_cast<std::size_t>(side_sel_)].view.kind == View::List) {
+		key = entries[static_cast<std::size_t>(side_sel_)].view.name;
+	} else if (view_.kind == View::List) {
+		key = view_.name;
+	} else if (auto r =
+				   item_sel_.empty() ? std::nullopt : store_.find(item_sel_)) {
+		key = store_.key_of(*r->list);
+	}
+	if (key.empty() || !store_.list(key)) {
+		message_ = "Choose a list, or a reminder in one, to edit its file";
+		return;
+	}
+	auto label = store_.label(*store_.list(key));
+	def_prog_mode();
+	endwin();
+	auto outcome = editfile::Outcome::Unchanged;
+	try {
+		outcome = editfile::edit_list(
+			store_, key, [&](const std::function<void()>& apply) {
+				auto before = store_.snapshot();
+				apply();
+				history_.record("Edit List", before, store_.snapshot());
+			});
+	} catch (const std::exception& e) {
+		message_ = std::format("Error: {}", e.what());
+	}
+	reset_prog_mode();
+	refresh();
+	if (message_.empty()) {
+		message_ = outcome == editfile::Outcome::Saved
+					 ? std::format("Saved {} (u to undo)", label)
+				 : outcome == editfile::Outcome::Reverted
+					 ? "Reverted; the list is as it was"
+					 : "No changes";
+	}
+}
+
 }  // namespace tui

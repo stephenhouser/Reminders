@@ -47,6 +47,7 @@ reminders list [VIEW] [-a]       reminders in VIEW (default: the last list you h
 reminders show NAME              everything about one reminder
 reminders add TEXT… [FIELDS]     add a reminder
 reminders edit NAME [FIELDS]     change one
+reminders edit-list [LIST]       edit a list's Markdown file in your editor
 reminders done NAME              complete
 reminders undone NAME            mark as not completed
 reminders move NAME --to LIST [--section S]
@@ -224,6 +225,7 @@ within a second.
 | s | Sync the selected source now: the selected sidebar list's or heading's, else the list showing's; on a smart list, tag or search, every source (CalDAV, WebDAV and git sources; like Ctrl+S in the app) |
 | S | Sync every source now (like Ctrl+Shift+S, ☰ → Sync All, in the app) |
 | `,`, Ctrl+, | Edit the settings file in your editor (applied when you quit it) |
+| E | Edit a list's Markdown file in your editor: the list selected in the sidebar, else the one showing, else the selected reminder's (see [Editing a whole list](#editing-a-whole-list)) |
 | h | Hide the selected list, smart list or tag from the sidebar; on a hidden one, show it again |
 | H | Show / stop showing hidden lists, smart lists and tags (dimmed), like the app's Show Hidden Lists |
 | N | New list |
@@ -307,6 +309,8 @@ When you edit a title in place, fields you type into it (`#tag`,
 | Ctrl+O | Import a file |
 | Ctrl+Page Up / Down | Previous / next sidebar entry |
 | Ctrl+Q, Ctrl+W | Quit |
+
+[KEYS.md](KEYS.md) has every key side by side with the app's.
 
 Some GUI shortcuts can't reach a terminal app, so their letter keys above stand
 in for them:
@@ -409,6 +413,25 @@ subtasks:
     on the first line.
   - **`r`** discards the edit and leaves the reminder as it was. From the CLI,
     the command then exits with status 1.
+
+### Editing a whole list
+
+`E` in the TUI, `:edit-list`, and `reminders edit-list [LIST]` open a list's
+Markdown file in your editor exactly as it is: front matter, sections,
+reminders and notes (the format is in [FORMAT.md](FORMAT.md)). Without LIST,
+`:edit-list` takes the list showing, else the selected reminder's;
+`reminders edit-list` takes the last list you had open.
+
+- **You edit a copy.** When you save and quit, it's written the way the app
+  writes any change, so a back end syncs it as usual, and `u` undoes it in
+  the TUI. Quit without saving to cancel.
+- **New lines keep the formatting you gave them.** A reminder you add gets its
+  `^id` the next time the app changes that list.
+- **If the list changed while the editor was open** (a sync came in), your
+  edit is merged with that change reminder by reminder; where both changed
+  the same thing, yours wins.
+- **The file must stay a list.** If the front matter loses `reminders: 1`,
+  you're asked `Edit it again, or revert to how it was? [E/r]`, as above.
 
 ## Showing the number keys
 

@@ -64,6 +64,8 @@ struct Hooks {
 			choose;
 		// Instead of the terminal: edits reminder `id` in $EDITOR.
 		std::function<editfile::Outcome(const std::string& id)> edit;
+		// Instead of the terminal: edits list `key`'s file in $EDITOR.
+		std::function<editfile::Outcome(const std::string& key)> edit_list;
 		// Reminders (ids) that commands given no NAME act on: the marked
 		// ones, else the selected one.
 		std::vector<std::string> selected;

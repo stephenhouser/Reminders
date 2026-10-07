@@ -179,6 +179,7 @@ class App {
 		int cmd_show(const Args& a);
 		int cmd_add(const Args& a);
 		int cmd_edit(const Args& a);
+		int cmd_edit_list(const Args& a);
 		int cmd_done(const Args& a, bool done);
 		int cmd_move(const Args& a);
 		int cmd_delete(const Args& a);

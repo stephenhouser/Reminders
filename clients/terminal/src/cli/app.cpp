@@ -311,6 +311,8 @@ int App::run(const std::string& name, const Args& a) {
 		return cmd_add(a);
 	} else if (is("edit")) {
 		return cmd_edit(a);
+	} else if (is("edit-list")) {
+		return cmd_edit_list(a);
 	} else if (is("done") || is("undone")) {
 		return cmd_done(a, is("done"));
 	} else if (is("move")) {
@@ -368,6 +370,14 @@ std::span<const Command> commands() {
 		 .help = "Change a reminder (no FIELDS: edit them all in $EDITOR)",
 		 .edits = true,
 		 .arg = Arg::Reminder},
+		{.names = {"edit-list"},
+		 .usage = "[LIST]",
+		 .summary = "edit a list's Markdown file in $EDITOR",
+		 .help = "Edit LIST's Markdown file, as it is, in $EDITOR (default: "
+				 "the list that last had focus). Saved like any other "
+				 "change, and merged with changes synced meanwhile",
+		 .edits = true,
+		 .arg = Arg::List},
 		{.names = {"done"},
 		 .usage = "NAME",
 		 .summary = "complete",

@@ -56,7 +56,7 @@ can reuse.
 - **Sidebar**: smart lists, lists and tags in the order you choose (drag them, or Ctrl+↑/↓), groups you can drag, fold or hide.
 - **Selecting several reminders** (Ctrl/Shift+click, Ctrl+A) to complete, flag, date, move, drag or delete them together.
 - **Undo and redo** (Ctrl+Z / Ctrl+Shift+Z) for every change, including moves and deleted lists.
-- **Keyboard-driven**: nearly everything has a shortcut; see the [user guide](docs/USING.md#keyboard-shortcuts).
+- **Keyboard-driven**: nearly everything has a shortcut; see [the keys](docs/KEYS.md).
 - **Live sync**: changes from other devices appear within half a second. Syncthing conflict copies are merged automatically, reminder by reminder.
 - **Hand-editing friendly**:
   - Lines you write by hand keep their exact formatting until you change them in the app.

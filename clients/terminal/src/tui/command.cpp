@@ -280,6 +280,21 @@ bool Tui::run_command(const std::string& line) {
 		refresh();
 		return outcome;
 	};
+	hooks.edit_list = [this](const std::string& key) {
+		def_prog_mode();
+		endwin();
+		auto outcome = editfile::Outcome::Unchanged;
+		try {
+			outcome = editfile::edit_list(store_, key);
+		} catch (...) {
+			reset_prog_mode();
+			refresh();
+			throw;
+		}
+		reset_prog_mode();
+		refresh();
+		return outcome;
+	};
 	std::ostringstream out;
 	std::string error;
 	bool cancelled = false;

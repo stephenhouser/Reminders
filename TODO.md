@@ -4,6 +4,8 @@
 
 - Query language, SQL-like, for the CLI (`reminders query "…"`) and for saved
   smart lists in the sidebar.
+- Update the `rebuild-prompt.md` to reflect the current app state.
+- In the Gnome version, make each row in "keyboard shortcuts" dialog clickable to carry out the action that is descrbed by the key.
 
 ## Known gaps
 

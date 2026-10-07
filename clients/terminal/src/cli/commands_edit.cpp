@@ -85,6 +85,45 @@ int App::cmd_edit(const Args& a) {
 	return 0;
 }
 
+int App::cmd_edit_list(const Args& a) {
+	// Without LIST: the one showing, else (in the TUI, on a smart list) the
+	// selected reminder's, else the one that last had focus.
+	auto name = join(a.positional);
+	rem::ListFile* list = name.empty() ? nullptr : &list_named(name);
+	if (!list && hooks_.list.empty() && !hooks_.selected.empty()) {
+		if (auto r = store_.find(hooks_.selected.front())) {
+			list = r->list;
+		}
+	}
+	auto& l = list ? *list : default_list();
+	auto key = store_.key_of(l);
+	auto label = store_.label(l);
+	auto outcome = editfile::Outcome::Unchanged;
+	if (hooks_.edit_list) {
+		outcome = hooks_.edit_list(key);
+	} else {
+		if (!isatty(STDIN_FILENO) || !isatty(STDOUT_FILENO)) {
+			throw UsageError("edit-list needs a terminal to open an editor in");
+		}
+		outcome = editfile::edit_list(store_, key);
+	}
+	if (g_.json) {
+		return outcome == editfile::Outcome::Reverted ? 1 : 0;
+	}
+	switch (outcome) {
+		case editfile::Outcome::Saved:
+			out_ << std::format("Saved {}\n", label);
+			return 0;
+		case editfile::Outcome::Unchanged:
+			out_ << "No changes\n";
+			return 0;
+		case editfile::Outcome::Reverted:
+			out_ << "Reverted; the list is as it was\n";
+			return 1;
+	}
+	return 0;
+}
+
 int App::cmd_done(const Args& a, bool done) {
 	auto refs = targets(join(a.positional), a,
 						done ? "done needs the name of a reminder"

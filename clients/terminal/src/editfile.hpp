@@ -6,6 +6,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "reminders/library.hpp"
@@ -35,9 +36,11 @@ std::optional<Edited> parse(const std::string& text, rem::Date today);
 void apply(rem::Library& store, const std::string& id, const Edited& e,
 		   rem::Date today);
 
-// Runs $VISUAL / $EDITOR (nano, else vi) on `text`; nullopt if the editor
-// failed. The caller must have released the terminal.
-std::optional<std::string> run_editor(const std::string& text);
+// Runs $VISUAL / $EDITOR (nano, else vi) on `text`, in a temporary file
+// ending in `extension`; nullopt if the editor failed. The caller must have
+// released the terminal.
+std::optional<std::string> run_editor(const std::string& text,
+									  std::string_view extension = ".yaml");
 
 // Runs the editor on a file in place; false if the editor failed.
 bool run_editor_on(const std::filesystem::path& file);
@@ -50,6 +53,16 @@ enum class Outcome { Saved, Unchanged, Reverted };
 // an undo step). Must run with the terminal in normal (not curses) mode.
 Outcome edit(
 	rem::Library& store, const std::string& id,
+	const std::function<void(const std::function<void()>&)>& apply_fn = {});
+
+// The same for a whole list (`key`, "source/name"): its Markdown file, as it
+// is, in the editor. The edit is saved through the library (an atomic write,
+// as any other), so the back end syncs it; if the file changed on disk while
+// the editor was open, the two are merged reminder by reminder. Text that
+// isn't a list any more (no "reminders:" front matter) asks to edit again or
+// revert. `apply_fn` as above.
+Outcome edit_list(
+	rem::Library& store, const std::string& key,
 	const std::function<void(const std::function<void()>&)>& apply_fn = {});
 
 }  // namespace editfile

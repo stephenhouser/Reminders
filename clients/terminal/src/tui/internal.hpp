@@ -234,6 +234,7 @@ class Tui {
 		std::optional<View> find_view(const std::string& q);
 		// Edits every field of a reminder in the user's editor.
 		void edit_in_editor(const std::string& id);
+		void edit_list_in_editor();
 		bool handle_key(wint_t key, bool is_function_key, bool alt = false);
 		std::vector<std::string>
 		shown_items();	// the reminders in view, top to bottom

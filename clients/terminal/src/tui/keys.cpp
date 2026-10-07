@@ -361,6 +361,9 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
 			case ',':  // and Ctrl+, (sent as a comma), as in the app
 				edit_settings();
 				return true;
+			case 'E':
+				edit_list_in_editor();
+				return true;
 			case 'N':
 				// Into the source whose group is selected, else the default
 				// one.

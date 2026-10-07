@@ -6,11 +6,13 @@
 #include <fstream>
 #include <functional>
 #include <iostream>
+#include <iterator>
 #include <sstream>
 #include <stdexcept>
 
 #include "reminders/dates.hpp"
 #include "reminders/format.hpp"
+#include "reminders/merge.hpp"
 #include "text.hpp"
 
 namespace editfile {
@@ -376,9 +378,10 @@ bool run_editor_on(const fs::path& file) {
 	return std::system(std::format("{} {}", editor, quoted).c_str()) == 0;
 }
 
-std::optional<std::string> run_editor(const std::string& text) {
+std::optional<std::string> run_editor(const std::string& text,
+									  std::string_view extension) {
 	auto path = fs::temp_directory_path() /
-				std::format("reminder-{}.yaml", rem::new_id());
+				std::format("reminder-{}{}", rem::new_id(), extension);
 	{
 		std::ofstream(path) << text;
 	}
@@ -461,6 +464,48 @@ Outcome edit(
 			}
 			text = std::format("# Error: {}\n{}", err.what(), kept);
 		}
+	}
+}
+
+Outcome edit_list(
+	rem::Library& store, const std::string& key,
+	const std::function<void(const std::function<void()>&)>& apply_fn) {
+	auto original = store.current_text(key);
+	if (!original) {
+		return Outcome::Unchanged;
+	}
+	auto text = *original;
+	while (true) {
+		auto edited = run_editor(text, ".md");
+		if (!edited || *edited == *original) {
+			return Outcome::Unchanged;	// editor failed, or nothing changed
+		}
+		if (!rem::parse(*edited).is_list()) {
+			// No "# Error:" line here: at the top it would break the front
+			// matter.
+			if (!ask_edit_again("it isn't a list any more (the front matter "
+								"needs \"reminders: 1\")")) {
+				return Outcome::Reverted;
+			}
+			text = *edited;
+			continue;
+		}
+		// Changed on disk meanwhile (by a sync): merge the edit into that.
+		auto result = *edited;
+		std::ifstream in(store.path_of(key), std::ios::binary);
+		std::string disk((std::istreambuf_iterator<char>(in)), {});
+		if (in && disk != *original && rem::parse(disk).is_list()) {
+			auto base = rem::parse(*original);
+			result = rem::serialize(
+				rem::merge(rem::parse(*edited), rem::parse(disk), &base));
+		}
+		auto save = [&] { store.restore(key, result); };
+		if (apply_fn) {
+			apply_fn(save);
+		} else {
+			save();
+		}
+		return Outcome::Saved;
 	}
 }
 

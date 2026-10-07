@@ -352,67 +352,8 @@ while Reminders is running.
 
 ## Keyboard shortcuts
 
-Press Ctrl+? in the app for this list.
-
-**Reminders** (on the selected reminder; click a row's empty space or use ↑/↓ to select)
-
-| Shortcut | Action |
-|---|---|
-| Ctrl+N | New reminder |
-| Space | Complete / not complete |
-| Enter, F2 | Edit title |
-| Ctrl+S / Esc | Save / cancel while editing |
-| Ctrl+E, Alt+Enter | Details |
-| Menu, Shift+F10 | The reminder's ⋮ menu |
-| Ctrl+D | Flag / unflag |
-| Shift+→ / Shift+← | Show / hide its subtasks (on a subtask, Shift+← hides its parent's) |
-| Ctrl+T / Ctrl+Shift+T | Due today / tomorrow |
-| Ctrl+0 … Ctrl+3 | Priority none / low / medium / high |
-| Ctrl+] / Ctrl+[ | Indent / outdent |
-| Ctrl+↑ / Ctrl+↓ | Move up / down (in a list) |
-| Ctrl+X | Cut (copy, then delete) |
-| Ctrl+C | Copy (as Markdown) |
-| Ctrl+V | Paste reminders (outside a text field); ⋮ → Paste puts them after that reminder |
-| Ctrl+Shift+V | Paste Special: one reminder, or one per line |
-| Delete | Delete |
-
-**Selecting several reminders** (see [Selecting several reminders](#selecting-several-reminders))
-
-| Shortcut | Action |
-|---|---|
-| Ctrl+A | Select all |
-| Ctrl+click | Add to / remove from the selection |
-| Shift+click, Shift+↑ / Shift+↓ | Select a range |
-| Esc, Ctrl+Shift+A | Clear the selection |
-
-**Lists**
-
-| Shortcut | Action |
-|---|---|
-| Ctrl+K | Go to… |
-| Enter (in the sidebar) | Open the entry and move into its reminders |
-| Ctrl+Page Down / Ctrl+Page Up | Next / previous sidebar entry |
-| Ctrl+↑ / Ctrl+↓ | Move the sidebar entry up / down |
-| Ctrl+Shift+↑ / Ctrl+Shift+↓ | Move its sidebar group up / down |
-| Ctrl+Shift+N | New list |
-| Ctrl+H | Show / hide completed |
-| Ctrl+Shift+H | Show / hide hidden lists, smart lists and tags |
-
-**General**
-
-| Shortcut | Action |
-|---|---|
-| Ctrl+Z / Ctrl+Shift+Z | Undo / redo |
-| Ctrl+F | Search |
-| Ctrl+B, F9 | Show / hide sidebar |
-| Ctrl+L | Switch between the sidebar and the reminders |
-| F10 | Main menu |
-| Ctrl+S | Sync this source: the focused sidebar heading or list's, else the list shown's (a smart list, tag or search syncs them all); while editing, Ctrl+S saves instead |
-| Ctrl+Shift+S | Sync all (with sources that sync) |
-| Ctrl+O | Import… |
-| Ctrl+, | Settings |
-| Ctrl+? | Keyboard shortcuts |
-| Ctrl+W / Ctrl+Q | Close window / quit |
+Press Ctrl+? in the app for the list. Every key, with the terminal
+interface's and the command line's alongside, is in [KEYS.md](KEYS.md).
 
 ## Editing the files by hand
 

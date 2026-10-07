@@ -57,6 +57,7 @@ void Tui::show_help() {
 		{"s", "sync the selected source now (on a smart list, all)"},
 		{"S", "sync every source now"},
 		{"Ctrl+, (or just ,)", "edit settings.ini in your $EDITOR"},
+		{"E", "edit the list's Markdown file in your $EDITOR"},
 		{"u", "undo"},
 		{"r", "redo"},
 		{"?, F1", "this help"},
