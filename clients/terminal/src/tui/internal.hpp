@@ -140,9 +140,11 @@ class Tui {
 		bool show_completed_ = false;
 		std::set<std::string>
 			collapsed_;	 // reminders whose subtasks are hidden
-		bool hide_sidebar_ = !rem::load_bool_setting(
-			"show-sidebar", true);	// Ctrl+B; shared with the app
-		std::size_t note_lines_ = rem::load_note_lines();  // note-lines
+		bool hide_sidebar_ =
+			!rem::load_bool_setting(rem::Profile(), "show-sidebar",
+									true);	// Ctrl+B; shared with the app
+		std::size_t note_lines_ =
+			rem::load_note_lines(rem::Profile());  // note-lines
 		rem::Sidebar sidebar_{store_};	// the sidebar's layout (settings.ini)
 		// Extended key codes for the GUI's modified keys, 0 if the terminal
 		// lacks them.

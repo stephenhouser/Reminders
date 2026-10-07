@@ -96,7 +96,7 @@ std::string Library::label(const ListFile& list) const {
 }
 
 std::string Library::default_source() const {
-	auto name = load_setting("default-source");
+	auto name = load_setting(profile_, "default-source");
 	for (auto& s : sources_) {
 		if (s.config.name == name) {
 			return name;
@@ -418,9 +418,10 @@ void Library::add(const SourceConfig& config, const std::string& device) {
 	add(config, std::move(store));
 }
 
-std::unique_ptr<Library> open_library(const std::string& device) {
-	auto library = std::make_unique<Library>();
-	for (auto& source : load_sources()) {
+std::unique_ptr<Library> open_library(const Profile& profile,
+									  const std::string& device) {
+	auto library = std::make_unique<Library>(profile);
+	for (auto& source : load_sources(profile)) {
 		std::error_code ec;
 		// A folder its back end owns (a local copy, a clone) is made on
 		// first use.
@@ -432,13 +433,14 @@ std::unique_ptr<Library> open_library(const std::string& device) {
 	return library;
 }
 
-std::unique_ptr<Library> open_library(const std::optional<fs::path>& folder,
+std::unique_ptr<Library> open_library(const Profile& profile,
+									  const std::optional<fs::path>& folder,
 									  const std::string& device) {
 	if (!folder) {
-		return open_library(device);
+		return open_library(profile, device);
 	}
-	auto library = std::make_unique<Library>();
-	library->add(source_for_folder(*folder), device);
+	auto library = std::make_unique<Library>(profile);
+	library->add(source_for_folder(profile, *folder), device);
 	return library;
 }
 

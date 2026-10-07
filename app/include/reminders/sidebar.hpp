@@ -1,8 +1,9 @@
 // The sidebar both apps show: its groups (the smart lists, each source's
 // lists, tags) in order, each group's entries, which are hidden or folded,
-// and moving them. Holds the layout from settings.ini (sidebar-order,
-// smart-lists, the group displays, lists-hidden, …; see settings.hpp) and
-// saves each change there; the save functions throw when that fails.
+// and moving them. Holds the layout from its library's profile's settings
+// file (sidebar-order, smart-lists, the group displays, lists-hidden, …; see
+// preferences.hpp) and saves each change there; the save functions throw when
+// that fails.
 #pragma once
 
 #include <map>

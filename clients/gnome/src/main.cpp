@@ -23,7 +23,8 @@ void show_about(GtkApplication* app) {
 	adw_about_dialog_set_version(ADW_ABOUT_DIALOG(about), ui::kVersion);
 	adw_about_dialog_set_comments(ADW_ABOUT_DIALOG(about),
 								  "Reminders and to-do lists stored as "
-								  "Markdown files in a Syncthing folder.");
+								  "Markdown files in a Syncthing folder.\n\n"
+									"Copyright(c) 2026 Stephen Houser.");
 	adw_dialog_present(ADW_DIALOG(about),
 					   GTK_WIDGET(gtk_application_get_active_window(app)));
 }

@@ -54,7 +54,8 @@ SidebarEntry Tui::entry_for(const View& v) {
 			e.title = l->name, e.color = l->color();
 		}
 	} else if (v.kind == View::Tag) {
-		e.title = "#" + v.name, e.color = rem::load_tag_style(v.name).color;
+		e.title = "#" + v.name,
+		e.color = rem::load_tag_style(rem::Profile(), v.name).color;
 	}
 	e.hidden = sidebar_.hidden(v);
 	return e;
@@ -237,7 +238,7 @@ void Tui::move_entry(int delta) {
 }
 
 void Tui::load_layout() {
-	note_lines_ = rem::load_note_lines();
+	note_lines_ = rem::load_note_lines(rem::Profile());
 	sidebar_.reload();
 }
 

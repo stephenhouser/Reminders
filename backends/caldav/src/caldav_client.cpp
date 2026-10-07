@@ -334,9 +334,9 @@ SyncResult sync_caldav_source(Store& store, const SourceConfig& source) {
 	if (!backend || backend->id() != "caldav") {
 		throw SyncError(std::format("{} isn't a CalDAV source", source.name));
 	}
-	auto cache = source.name.empty()
-				   ? fs::path{}
-				   : cache_dir() / "caldav" / (source.name + ".home");
+	auto cache = source.name.empty() ? fs::path{}
+									 : source.profile.cache_dir() / "caldav" /
+										   (source.name + ".home");
 	auto remote = make_caldav_remote(dav_settings(source), cache);
 	return caldav_sync(store.folder(), store.state_dir(), *remote,
 					   backend->lock());

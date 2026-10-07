@@ -104,20 +104,22 @@ void Window::edit_list(const std::string& key) {
 					}
 					if (e.name != name) {  // keeps its place in lists-order
 										   // under its new name
-						auto order = rem::load_names_setting("lists-order");
+						auto order = rem::load_names_setting(rem::Profile(),
+															 "lists-order");
 						for (auto& entry : order) {
 							if (rem::list_entry_matches(entry, key)) {
 								entry = new_key;
 							}
 						}
-						rem::save_names_setting("lists-order", order);
+						rem::save_names_setting(rem::Profile(), "lists-order",
+												order);
 					}
 					if (e.name != name &&
 						entry_hidden(
 							View{View::List,
 								 key})) {  // stays hidden under its new name
-						rem::set_list_hidden(key, false);
-						rem::set_list_hidden(new_key, true);
+						rem::set_list_hidden(rem::Profile(), key, false);
+						rem::set_list_hidden(rem::Profile(), new_key, true);
 						sidebar_->reload();
 					}
 					l->doc.set_meta("color", e.color);

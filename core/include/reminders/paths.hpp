@@ -11,6 +11,11 @@
 // An XDG variable that is unset, empty or not an absolute path is ignored,
 // as the specification says, and the default in brackets used instead.
 //
+// These are every profile's root. What belongs to one profile (its settings
+// file, records, local copies, caches) is found through its Profile
+// (profile.hpp), which is these for the default profile and
+// …/profiles/NAME under them for another.
+//
 // Project rule: every one of these locations is found through these
 // functions, never by writing ~/.config, ~/.local/share, ~/.local/state or
 // ~/.cache into code; docs and comments name the variable

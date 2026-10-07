@@ -34,7 +34,8 @@ term::SavedView App::saved_view() {
 	if (!hooks_.remember) {
 		return {"today", ""};
 	}
-	auto v = term::parse_view_setting(rem::load_setting("view"));
+	auto v =
+		term::parse_view_setting(rem::load_setting(rem::Profile(), "view"));
 	if (v.kind == "list" && !store_.list(v.name)) {
 		return {"today", ""};
 	}

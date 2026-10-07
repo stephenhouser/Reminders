@@ -83,12 +83,23 @@ Install steps and build options are in the README.
   `~/.local/share`. In docs, comments, UI text
   and messages to the user, write `$XDG_DATA_HOME/reminders/…`, giving
   `~/.local/share/…` only as "when `XDG_DATA_HOME` isn't set".
+- **Profiles.** Settings, records, local copies and caches belong to a
+  profile (`core/include/reminders/profile.hpp`): reach them through its
+  `Profile` (`settings_file()`, `state_dir()`, `data_dir()`, `cache_dir()`)
+  and pass it to the settings and sources functions; paths.hpp's
+  `config_dir()` and the rest are only every profile's root. The default
+  profile's paths are the ones from before profiles. `app/` takes the
+  profile from its caller or its `Library` (`library.profile()`). Until the
+  clients are done (stages 3–4 of the profiles work), their call sites pass
+  `rem::Profile()`, the default; each one found by that search still needs the
+  real profile.
 - **Per-device state** comes from `source_state_dir()` in `sources.hpp` — call
   it rather than composing a path. A back end that sets `state_in_folder`
   (today only Syncthing, since a synced folder's state belongs with that
   folder) keeps it at `<folder>/.reminders/<device>/`, with `(?d).reminders` in
   the root `.stignore`; every other back end uses
-  `$XDG_STATE_HOME/reminders/<device>/<source>/`. Don't move in-folder state
+  `$XDG_STATE_HOME/reminders/<device>/<source>/` (a named profile's:
+  `…/reminders/profiles/<name>/<device>/<source>/`). Don't move in-folder state
   out in a later cleanup — that was tried and reverted.
 - **Never install anything** — system packages, toolchains, language deps —
   without asking first and saying what it's for. `command -v` checks are fine.

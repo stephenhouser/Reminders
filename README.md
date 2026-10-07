@@ -293,7 +293,8 @@ docs/rebuild-prompt.md A prompt and build order for building it again from scrat
 | `exporter.hpp` | Exporting a list, or every list into a folder, in those formats, in forms the importer reads back |
 | `history.hpp` | Undo/redo as before/after snapshots of list files, merging around changes from other devices |
 | `paths.hpp` | The XDG base directories (config, data, state, cache), and `~` / `$VAR` in paths from settings |
-| `settings.hpp` | `$XDG_CONFIG_HOME/reminders/settings.ini`, shared by all clients: keys and sections, kept line for line; and the device name |
+| `settings.hpp` | A profile's settings file (`$XDG_CONFIG_HOME/reminders/settings.ini` for the default), shared by all clients: keys and sections, kept line for line; and the device name |
+| `profile.hpp` | Profiles: separate settings files, each with its own records, local copies and caches under `profiles/NAME/` |
 | `clipboard.hpp` | Copying and pasting reminders as text |
 | `dates.hpp` | Local date, typed dates (`tomorrow`, `fri`, `+3d`), relative labels (`Tomorrow`, `Oct 3`) |
 

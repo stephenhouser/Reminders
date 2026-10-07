@@ -27,7 +27,8 @@ TEST(sources_caldav) {
 		return s;
 	};
 	auto caldav = [&](DavSettings c, std::string title) {
-		return add_source(dav_source("caldav", std::move(c), std::move(title)));
+		return add_source(Profile(),
+						  dav_source("caldav", std::move(c), std::move(title)));
 	};
 	CHECK_EQ(
 		new_source_name(dav_source(
@@ -38,7 +39,7 @@ TEST(sources_caldav) {
 					"");
 	CHECK_EQ(a.name, "fastmail");
 	CHECK(a.folder == dir / "data" / "reminders" / "caldav" / "fastmail");
-	CHECK_EQ(load_setting("default-source"), "fastmail");
+	CHECK_EQ(load_setting(Profile(), "default-source"), "fastmail");
 	// … or after its title, and made unique.
 	auto b = caldav({"http://localhost:5232/", "", "", 5}, "Fastmail");
 	CHECK_EQ(b.name, "fastmail-2");
@@ -50,7 +51,7 @@ TEST(sources_caldav) {
 			 "my-stuff");
 	CHECK_EQ(c.name, "example");
 
-	auto all = load_sources();
+	auto all = load_sources(Profile());
 	CHECK_EQ(all.size(), 3u);
 	CHECK(all[0].backend == "caldav");
 	CHECK(dav_settings(all[0]) == dav_settings(a));
@@ -60,11 +61,11 @@ TEST(sources_caldav) {
 
 	// `reminders folder PATH` doesn't turn the CalDAV default into a folder.
 	fs::create_directories(dir / "Notes");
-	auto f = set_default_folder(dir / "Notes");
+	auto f = set_default_folder(Profile(), dir / "Notes");
 	CHECK_EQ(f.name, "notes");
 	CHECK(f.backend == "local");
-	CHECK_EQ(load_setting("default-source"), "notes");
-	CHECK(load_sources()[0].backend == "caldav");
+	CHECK_EQ(load_setting(Profile(), "default-source"), "notes");
+	CHECK(load_sources(Profile())[0].backend == "caldav");
 	unsetenv("XDG_DATA_HOME");
 	std::error_code ec;
 	fs::remove_all(dir, ec);

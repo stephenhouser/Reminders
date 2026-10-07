@@ -232,7 +232,7 @@ bool Tui::handle_key(wint_t key, bool fn, bool alt) {
 					focus_items_ = true;
 				}
 				try {
-					rem::save_setting("show-sidebar",
+					rem::save_setting(rem::Profile(), "show-sidebar",
 									  hide_sidebar_ ? "false" : "true");
 				} catch (const std::exception&) {
 					// It just won't be remembered.

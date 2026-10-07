@@ -36,7 +36,7 @@ Window* Window::from(GtkWindow* window) {
 // the [general] line its settings go under) if needed. Saving it there is
 // picked up by watch_settings().
 void Window::open_settings() {
-	auto path = rem::settings_file();
+	auto path = rem::Profile().settings_file();
 	try {
 		std::error_code ec;
 		if (!std::filesystem::exists(path, ec)) {
@@ -78,8 +78,8 @@ void Window::open_settings() {
 // Re-reads settings.ini when it changes (an editor, the TUI's S, or this app),
 // a moment after the last change.
 void Window::watch_settings() {
-	auto file =
-		Obj<GFile>::adopt(g_file_new_for_path(rem::settings_file().c_str()));
+	auto file = Obj<GFile>::adopt(
+		g_file_new_for_path(rem::Profile().settings_file().c_str()));
 	settings_monitor_ = Obj<GFileMonitor>::adopt(g_file_monitor_file(
 		file.get(), G_FILE_MONITOR_WATCH_MOVES, nullptr, nullptr));
 	if (!settings_monitor_) {
@@ -103,7 +103,7 @@ void Window::watch_settings() {
 // row-buttons=always shows each reminder row's buttons (flag, Details, ⋮)
 // all the time, dimmed; hover (the default) only on hover or keyboard focus.
 void Window::apply_row_buttons() {
-	auto value = rem::load_setting("row-buttons");
+	auto value = rem::load_setting(rem::Profile(), "row-buttons");
 	if (value == "always") {
 		gtk_widget_add_css_class(window_, "row-buttons-always");
 	} else {
@@ -114,7 +114,7 @@ void Window::apply_row_buttons() {
 void Window::reload_settings() {
 	std::string text;
 	{
-		std::ifstream in(rem::settings_file());
+		std::ifstream in(rem::Profile().settings_file());
 		text.assign(std::istreambuf_iterator<char>(in), {});
 	}
 	if (text == settings_text_) {
@@ -122,7 +122,8 @@ void Window::reload_settings() {
 	}
 	settings_text_ = std::move(text);
 	apply_row_buttons();
-	if (auto lines = rem::load_note_lines(); lines != note_lines_) {
+	if (auto lines = rem::load_note_lines(rem::Profile());
+		lines != note_lines_) {
 		note_lines_ = lines;
 		if (store_) {
 			rebuild_content();
@@ -134,12 +135,12 @@ void Window::reload_settings() {
 	if (show_hidden_action_) {
 		g_simple_action_set_state(
 			show_hidden_action_,
-			g_variant_new_boolean(rem::load_hidden().show));
+			g_variant_new_boolean(rem::load_hidden(rem::Profile()).show));
 	}
 	// Sources added, removed or changed (and this isn't a --folder session):
 	// open them again.
 	if (remember_view_) {
-		auto configured = rem::load_sources();
+		auto configured = rem::load_sources(rem::Profile());
 		bool same = store_ && configured.size() == store_->sources().size();
 		for (std::size_t i = 0; same && i < configured.size(); ++i) {
 			auto& open = store_->sources()[i].config;
@@ -300,7 +301,8 @@ Window::Window(AdwApplication* app, std::optional<std::filesystem::path> folder)
 			}
 		});
 	{
-		std::ifstream in(rem::settings_file());	 // as read at start-up
+		std::ifstream in(
+			rem::Profile().settings_file());  // as read at start-up
 		settings_text_.assign(std::istreambuf_iterator<char>(in), {});
 	}
 	watch_settings();
@@ -743,7 +745,7 @@ void Window::build() {
 	// content: on narrow windows it hides by itself and slides over.
 	adw_overlay_split_view_set_show_sidebar(
 		ADW_OVERLAY_SPLIT_VIEW(split_),
-		rem::load_bool_setting("show-sidebar", true));
+		rem::load_bool_setting(rem::Profile(), "show-sidebar", true));
 	apply_row_buttons();
 	// ("notify" passes the property as well, so not on(), which is for signals
 	// that pass only the emitter.)
@@ -754,11 +756,13 @@ void Window::build() {
 				return;
 			}
 			bool shown = adw_overlay_split_view_get_show_sidebar(split);
-			if (rem::load_bool_setting("show-sidebar", true) == shown) {
+			if (rem::load_bool_setting(rem::Profile(), "show-sidebar", true) ==
+				shown) {
 				return;
 			}
 			try {
-				rem::save_setting("show-sidebar", shown ? "true" : "false");
+				rem::save_setting(rem::Profile(), "show-sidebar",
+								  shown ? "true" : "false");
 			} catch (const std::exception&) {
 				// Not worth interrupting for; it just won't be remembered.
 			}
@@ -887,7 +891,8 @@ void Window::add_actions() {
 	// Main menu: show the lists, smart lists and tags hidden from the sidebar
 	// (dimmed), so they can be opened or unhidden.
 	show_hidden_action_ = add_toggle(
-		window_, "show-hidden", rem::load_hidden().show, [this](bool on) {
+		window_, "show-hidden", rem::load_hidden(rem::Profile()).show,
+		[this](bool on) {
 			try {
 				if (sidebar_) {
 					sidebar_->set_show_hidden(on);

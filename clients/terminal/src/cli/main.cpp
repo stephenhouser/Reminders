@@ -57,7 +57,7 @@ int main(int argc, char** argv) {
 	try {
 		if (cmd == "folder") {
 			if (rest.empty()) {
-				auto f = rem::saved_folder();
+				auto f = rem::saved_folder(rem::Profile());
 				if (!f) {
 					std::cerr << "reminders: no folder set (use `reminders "
 								 "folder PATH`)\n";
@@ -71,7 +71,7 @@ int main(int argc, char** argv) {
 				throw std::runtime_error(
 					std::format("“{}” is not a folder", rest[0]));
 			}
-			auto source = rem::set_default_folder(path);
+			auto source = rem::set_default_folder(rem::Profile(), path);
 			std::cout << std::format("Folder set to {} (source “{}”, {})\n",
 									 source.folder.string(), source.name,
 									 source.backend);
@@ -87,7 +87,8 @@ int main(int argc, char** argv) {
 					std::format("“{}” is not a folder", folder->string()));
 			}
 		}
-		auto library = rem::open_library(folder, rem::device_name());
+		auto library =
+			rem::open_library(rem::Profile(), folder, rem::device_name());
 		if (library->sources().empty()) {
 			throw std::runtime_error(
 				"no folder: pass --folder PATH, or set one with `reminders "

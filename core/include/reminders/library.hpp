@@ -17,7 +17,9 @@ namespace rem {
 class Library : public ListTexts {
 	public:
 		// The stores refer back to it (for unique ids), so it stays put.
+		// Its sources are `profile`'s; without one, the default profile's.
 		Library() = default;
+		explicit Library(Profile profile) : profile_(std::move(profile)) {}
 		Library(const Library&) = delete;
 		Library& operator=(const Library&) = delete;
 
@@ -33,6 +35,10 @@ class Library : public ListTexts {
 		// anyway) and adds it.
 		void add(const SourceConfig& config, const std::string& device);
 		void load_all();
+
+		// The profile whose settings it follows (default-source=, and its
+		// sources' records).
+		const Profile& profile() const { return profile_; }
 
 		const std::vector<Source>& sources() const { return sources_; }
 		Store* store(std::string_view source);
@@ -109,6 +115,7 @@ class Library : public ListTexts {
 					 const std::optional<std::string>& text) override;
 
 	private:
+		Profile profile_;
 		std::vector<Source> sources_;
 
 		Source* owner(const ListFile& list);
@@ -118,13 +125,15 @@ class Library : public ListTexts {
 		std::vector<Ref> gather(Query&& query);
 };
 
-// Every configured source, opened (not loaded). A source whose folder is
-// missing is left out.
-std::unique_ptr<Library> open_library(const std::string& device);
+// Every source configured in a profile, opened (not loaded). A source whose
+// folder is missing is left out.
+std::unique_ptr<Library> open_library(const Profile& profile,
+									  const std::string& device);
 
 // What the apps open: with `folder` (from the command line), just that
 // folder's source (source_for_folder); otherwise every configured source.
-std::unique_ptr<Library> open_library(const std::optional<fs::path>& folder,
+std::unique_ptr<Library> open_library(const Profile& profile,
+									  const std::optional<fs::path>& folder,
 									  const std::string& device);
 
 }  // namespace rem

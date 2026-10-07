@@ -140,7 +140,7 @@ TEST(library_opens_every_configured_source) {
 		<< "\n";
 	std::ofstream(dir / "a" / "One.md") << MARK "- [ ] x\n";
 	std::ofstream(dir / "b" / "Two.md") << MARK "- [ ] y\n";
-	auto lib = open_library("test-device");
+	auto lib = open_library(Profile(), "test-device");
 	lib->load_all();
 	CHECK_EQ(lib->sources().size(), 2u);  // the missing folder is left out
 	CHECK_EQ(lib->sources()[0].config.name, "a");

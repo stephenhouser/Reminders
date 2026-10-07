@@ -24,10 +24,10 @@ TEST(sources_webdav) {
 		"pass show cloud", 10};
 	SourceConfig source{"", "webdav", {}, ""};
 	set_dav_settings(source, s);
-	auto a = add_source(source);
+	auto a = add_source(Profile(), source);
 	CHECK_EQ(a.name, "example");
 	CHECK(a.folder == dir / "data" / "reminders" / "webdav" / "example");
-	auto all = load_sources();
+	auto all = load_sources(Profile());
 	CHECK_EQ(all.size(), 1u);
 	CHECK(all[0].backend == "webdav");
 	CHECK(dav_settings(all[0]) == s);
@@ -37,13 +37,13 @@ TEST(sources_webdav) {
 
 	// Removing it can keep the local copy in the default place...
 	fs::create_directories(a.folder);
-	remove_source(a.name, true);
+	remove_source(Profile(), a.name, true);
 	CHECK(fs::exists(a.folder));
-	CHECK(load_sources().empty());
+	CHECK(load_sources(Profile()).empty());
 	// ...or, by default, removes it too.
-	auto b = add_source(source);
+	auto b = add_source(Profile(), source);
 	fs::create_directories(b.folder);
-	remove_source(b.name);
+	remove_source(Profile(), b.name);
 	CHECK(!fs::exists(b.folder));
 	unsetenv("XDG_DATA_HOME");
 	std::error_code ec;

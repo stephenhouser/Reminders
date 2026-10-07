@@ -728,7 +728,8 @@ struct SourceDialog {
 			if (edit.is_new && !folder_chosen) {
 				edit.folder = m.owns_folder
 								? rem::default_copy_folder(
-									  m.id, rem::new_source_name(edit.config()))
+									  rem::Profile(), m.id,
+									  rem::new_source_name(edit.config()))
 								: std::filesystem::path{};
 			}
 			auto err = validate(edit);

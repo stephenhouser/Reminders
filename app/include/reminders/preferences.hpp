@@ -1,6 +1,7 @@
-// The apps' display preferences, kept in the settings file's [general]
-// section on this device: the sidebar's groups, their order and how they
-// show, hidden entries, list and tag order, tag colours and icons.
+// The apps' display preferences, kept in the [general] section of a
+// profile's settings file on this device: the sidebar's groups, their order
+// and how they show, hidden entries, list and tag order, tag colours and
+// icons. Each function reads or writes the profile it's given.
 #pragma once
 
 #include <string>
@@ -37,8 +38,9 @@ struct SidebarGroup {
 // others, in the default order: smart lists, each source, tags. `sources`
 // are the sources' names, in order.
 std::vector<SidebarGroup> load_sidebar_order(
-	const std::vector<std::string>& sources);
-void save_sidebar_order(const std::vector<SidebarGroup>& order);
+	const Profile& profile, const std::vector<std::string>& sources);
+void save_sidebar_order(const Profile& profile,
+						const std::vector<SidebarGroup>& order);
 // "Smart Lists", "Tags", and for a lists group `lists_title` ("My Lists" with
 // one source, else the source's title).
 std::string group_title(const SidebarGroup& group,
@@ -77,7 +79,7 @@ struct SmartListsLayout {
 		}
 		bool folded() const { return foldable() && collapsed; }
 };
-SmartListsLayout load_smart_lists_layout();
+SmartListsLayout load_smart_lists_layout(const Profile& profile);
 
 // The lists groups and the Tags group:
 //   local-lists-display=visible | collapsible      (every source's lists; can't
@@ -92,20 +94,24 @@ struct GroupLayout {
 		bool foldable() const { return display == GroupDisplay::Collapsible; }
 		bool folded() const { return foldable() && collapsed; }
 };
-GroupLayout load_lists_layout(const std::string& source);
-GroupLayout load_tags_layout();
+GroupLayout load_lists_layout(const Profile& profile,
+							  const std::string& source);
+GroupLayout load_tags_layout(const Profile& profile);
 
 // Remembers whether a group is folded (smart-lists-collapsed,
 // lists-collapsed.NAME, tags-collapsed).
-void save_group_collapsed(const SidebarGroup& group, bool collapsed);
+void save_group_collapsed(const Profile& profile, const SidebarGroup& group,
+						  bool collapsed);
 // Sets how a group appears (smart-lists-display, local-lists-display for every
 // source's lists, tags-display).
-void save_group_display(const SidebarGroup& group, GroupDisplay display);
+void save_group_display(const Profile& profile, const SidebarGroup& group,
+						GroupDisplay display);
 
 // A comma-separated list of names; a name with a comma in it is quoted:
 //   lists-hidden=Work, "Smith, Jo"
-std::vector<std::string> load_names_setting(const std::string& key);
-void save_names_setting(const std::string& key,
+std::vector<std::string> load_names_setting(const Profile& profile,
+											const std::string& key);
+void save_names_setting(const Profile& profile, const std::string& key,
 						const std::vector<std::string>& names);
 
 // Lists in settings are named "source/list". A bare "list" (as written
@@ -123,25 +129,31 @@ struct HiddenEntries {
 		bool list_hidden(std::string_view key) const;  // key: "source/list"
 		bool tag_hidden(std::string_view tag) const;
 };
-HiddenEntries load_hidden();
-void set_list_hidden(const std::string& name, bool hidden);
-void set_tag_hidden(const std::string& tag, bool hidden);
+HiddenEntries load_hidden(const Profile& profile);
+void set_list_hidden(const Profile& profile, const std::string& name,
+					 bool hidden);
+void set_tag_hidden(const Profile& profile, const std::string& tag,
+					bool hidden);
 // Leaves a smart list ("today", …) out of smart-lists, or puts it back at the
 // end.
-void set_smart_list_hidden(const std::string& name, bool hidden);
-void save_show_hidden(bool show);
+void set_smart_list_hidden(const Profile& profile, const std::string& name,
+						   bool hidden);
+void save_show_hidden(const Profile& profile, bool show);
 
 // Writes smart-lists (which smart lists show, in order; "none" if empty).
-void save_smart_lists(const std::vector<std::string>& shown);
+void save_smart_lists(const Profile& profile,
+					  const std::vector<std::string>& shown);
 
 // The sidebar's tag order: those in tags-order first, in that order, then the
 // rest alphabetically.   tags-order=work, errands
-std::vector<std::string> order_tags(std::vector<std::string> tags);
+std::vector<std::string> order_tags(const Profile& profile,
+									std::vector<std::string> tags);
 
 // The sidebar's order for your lists, on this device: those in lists-order
 // first, in that order, then the rest in `names`' order (the files' own
 // order: field, then name).   lists-order=Groceries, "Smith, Jo", Work
-std::vector<std::string> order_lists(const std::vector<std::string>& names);
+std::vector<std::string> order_lists(const Profile& profile,
+									 const std::vector<std::string>& names);
 
 // Moves `name` past the next entry in `showing` before it (delta < 0) or
 // after it, skipping entries not showing. False if it's already at that end.
@@ -160,15 +172,16 @@ struct TagStyle {
 		std::string color = "gray";
 		std::string icon = "tag";
 };
-TagStyle load_tag_style(const std::string& tag);
-void save_tag_style(const std::string& tag, const TagStyle& style);
+TagStyle load_tag_style(const Profile& profile, const std::string& tag);
+void save_tag_style(const Profile& profile, const std::string& tag,
+					const TagStyle& style);
 
 // show-sidebar=true | false: whether the sidebar is shown (Ctrl+B), saved by
 // both apps and read at start-up (load_bool_setting("show-sidebar", true)).
 
 // note-lines=N: how many lines of a reminder's notes the lists show; 0 or
 // unset (or not a number) shows them all.
-std::size_t load_note_lines();
+std::size_t load_note_lines(const Profile& profile);
 // The first `lines` lines of `text` (all of it when `lines` is 0), with "…"
 // after the last one shown when some were left out.
 std::string first_lines(const std::string& text, std::size_t lines);

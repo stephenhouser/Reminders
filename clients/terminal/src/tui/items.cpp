@@ -324,7 +324,8 @@ void Tui::restore_view() {
 		select_view(home_view());
 		return;
 	}
-	auto saved = term::parse_view_setting(rem::load_setting("view"));
+	auto saved =
+		term::parse_view_setting(rem::load_setting(rem::Profile(), "view"));
 	for (auto kind : {View::Today, View::Scheduled, View::All, View::Flagged,
 					  View::Completed, View::AllReminders}) {
 		if (saved.kind == rem::smart_view_name(kind)) {
@@ -357,8 +358,8 @@ void Tui::remember_view() {
 						  ? "tag:" + view_.name
 						  : std::string(rem::smart_view_name(view_.kind));
 	try {
-		if (rem::load_setting("view") != value) {
-			rem::save_setting("view", value);
+		if (rem::load_setting(rem::Profile(), "view") != value) {
+			rem::save_setting(rem::Profile(), "view", value);
 		}
 	} catch (const std::exception&) {
 		// Not being able to save the last view isn't worth interrupting for.

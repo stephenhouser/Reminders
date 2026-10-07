@@ -8,10 +8,9 @@
 #include <cstdint>
 #include <format>
 #include <fstream>
+#include <map>
 #include <mutex>
 #include <vector>
-
-#include "reminders/paths.hpp"
 
 namespace rem {
 
@@ -54,12 +53,16 @@ Stamp stamp_of(const fs::path& p) {
 	return {st.st_dev, st.st_ino, st.st_size, st.st_mtim};
 }
 
+// One entry per file read: a profile's each (and the default's under
+// another XDG_CONFIG_HOME, in the tests).
+struct Cached {
+		Stamp stamp;
+		std::vector<std::string> lines;
+};
+
 struct Cache {
 		std::mutex mutex;
-		fs::path path;	// the file it holds (XDG_CONFIG_HOME can change)
-		Stamp stamp;
-		bool loaded = false;
-		std::vector<std::string> lines;
+		std::map<fs::path, Cached> files;
 };
 
 Cache& cache() {
@@ -72,13 +75,11 @@ std::vector<std::string> settings_lines(const fs::path& p) {
 	auto& c = cache();
 	std::lock_guard lock(c.mutex);
 	auto now = stamp_of(p);
-	if (!c.loaded || c.path != p || !(c.stamp == now)) {
-		c.lines = read_lines(p);
-		c.path = p;
-		c.stamp = now;
-		c.loaded = true;
+	auto at = c.files.find(p);
+	if (at == c.files.end() || !(at->second.stamp == now)) {
+		at = c.files.insert_or_assign(p, Cached{now, read_lines(p)}).first;
 	}
-	return c.lines;
+	return at->second.lines;
 }
 
 std::string trimmed(std::string_view s) {
@@ -127,19 +128,19 @@ Found find_key(const std::vector<std::string>& lines,
 
 }  // namespace
 
-fs::path settings_file() { return config_dir() / "settings.ini"; }
-
-std::string load_setting(const std::string& key) {
-	return load_section_setting("general", key);
+std::string load_setting(const Profile& profile, const std::string& key) {
+	return load_section_setting(profile, "general", key);
 }
 
-void save_setting(const std::string& key, const std::string& value) {
-	save_section_setting("general", key, value);
+void save_setting(const Profile& profile, const std::string& key,
+				  const std::string& value) {
+	save_section_setting(profile, "general", key, value);
 }
 
-std::string load_section_setting(const std::string& section,
+std::string load_section_setting(const Profile& profile,
+								 const std::string& section,
 								 const std::string& key) {
-	auto lines = settings_lines(settings_file());
+	auto lines = settings_lines(profile.settings_file());
 	auto f = find_key(lines, section, key);
 	if (!f.line) {
 		return {};
@@ -149,10 +150,10 @@ std::string load_section_setting(const std::string& section,
 }
 
 std::vector<std::pair<std::string, std::string>> section_settings(
-	const std::string& section) {
+	const Profile& profile, const std::string& section) {
 	std::vector<std::pair<std::string, std::string>> out;
 	bool in = false;
-	for (auto& l : settings_lines(settings_file())) {
+	for (auto& l : settings_lines(profile.settings_file())) {
 		auto t = trimmed(l);
 		if (t.size() > 2 && t.front() == '[' && t.back() == ']') {
 			in = t.substr(1, t.size() - 2) == section;
@@ -169,9 +170,9 @@ std::vector<std::pair<std::string, std::string>> section_settings(
 	return out;
 }
 
-std::vector<std::string> section_names() {
+std::vector<std::string> section_names(const Profile& profile) {
 	std::vector<std::string> out;
-	for (auto& l : settings_lines(settings_file())) {
+	for (auto& l : settings_lines(profile.settings_file())) {
 		auto t = trimmed(l);
 		if (t.size() > 2 && t.front() == '[' && t.back() == ']') {
 			auto name = t.substr(1, t.size() - 2);
@@ -187,7 +188,7 @@ namespace {
 
 void write_lines(const fs::path& file, const std::vector<std::string>& lines) {
 	fs::create_directories(file.parent_path());
-	auto tmp = file.parent_path() / ".settings.ini.tmp";
+	auto tmp = file.parent_path() / ("." + file.filename().string() + ".tmp");
 	{
 		std::ofstream out(tmp, std::ios::trunc);
 		for (auto& l : lines) {
@@ -197,16 +198,13 @@ void write_lines(const fs::path& file, const std::vector<std::string>& lines) {
 	fs::rename(tmp, file);
 	auto& c = cache();
 	std::lock_guard lock(c.mutex);
-	c.path = file;
-	c.stamp = stamp_of(file);
-	c.lines = lines;
-	c.loaded = true;
+	c.files.insert_or_assign(file, Cached{stamp_of(file), lines});
 }
 
 }  // namespace
 
-void remove_section(const std::string& section) {
-	auto file = settings_file();
+void remove_section(const Profile& profile, const std::string& section) {
+	auto file = profile.settings_file();
 	std::vector<std::string> kept;
 	bool in_section = false;
 	for (auto& l : settings_lines(file)) {
@@ -225,9 +223,9 @@ void remove_section(const std::string& section) {
 	write_lines(file, kept);
 }
 
-void save_section_setting(const std::string& section, const std::string& key,
-						  const std::string& value) {
-	auto file = settings_file();
+void save_section_setting(const Profile& profile, const std::string& section,
+						  const std::string& key, const std::string& value) {
+	auto file = profile.settings_file();
 	auto lines = settings_lines(file);
 	auto f = find_key(lines, section, key);
 	auto entry = key + "=" + value;
@@ -245,9 +243,10 @@ void save_section_setting(const std::string& section, const std::string& key,
 	write_lines(file, lines);
 }
 
-bool load_bool_setting(const std::string& key, bool fallback) {
+bool load_bool_setting(const Profile& profile, const std::string& key,
+					   bool fallback) {
 	std::string v;
-	for (char c : load_setting(key)) {
+	for (char c : load_setting(profile, key)) {
 		v += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
 	}
 	if (v == "true" || v == "yes" || v == "1" || v == "on") {

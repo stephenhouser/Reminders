@@ -19,6 +19,7 @@ add_library(reminders_core
   src/exporter.cpp
   src/zip.cpp
   src/paths.cpp
+  src/profile.cpp
 )
 target_include_directories(reminders_core PUBLIC include)
 find_package(Threads REQUIRED)
@@ -46,6 +47,7 @@ add_executable(core_tests
   tests/importer_test.cpp
   tests/exporter_test.cpp
   tests/paths_test.cpp
+  tests/profile_test.cpp
 )
 target_link_libraries(core_tests PRIVATE reminders_core)
 add_test(NAME core_tests COMMAND core_tests)

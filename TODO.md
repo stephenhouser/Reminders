@@ -20,3 +20,4 @@
 
 - Other platforms: iOS, Android, macOS, Windows — each native, iOS first.
 - Alternate KDE front end, Qt/Kirigami on the same core (undecided).
+- Alternate profiles (settings.ini) stored in .config, selected on start and a profile picker in GUI versions. alternate .ini files. Picker in GUI to choose which one to launch with. Must also allow multiple copies of the GUI in that instance.

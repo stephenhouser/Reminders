@@ -21,11 +21,11 @@ void Sidebar::reload() {
 	for (auto& s : library_.sources()) {
 		sources.push_back(s.config.name);
 	}
-	order_ = load_sidebar_order(sources);
-	smart_ = load_smart_lists_layout();
+	order_ = load_sidebar_order(library_.profile(), sources);
+	smart_ = load_smart_lists_layout(library_.profile());
 	lists_layouts_.clear();
-	tags_ = load_tags_layout();
-	hidden_ = load_hidden();
+	tags_ = load_tags_layout(library_.profile());
+	hidden_ = load_hidden(library_.profile());
 }
 
 GroupLayout* Sidebar::layout_of(const SidebarGroup& group) {
@@ -33,7 +33,9 @@ GroupLayout* Sidebar::layout_of(const SidebarGroup& group) {
 		auto at = lists_layouts_.find(group.source);
 		if (at == lists_layouts_.end()) {
 			at = lists_layouts_
-					 .emplace(group.source, load_lists_layout(group.source))
+					 .emplace(
+						 group.source,
+						 load_lists_layout(library_.profile(), group.source))
 					 .first;
 		}
 		return &at->second;
@@ -93,7 +95,7 @@ void Sidebar::toggle_fold(const SidebarGroup& group) {
 	bool& collapsed = l ? l->collapsed : smart_.collapsed;
 	collapsed = !collapsed;
 	try {
-		save_group_collapsed(group, collapsed);
+		save_group_collapsed(library_.profile(), group, collapsed);
 	} catch (const std::exception&) {
 		// Folding still works; it just won't be remembered.
 	}
@@ -105,8 +107,8 @@ void Sidebar::set_foldable(const SidebarGroup& group, bool foldable) {
 	bool& collapsed = l ? l->collapsed : smart_.collapsed;
 	display = foldable ? GroupDisplay::Collapsible : GroupDisplay::Visible;
 	collapsed = false;	// a group made collapsible starts unfolded
-	save_group_display(group, display);
-	save_group_collapsed(group, false);
+	save_group_display(library_.profile(), group, display);
+	save_group_collapsed(library_.profile(), group, false);
 }
 
 std::vector<View> Sidebar::smart_views() {
@@ -136,7 +138,7 @@ std::vector<ListFile*> Sidebar::lists(const std::string& source) {
 		keys.push_back(library_.key_of(*l));
 	}
 	std::vector<ListFile*> out;
-	for (auto& key : order_lists(keys)) {
+	for (auto& key : order_lists(library_.profile(), keys)) {
 		if (hidden_.show || !hidden_.list_hidden(key)) {
 			if (auto* l = library_.list(key)) {
 				out.push_back(l);
@@ -148,7 +150,7 @@ std::vector<ListFile*> Sidebar::lists(const std::string& source) {
 
 std::vector<std::string> Sidebar::tags() {
 	std::vector<std::string> out;
-	for (auto& t : order_tags(library_.tags())) {
+	for (auto& t : order_tags(library_.profile(), library_.tags())) {
 		if (hidden_.show || !hidden_.tag_hidden(t)) {
 			out.push_back(t);
 		}
@@ -247,18 +249,18 @@ bool Sidebar::hidden(const View& v) {
 
 void Sidebar::set_hidden(const View& v, bool hide) {
 	if (is_smart(v.kind)) {
-		set_smart_list_hidden(view_to_string(v), hide);
+		set_smart_list_hidden(library_.profile(), view_to_string(v), hide);
 	} else if (v.kind == View::List) {
-		set_list_hidden(v.name, hide);
+		set_list_hidden(library_.profile(), v.name, hide);
 	} else if (v.kind == View::Tag) {
-		set_tag_hidden(v.name, hide);
+		set_tag_hidden(library_.profile(), v.name, hide);
 	}
-	smart_ = load_smart_lists_layout();
-	hidden_ = load_hidden();
+	smart_ = load_smart_lists_layout(library_.profile());
+	hidden_ = load_hidden(library_.profile());
 }
 
 void Sidebar::set_show_hidden(bool show) {
-	save_show_hidden(show);
+	save_show_hidden(library_.profile(), show);
 	hidden_.show = show;
 }
 
@@ -297,7 +299,8 @@ std::optional<Sidebar::EntryOrder> Sidebar::entry_order(const View& v) {
 		return EntryOrder{order, order, view_to_string(v)};
 	}
 	if (v.kind == View::Tag) {
-		return EntryOrder{order_tags(library_.tags()), tags(), v.name};
+		return EntryOrder{order_tags(library_.profile(), library_.tags()),
+						  tags(), v.name};
 	}
 	if (v.kind == View::List) {
 		auto* l = library_.list(v.name);
@@ -308,20 +311,20 @@ std::optional<Sidebar::EntryOrder> Sidebar::entry_order(const View& v) {
 		for (auto* x : lists(library_.source_of(*l)->config.name)) {
 			showing.push_back(library_.key_of(*x));
 		}
-		return EntryOrder{order_lists(list_keys()), std::move(showing),
-						  v.name};	// every source's
+		return EntryOrder{order_lists(library_.profile(), list_keys()),
+						  std::move(showing), v.name};	// every source's
 	}
 	return std::nullopt;
 }
 
 void Sidebar::save_order(const View& v, const std::vector<std::string>& order) {
 	if (is_smart(v.kind)) {
-		save_smart_lists(order);
-		smart_ = load_smart_lists_layout();
+		save_smart_lists(library_.profile(), order);
+		smart_ = load_smart_lists_layout(library_.profile());
 	} else if (v.kind == View::Tag) {
-		save_names_setting("tags-order", order);
+		save_names_setting(library_.profile(), "tags-order", order);
 	} else if (v.kind == View::List) {
-		save_names_setting("lists-order", order);
+		save_names_setting(library_.profile(), "lists-order", order);
 	}
 }
 
@@ -361,7 +364,7 @@ bool Sidebar::move_group(const SidebarGroup& group, int delta) {
 	if (!move_sidebar_group(order_, group, delta, groups())) {
 		return false;
 	}
-	save_sidebar_order(order_);
+	save_sidebar_order(library_.profile(), order_);
 	return true;
 }
 
@@ -370,7 +373,7 @@ bool Sidebar::move_group_next_to(const SidebarGroup& group,
 	if (!move_sidebar_group_next_to(order_, group, target, after)) {
 		return false;
 	}
-	save_sidebar_order(order_);
+	save_sidebar_order(library_.profile(), order_);
 	return true;
 }
 

@@ -18,7 +18,9 @@ namespace {
 
 constexpr std::size_t kHistorySize = 500;
 
-fs::path history_file() { return rem::state_dir() / "command-history"; }
+fs::path history_file() {
+	return rem::Profile().state_dir() / "command-history";
+}
 
 // "show-completed=on" style values for :set.
 std::optional<bool> parse_bool(const std::string& v) {
@@ -404,7 +406,7 @@ void Tui::set_option(const std::string& word) {
 	};
 	auto save = [&](const char* key, const std::string& v) {
 		try {
-			rem::save_setting(key, v);
+			rem::save_setting(rem::Profile(), key, v);
 		} catch (const std::exception&) {
 			// It just won't be remembered.
 		}

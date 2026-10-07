@@ -143,7 +143,7 @@ void Window::rebuild_sidebar() {
 				break;
 			case rem::SidebarGroup::Tags:
 				for (auto& t : sidebar_tags()) {
-					auto style = rem::load_tag_style(t);
+					auto style = rem::load_tag_style(rem::Profile(), t);
 					auto* row = sidebar_row(list_icon_name(style.icon),
 											style.color, "#" + t, std::nullopt);
 					set_row_view(row, View{View::Tag, t});
@@ -235,12 +235,12 @@ void Window::set_entry_hidden(const View& v, bool hidden) {
 
 // Tag Info…: the tag's colour and icon, kept in settings.ini.
 void Window::edit_tag(const std::string& tag) {
-	auto style = rem::load_tag_style(tag);
+	auto style = rem::load_tag_style(rem::Profile(), tag);
 	show_tag_dialog(
 		window_, tag, ListEdit{"#" + tag, style.color, style.icon, {}},
 		[this, tag](ListEdit e) {
 			try {
-				rem::save_tag_style(tag, {e.color, e.icon});
+				rem::save_tag_style(rem::Profile(), tag, {e.color, e.icon});
 			} catch (const std::exception& err) {
 				toast(std::format("Couldn't save the setting: {}", err.what()));
 			}

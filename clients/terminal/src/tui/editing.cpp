@@ -333,7 +333,7 @@ bool Tui::confirm(const std::string& question) {
 
 // Opens settings.ini in $EDITOR, then applies what changed.
 void Tui::edit_settings() {
-	auto file = rem::settings_file();
+	auto file = rem::Profile().settings_file();
 	try {
 		std::error_code ec;
 		if (!fs::exists(file, ec)) {

@@ -14,11 +14,11 @@ TEST(settings_round_trip_keeps_other_lines) {
 	fs::create_directories(dir / "reminders");
 	std::ofstream(dir / "reminders" / "settings.ini")
 		<< "# mine\n[other]\nfolder=x\n[general]\nview=all\n";
-	CHECK_EQ(load_setting("folder"), "");
-	CHECK_EQ(load_setting("view"), "all");
-	save_setting("folder", "/tmp/lists");
-	save_setting("view", "today");
-	CHECK_EQ(load_setting("folder"), "/tmp/lists");
+	CHECK_EQ(load_setting(Profile(), "folder"), "");
+	CHECK_EQ(load_setting(Profile(), "view"), "all");
+	save_setting(Profile(), "folder", "/tmp/lists");
+	save_setting(Profile(), "view", "today");
+	CHECK_EQ(load_setting(Profile(), "folder"), "/tmp/lists");
 	std::ifstream in(dir / "reminders" / "settings.ini");
 	std::string all((std::istreambuf_iterator<char>(in)), {});
 	CHECK_EQ(
@@ -26,9 +26,9 @@ TEST(settings_round_trip_keeps_other_lines) {
 		"# "
 		"mine\n[other]\nfolder=x\n[general]\nview=today\nfolder=/tmp/lists\n");
 	CHECK(device_name().find('-') != std::string::npos);
-	CHECK(!load_bool_setting("show-hidden"));
-	save_setting("show-hidden", "Yes");
-	CHECK(load_bool_setting("show-hidden"));
+	CHECK(!load_bool_setting(Profile(), "show-hidden"));
+	save_setting(Profile(), "show-hidden", "Yes");
+	CHECK(load_bool_setting(Profile(), "show-hidden"));
 	unsetenv("XDG_CONFIG_HOME");
 	fs::remove_all(dir);
 }
@@ -40,22 +40,22 @@ TEST(settings_cache_sees_changes_on_disk) {
 	fs::create_directories(dir / "reminders");
 	auto file = dir / "reminders" / "settings.ini";
 	std::ofstream(file) << "[general]\nview=all\n";
-	CHECK_EQ(load_setting("view"), "all");
+	CHECK_EQ(load_setting(Profile(), "view"), "all");
 
 	// Same size, written elsewhere and moved in (as another app saves).
 	std::ofstream(dir / "new.ini") << "[general]\nview=day\n";
 	fs::rename(dir / "new.ini", file);
-	CHECK_EQ(load_setting("view"), "day");
+	CHECK_EQ(load_setting(Profile(), "view"), "day");
 
 	// Edited in place, as an editor might.
 	std::ofstream(file, std::ios::trunc) << "[general]\nview=today\n";
-	CHECK_EQ(load_setting("view"), "today");
+	CHECK_EQ(load_setting(Profile(), "view"), "today");
 
-	save_setting("view", "flagged");
-	CHECK_EQ(load_setting("view"), "flagged");
+	save_setting(Profile(), "view", "flagged");
+	CHECK_EQ(load_setting(Profile(), "view"), "flagged");
 
 	fs::remove(file);
-	CHECK_EQ(load_setting("view"), "");
+	CHECK_EQ(load_setting(Profile(), "view"), "");
 
 	// Another settings folder is another file.
 	auto other = dir / "other";
@@ -63,7 +63,7 @@ TEST(settings_cache_sees_changes_on_disk) {
 	std::ofstream(other / "reminders" / "settings.ini")
 		<< "[general]\nview=all\n";
 	setenv("XDG_CONFIG_HOME", other.c_str(), 1);
-	CHECK_EQ(load_setting("view"), "all");
+	CHECK_EQ(load_setting(Profile(), "view"), "all");
 
 	unsetenv("XDG_CONFIG_HOME");
 	fs::remove_all(dir);

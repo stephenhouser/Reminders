@@ -49,7 +49,7 @@ TEST(paths_xdg_dirs) {
 	CHECK(data_dir() == fs::path("/home/jo/.local/share/reminders"));
 	CHECK(state_dir() == fs::path("/home/jo/.local/state/reminders"));
 	CHECK(cache_dir() == fs::path("/home/jo/.cache/reminders"));
-	CHECK(settings_file() ==
+	CHECK(Profile().settings_file() ==
 		  fs::path("/home/jo/.config/reminders/settings.ini"));
 	env.set("XDG_STATE_HOME", "/var/x/state");
 	env.set("XDG_CACHE_HOME", "relative/cache");  // not absolute: ignored
@@ -102,12 +102,12 @@ TEST(paths_in_settings_and_state) {
 	std::ofstream(dir / "home" / ".config" / "reminders" / "settings.ini")
 		<< "[general]\n\n[source.mine]\nbackend=local\nfolder=~/Lists\n";
 
-	auto sources = load_sources();
+	auto sources = load_sources(Profile());
 	CHECK_EQ(sources.size(), 1u);
 	CHECK(sources[0].folder == dir / "home" / "Lists");
 	// Saved back with ~ for the home folder.
 	save_source(sources[0]);
-	CHECK_EQ(load_section_setting("source.mine", "folder"),
+	CHECK_EQ(load_section_setting(Profile(), "source.mine", "folder"),
 			 std::string("~/Lists"));
 
 	// State: per device and source, under ~/.local/state; old state in the
@@ -145,7 +145,7 @@ TEST(paths_in_settings_and_state) {
 	CHECK(fs::exists(state / "base" / "Todo.md"));
 
 	// Removing the source removes this device's records for it.
-	remove_source("mine");
+	remove_source(Profile(), "mine");
 	CHECK(!fs::exists(state));
 	CHECK(fs::exists(dir / "home" / "Lists"));
 	std::error_code ec;

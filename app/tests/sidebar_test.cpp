@@ -117,3 +117,36 @@ TEST(sidebar_hiding_folding_and_moving_are_saved) {
 	CHECK(s.all().size() == 6u + 3u);  // the folded tags left out
 	CHECK(s.all(true).size() == 6u + 3u + 2u);
 }
+
+// A library of another profile: its sidebar reads and saves that profile's
+// file, and the default profile's is left alone.
+TEST(sidebar_uses_its_librarys_profile) {
+	auto dir = fs::temp_directory_path() / ("reminders-sidebar-" + new_id());
+	setenv("XDG_CONFIG_HOME", (dir / "config").c_str(), 1);
+	Profile def, work("work");
+	fs::create_directories(work.settings_file().parent_path());
+	std::ofstream(def.settings_file()) << "[general]\nshow-hidden=true\n";
+	std::ofstream(work.settings_file()) << "[general]\n";
+	fs::create_directories(dir / "lists");
+	std::ofstream(dir / "lists" / "A.md") << MARK "- [ ] One ^a00001\n";
+	Library lib(work);
+	lib.add(SourceConfig{"mine", "local", dir / "lists", "", {}, work},
+			std::make_unique<Store>(dir / "lists", dir / "state", "local"));
+	lib.load_all();
+	{
+		Sidebar s(lib);
+		CHECK(!s.show_hidden());  // the work profile's, not the default's
+		s.set_hidden({View::List, "mine/A"}, true);
+		s.set_show_hidden(true);
+		CHECK(s.move_group(SidebarGroup::tags(), -1));
+	}
+	CHECK_EQ(load_setting(work, "lists-hidden"), "mine/A");
+	CHECK_EQ(load_setting(work, "show-hidden"), "true");
+	CHECK(!load_setting(work, "sidebar-order").empty());
+	std::ifstream in(def.settings_file());
+	std::string all((std::istreambuf_iterator<char>(in)), {});
+	CHECK_EQ(all, "[general]\nshow-hidden=true\n");
+	unsetenv("XDG_CONFIG_HOME");
+	std::error_code ec;
+	fs::remove_all(dir, ec);
+}

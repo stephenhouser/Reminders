@@ -21,11 +21,12 @@ std::string section_of(const std::string& name) {
 	return std::string(kPrefix) + name;
 }
 
-SourceConfig read_source(const std::string& name) {
+SourceConfig read_source(const Profile& profile, const std::string& name) {
 	SourceConfig s;
 	s.name = name;
+	s.profile = profile;
 	auto section = section_of(name);
-	for (auto& [key, value] : section_settings(section)) {
+	for (auto& [key, value] : section_settings(profile, section)) {
 		if (key == "backend") {
 			// As written (lower case), even for a back end not built in, so
 			// saving the source keeps it.
@@ -47,7 +48,7 @@ SourceConfig read_source(const std::string& name) {
 		}
 	}
 	if (s.folder.empty() && backend_of(s).owns_folder) {
-		s.folder = default_copy_folder(s.backend, name);
+		s.folder = default_copy_folder(profile, s.backend, name);
 	}
 	return s;
 }
@@ -101,14 +102,15 @@ void move_state_dir(const fs::path& from, const fs::path& to) {
 
 // Records in the other place a source's could be: <folder>/.reminders/<device>
 // (where every source's were before 2026-10-03, and Syncthing's still are) or
-// $XDG_STATE_HOME/reminders/<device>/<name> (where a build of 2026-10-03 put
+// <profile state>/<device>/<name> (where a build of 2026-10-03 put
 // Syncthing's too). They move to where they belong.
 void move_misplaced_state(const SourceConfig& source, const std::string& device,
 						  const fs::path& state) {
 	auto in_folder = source.folder / kStateDirName / device;
 	if (backend_of(source).state_in_folder) {
 		if (!source.name.empty()) {
-			move_state_dir(state_dir() / device / source.name, in_folder);
+			move_state_dir(source.profile.state_dir() / device / source.name,
+						   in_folder);
 		}
 	} else {
 		move_state_dir(in_folder, state);
@@ -117,9 +119,9 @@ void move_misplaced_state(const SourceConfig& source, const std::string& device,
 
 }  // namespace
 
-fs::path default_copy_folder(std::string_view backend,
+fs::path default_copy_folder(const Profile& profile, std::string_view backend,
 							 const std::string& name) {
-	return data_dir() / std::string(backend) / name;
+	return profile.data_dir() / std::string(backend) / name;
 }
 
 std::string SourceConfig::option(const std::string& key) const {
@@ -132,7 +134,7 @@ fs::path source_state_dir(const SourceConfig& source,
 	if (backend_of(source).state_in_folder) {
 		return state_dir(source.folder, device);
 	}
-	auto base = state_dir() / device;
+	auto base = source.profile.state_dir() / device;
 	if (!source.name.empty()) {
 		return base / source.name;
 	}
@@ -146,11 +148,11 @@ fs::path source_state_dir(const SourceConfig& source,
 	return base / std::format("folder-{:016x}", h);
 }
 
-std::vector<SourceConfig> load_sources() {
+std::vector<SourceConfig> load_sources(const Profile& profile) {
 	std::vector<SourceConfig> out;
-	for (auto& section : section_names()) {
+	for (auto& section : section_names(profile)) {
 		if (section.starts_with(kPrefix) && section.size() > kPrefix.size()) {
-			auto s = read_source(section.substr(kPrefix.size()));
+			auto s = read_source(profile, section.substr(kPrefix.size()));
 			if (!s.folder.empty()) {
 				out.push_back(std::move(s));
 			}
@@ -159,12 +161,12 @@ std::vector<SourceConfig> load_sources() {
 	return out;
 }
 
-std::optional<SourceConfig> default_source() {
-	auto sources = load_sources();
+std::optional<SourceConfig> default_source(const Profile& profile) {
+	auto sources = load_sources(profile);
 	if (sources.empty()) {
 		return std::nullopt;
 	}
-	auto name = load_setting("default-source");
+	auto name = load_setting(profile, "default-source");
 	for (auto& s : sources) {
 		if (s.name == name) {
 			return s;
@@ -186,8 +188,8 @@ std::string source_title(const SourceConfig& source) {
 	return t;
 }
 
-std::optional<fs::path> saved_folder() {
-	auto source = default_source();
+std::optional<fs::path> saved_folder(const Profile& profile) {
+	auto source = default_source(profile);
 	std::error_code ec;
 	if (!source || !fs::is_directory(source->folder, ec)) {
 		return std::nullopt;
@@ -197,21 +199,23 @@ std::optional<fs::path> saved_folder() {
 
 void save_source(const SourceConfig& source) {
 	// Records kept for another folder (or server) don't apply any more.
+	auto& profile = source.profile;
 	auto section = section_of(source.name);
-	auto old_folder = load_section_setting(section, "folder");
-	auto old_url = load_section_setting(section, "url");
+	auto old_folder = load_section_setting(profile, section, "folder");
+	auto old_url = load_section_setting(profile, section, "url");
 	if ((!old_folder.empty() && expand_path(old_folder) != source.folder) ||
 		(!old_url.empty() && old_url != source.option("url"))) {
 		std::error_code ec;
 		fs::remove_all(source_state_dir(source, device_name()), ec);
 	}
-	save_section_setting(section, "backend", source.backend);
-	save_section_setting(section, "folder", contract_path(source.folder));
+	save_section_setting(profile, section, "backend", source.backend);
+	save_section_setting(profile, section, "folder",
+						 contract_path(source.folder));
 	if (!source.title.empty()) {
-		save_section_setting(section, "title", source.title);
+		save_section_setting(profile, section, "title", source.title);
 	}
 	for (auto& [key, value] : source.options) {
-		save_section_setting(section, key, value);
+		save_section_setting(profile, section, key, value);
 	}
 }
 int sync_interval(const SourceConfig& source) {
@@ -226,33 +230,34 @@ std::string detect_backend(const fs::path& folder) {
 	}
 	return "local";
 }
-SourceConfig source_for_folder(const fs::path& folder) {
+SourceConfig source_for_folder(const Profile& profile, const fs::path& folder) {
 	std::error_code ec;
-	for (auto& s : load_sources()) {
+	for (auto& s : load_sources(profile)) {
 		if (s.folder == folder || fs::equivalent(s.folder, folder, ec)) {
 			return s;
 		}
 	}
-	return SourceConfig{"", detect_backend(folder), folder, ""};
+	return SourceConfig{"", detect_backend(folder), folder, "", {}, profile};
 }
 
-SourceConfig set_default_folder(const fs::path& folder) {
+SourceConfig set_default_folder(const Profile& profile,
+								const fs::path& folder) {
 	// A server account stays one: the folder becomes a source of its own.
-	if (auto d = default_source(); d && has_server(*d)) {
-		auto source = source_for_folder(folder);
+	if (auto d = default_source(profile); d && has_server(*d)) {
+		auto source = source_for_folder(profile, folder);
 		if (source.name.empty()) {
-			source = add_source(folder);
+			source = add_source(profile, folder);
 		}
-		save_setting("default-source", source.name);
+		save_setting(profile, "default-source", source.name);
 		return source;
 	}
-	auto source = default_source().value_or(
-		SourceConfig{name_for(folder), "local", folder, ""});
+	auto source = default_source(profile).value_or(
+		SourceConfig{name_for(folder), "local", folder, "", {}, profile});
 	source.folder = folder;
 	source.backend = detect_backend(folder);
 	save_source(source);
-	if (load_setting("default-source").empty()) {
-		save_setting("default-source", source.name);
+	if (load_setting(profile, "default-source").empty()) {
+		save_setting(profile, "default-source", source.name);
 	}
 	return source;
 }
@@ -284,43 +289,49 @@ std::string new_source_name(const SourceConfig& source) {
 	if (base.empty()) {
 		base = module.has_server ? module.id : "reminders";
 	}
-	return unique_source_name(name_for(fs::path(base)), load_sources());
+	return unique_source_name(name_for(fs::path(base)),
+							  load_sources(source.profile));
 }
 
-SourceConfig add_source(SourceConfig source) {
-	bool first = load_sources().empty();
+SourceConfig add_source(const Profile& profile, SourceConfig source) {
+	source.profile = profile;
+	bool first = load_sources(profile).empty();
 	if (source.name.empty()) {
 		source.name = new_source_name(source);
 	}
 	if (source.folder.empty() && backend_of(source).owns_folder) {
-		source.folder = default_copy_folder(source.backend, source.name);
+		source.folder =
+			default_copy_folder(profile, source.backend, source.name);
 	}
 	save_source(source);
 	if (first) {
-		save_setting("default-source", source.name);
+		save_setting(profile, "default-source", source.name);
 	}
 	return source;
 }
 
-SourceConfig add_source(const fs::path& folder) {
-	return add_source(SourceConfig{"", detect_backend(folder), folder, ""});
+SourceConfig add_source(const Profile& profile, const fs::path& folder) {
+	return add_source(profile,
+					  SourceConfig{"", detect_backend(folder), folder, ""});
 }
 
-void remove_source(const std::string& name, bool keep_copy) {
+void remove_source(const Profile& profile, const std::string& name,
+				   bool keep_copy) {
 	std::error_code ec;
-	for (auto& s : load_sources()) {
+	for (auto& s : load_sources(profile)) {
 		if (s.name == name) {
 			fs::remove_all(source_state_dir(s, device_name()), ec);
 			if (!keep_copy && has_server(s) &&
-				s.folder == default_copy_folder(s.backend, name)) {
+				s.folder == default_copy_folder(profile, s.backend, name)) {
 				fs::remove_all(s.folder, ec);
 			}
 		}
 	}
-	remove_section(section_of(name));
-	if (load_setting("default-source") == name) {
-		auto rest = load_sources();
-		save_setting("default-source", rest.empty() ? "" : rest.front().name);
+	remove_section(profile, section_of(name));
+	if (load_setting(profile, "default-source") == name) {
+		auto rest = load_sources(profile);
+		save_setting(profile, "default-source",
+					 rest.empty() ? "" : rest.front().name);
 	}
 }
 

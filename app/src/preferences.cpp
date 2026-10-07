@@ -38,9 +38,9 @@ std::string trimmed(std::string_view s) {
 }
 
 // "visible" (the default), "collapsible" (or "collapsable") or "hidden".
-GroupDisplay load_display(const std::string& key) {
+GroupDisplay load_display(const Profile& profile, const std::string& key) {
 	std::string v;
-	for (char c : load_setting(key)) {
+	for (char c : load_setting(profile, key)) {
 		v += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
 	}
 	if (v == "collapsible" || v == "collapsable") {
@@ -54,11 +54,11 @@ GroupDisplay load_display(const std::string& key) {
 
 }  // namespace
 
-SmartListsLayout load_smart_lists_layout() {
+SmartListsLayout load_smart_lists_layout(const Profile& profile) {
 	static const std::vector<std::string> known = {
 		"today", "scheduled", "all", "all-reminders", "flagged", "completed"};
 	SmartListsLayout layout;
-	auto value = load_setting("smart-lists");
+	auto value = load_setting(profile, "smart-lists");
 	if (!value.empty()) {
 		layout.shown.clear();
 		std::string word;
@@ -80,22 +80,24 @@ SmartListsLayout load_smart_lists_layout() {
 			}
 		}
 	}
-	layout.display = load_display("smart-lists-display");
-	layout.collapsed = load_bool_setting("smart-lists-collapsed");
+	layout.display = load_display(profile, "smart-lists-display");
+	layout.collapsed = load_bool_setting(profile, "smart-lists-collapsed");
 	return layout;
 }
 
-GroupLayout load_lists_layout(const std::string& source) {
-	auto display = load_display("local-lists-display");
+GroupLayout load_lists_layout(const Profile& profile,
+							  const std::string& source) {
+	auto display = load_display(profile, "local-lists-display");
 	if (display == GroupDisplay::Hidden) {
 		display = GroupDisplay::Visible;
 	}
-	return GroupLayout{display, load_bool_setting("lists-collapsed." + source)};
+	return GroupLayout{display,
+					   load_bool_setting(profile, "lists-collapsed." + source)};
 }
 
-GroupLayout load_tags_layout() {
-	return GroupLayout{load_display("tags-display"),
-					   load_bool_setting("tags-collapsed")};
+GroupLayout load_tags_layout(const Profile& profile) {
+	return GroupLayout{load_display(profile, "tags-display"),
+					   load_bool_setting(profile, "tags-collapsed")};
 }
 
 std::string group_title(const SidebarGroup& group,
@@ -111,16 +113,18 @@ std::string group_title(const SidebarGroup& group,
 	return "";
 }
 
-void save_group_collapsed(const SidebarGroup& group, bool collapsed) {
+void save_group_collapsed(const Profile& profile, const SidebarGroup& group,
+						  bool collapsed) {
 	auto key = group.kind == SidebarGroup::SmartLists
 				 ? std::string("smart-lists-collapsed")
 			 : group.kind == SidebarGroup::Tags
 				 ? std::string("tags-collapsed")
 				 : "lists-collapsed." + group.source;
-	save_setting(key, collapsed ? "true" : "false");
+	save_setting(profile, key, collapsed ? "true" : "false");
 }
 
-void save_group_display(const SidebarGroup& group, GroupDisplay display) {
+void save_group_display(const Profile& profile, const SidebarGroup& group,
+						GroupDisplay display) {
 	const char* value = display == GroupDisplay::Collapsible ? "collapsible"
 					  : display == GroupDisplay::Hidden		 ? "hidden"
 															 : "visible";
@@ -128,16 +132,16 @@ void save_group_display(const SidebarGroup& group, GroupDisplay display) {
 						? "smart-lists-display"
 					: group.kind == SidebarGroup::Tags ? "tags-display"
 													   : "local-lists-display";
-	save_setting(key, value);
+	save_setting(profile, key, value);
 }
 
 std::vector<SidebarGroup> load_sidebar_order(
-	const std::vector<std::string>& sources) {
+	const Profile& profile, const std::vector<std::string>& sources) {
 	// The words, as written; "smart-lists", "smart_lists" and "SmartLists"
 	// all count, but a source's name is kept exactly.
 	std::vector<std::string> words;
 	std::string word;
-	for (char c : load_setting("sidebar-order") + ",") {
+	for (char c : load_setting(profile, "sidebar-order") + ",") {
 		if (c == ',' || c == ' ' || c == '\t') {
 			if (!word.empty()) {
 				words.push_back(word);
@@ -197,7 +201,8 @@ std::vector<SidebarGroup> load_sidebar_order(
 	return order;
 }
 
-void save_sidebar_order(const std::vector<SidebarGroup>& order) {
+void save_sidebar_order(const Profile& profile,
+						const std::vector<SidebarGroup>& order) {
 	auto lists_groups = std::ranges::count_if(
 		order, [](auto& g) { return g.kind == SidebarGroup::Lists; });
 	std::string value;
@@ -208,7 +213,7 @@ void save_sidebar_order(const std::vector<SidebarGroup>& order) {
 										  : "lists:" + g.source;
 		value += (value.empty() ? "" : ", ") + w;
 	}
-	save_setting("sidebar-order", value);
+	save_setting(profile, "sidebar-order", value);
 }
 
 bool move_sidebar_group_next_to(std::vector<SidebarGroup>& order,
@@ -237,9 +242,10 @@ bool move_sidebar_group(std::vector<SidebarGroup>& order,
 	return false;
 }
 
-std::vector<std::string> load_names_setting(const std::string& key) {
+std::vector<std::string> load_names_setting(const Profile& profile,
+											const std::string& key) {
 	std::vector<std::string> out;
-	std::string value = load_setting(key), name;
+	std::string value = load_setting(profile, key), name;
 	bool quoted = false, any = false;
 	auto finish = [&] {
 		auto t = trimmed(name);
@@ -265,7 +271,7 @@ std::vector<std::string> load_names_setting(const std::string& key) {
 	return out;
 }
 
-void save_names_setting(const std::string& key,
+void save_names_setting(const Profile& profile, const std::string& key,
 						const std::vector<std::string>& names) {
 	std::string value;
 	for (auto& n : names) {
@@ -287,7 +293,7 @@ void save_names_setting(const std::string& key,
 			value += n;
 		}
 	}
-	save_setting(key, value);
+	save_setting(profile, key, value);
 }
 
 bool list_entry_matches(std::string_view entry, std::string_view key) {
@@ -307,17 +313,17 @@ bool HiddenEntries::tag_hidden(std::string_view tag) const {
 	return std::ranges::find(tags, tag) != tags.end();
 }
 
-HiddenEntries load_hidden() {
-	return HiddenEntries{load_names_setting("lists-hidden"),
-						 load_names_setting("tags-hidden"),
-						 load_bool_setting("show-hidden")};
+HiddenEntries load_hidden(const Profile& profile) {
+	return HiddenEntries{load_names_setting(profile, "lists-hidden"),
+						 load_names_setting(profile, "tags-hidden"),
+						 load_bool_setting(profile, "show-hidden")};
 }
 
 namespace {
 
-void set_in_names(const std::string& key, const std::string& name,
-				  bool present) {
-	auto names = load_names_setting(key);
+void set_in_names(const Profile& profile, const std::string& key,
+				  const std::string& name, bool present) {
+	auto names = load_names_setting(profile, key);
 	auto at = std::ranges::find(names, name);
 	if (present == (at != names.end())) {
 		return;
@@ -327,13 +333,14 @@ void set_in_names(const std::string& key, const std::string& name,
 	} else {
 		names.erase(at);
 	}
-	save_names_setting(key, names);
+	save_names_setting(profile, key, names);
 }
 
 }  // namespace
 
-void set_list_hidden(const std::string& key, bool hidden) {
-	auto names = load_names_setting("lists-hidden");
+void set_list_hidden(const Profile& profile, const std::string& key,
+					 bool hidden) {
+	auto names = load_names_setting(profile, "lists-hidden");
 	if (hidden && std::ranges::find(names, key) != names.end()) {
 		return;	 // already
 	}
@@ -345,15 +352,17 @@ void set_list_hidden(const std::string& key, bool hidden) {
 		names.push_back(key);
 	}
 	if (names != before) {
-		save_names_setting("lists-hidden", names);
+		save_names_setting(profile, "lists-hidden", names);
 	}
 }
-void set_tag_hidden(const std::string& tag, bool hidden) {
-	set_in_names("tags-hidden", tag, hidden);
+void set_tag_hidden(const Profile& profile, const std::string& tag,
+					bool hidden) {
+	set_in_names(profile, "tags-hidden", tag, hidden);
 }
 
-void set_smart_list_hidden(const std::string& name, bool hidden) {
-	auto shown = load_smart_lists_layout().shown;
+void set_smart_list_hidden(const Profile& profile, const std::string& name,
+						   bool hidden) {
+	auto shown = load_smart_lists_layout(profile).shown;
 	auto at = std::ranges::find(shown, name);
 	if (hidden == (at == shown.end())) {
 		return;
@@ -363,21 +372,23 @@ void set_smart_list_hidden(const std::string& name, bool hidden) {
 	} else {
 		shown.push_back(name);
 	}
-	save_smart_lists(shown);
+	save_smart_lists(profile, shown);
 }
 
-void save_smart_lists(const std::vector<std::string>& shown) {
+void save_smart_lists(const Profile& profile,
+					  const std::vector<std::string>& shown) {
 	std::string value;
 	for (auto& s : shown) {
 		value += (value.empty() ? "" : ", ") + s;
 	}
-	save_setting("smart-lists", value.empty() ? "none" : value);
+	save_setting(profile, "smart-lists", value.empty() ? "none" : value);
 }
 
-std::vector<std::string> order_tags(std::vector<std::string> tags) {
+std::vector<std::string> order_tags(const Profile& profile,
+									std::vector<std::string> tags) {
 	std::ranges::sort(tags);
 	std::vector<std::string> out;
-	for (auto& t : load_names_setting("tags-order")) {
+	for (auto& t : load_names_setting(profile, "tags-order")) {
 		if (std::ranges::find(tags, t) != tags.end()) {
 			out.push_back(t);
 		}
@@ -390,9 +401,10 @@ std::vector<std::string> order_tags(std::vector<std::string> tags) {
 	return out;
 }
 
-std::vector<std::string> order_lists(const std::vector<std::string>& names) {
+std::vector<std::string> order_lists(const Profile& profile,
+									 const std::vector<std::string>& names) {
 	std::vector<std::string> out;
-	for (auto& entry : load_names_setting("lists-order")) {
+	for (auto& entry : load_names_setting(profile, "lists-order")) {
 		for (auto& n : names) {
 			if (list_entry_matches(entry, n) &&
 				std::ranges::find(out, n) == out.end()) {
@@ -433,14 +445,14 @@ bool move_next_to(std::vector<std::string>& order, const std::string& name,
 	return place_next_to(order, name, target, after);
 }
 
-void save_show_hidden(bool show) {
-	save_setting("show-hidden", show ? "true" : "false");
+void save_show_hidden(const Profile& profile, bool show) {
+	save_setting(profile, "show-hidden", show ? "true" : "false");
 }
 
-TagStyle load_tag_style(const std::string& tag) {
+TagStyle load_tag_style(const Profile& profile, const std::string& tag) {
 	TagStyle style;
-	auto color = load_setting("tag-color." + tag),
-		 icon = load_setting("tag-icon." + tag);
+	auto color = load_setting(profile, "tag-color." + tag),
+		 icon = load_setting(profile, "tag-icon." + tag);
 	if (std::ranges::find(kColors, color) != std::end(kColors)) {
 		style.color = color;
 	}
@@ -450,13 +462,14 @@ TagStyle load_tag_style(const std::string& tag) {
 	return style;
 }
 
-void save_tag_style(const std::string& tag, const TagStyle& style) {
-	save_setting("tag-color." + tag, style.color);
-	save_setting("tag-icon." + tag, style.icon);
+void save_tag_style(const Profile& profile, const std::string& tag,
+					const TagStyle& style) {
+	save_setting(profile, "tag-color." + tag, style.color);
+	save_setting(profile, "tag-icon." + tag, style.icon);
 }
 
-std::size_t load_note_lines() {
-	auto value = trimmed(load_setting("note-lines"));
+std::size_t load_note_lines(const Profile& profile) {
+	auto value = trimmed(load_setting(profile, "note-lines"));
 	std::size_t n = 0;
 	for (char c : value) {
 		if (!std::isdigit(static_cast<unsigned char>(c))) {
