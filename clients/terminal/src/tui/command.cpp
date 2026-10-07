@@ -18,8 +18,9 @@ namespace {
 
 constexpr std::size_t kHistorySize = 500;
 
-fs::path history_file() {
-	return rem::Profile().state_dir() / "command-history";
+// The : prompt's history, one per profile.
+fs::path history_file(const rem::Profile& profile) {
+	return profile.state_dir() / "command-history";
 }
 
 // "show-completed=on" style values for :set.
@@ -81,7 +82,7 @@ std::vector<std::string> files_for(const std::string& word) {
 bool Tui::command_line() {
 	if (!history_read_) {
 		history_read_ = true;
-		std::ifstream in(history_file());
+		std::ifstream in(history_file(store_.profile()));
 		for (std::string line; std::getline(in, line);) {
 			if (!line.empty()) {
 				command_history_.push_back(line);
@@ -111,8 +112,9 @@ bool Tui::command_line() {
 			command_history_.end() - static_cast<long>(kHistorySize));
 	}
 	try {
-		fs::create_directories(history_file().parent_path());
-		std::ofstream out(history_file(), std::ios::trunc);
+		auto file = history_file(store_.profile());
+		fs::create_directories(file.parent_path());
+		std::ofstream out(file, std::ios::trunc);
 		for (auto& l : command_history_) {
 			out << l << "\n";
 		}
@@ -406,7 +408,7 @@ void Tui::set_option(const std::string& word) {
 	};
 	auto save = [&](const char* key, const std::string& v) {
 		try {
-			rem::save_setting(rem::Profile(), key, v);
+			rem::save_setting(store_.profile(), key, v);
 		} catch (const std::exception&) {
 			// It just won't be remembered.
 		}

@@ -58,6 +58,8 @@ reminders import FILE [--list LIST] [--source S] [--format F] [--duplicates]
 reminders export [LIST] [--format F] [-o FILE] [-a]
 reminders folder [PATH]
 reminders sync [SOURCE]
+reminders profiles               the profiles, with their sources (* the one in use)
+reminders new-profile NAME [--from PROFILE]
 ```
 
 **VIEW** is a list name (case doesn't matter), `today`, `scheduled`, `all`,
@@ -430,6 +432,45 @@ reminders and notes (the format is in [FORMAT.md](FORMAT.md)). Without LIST,
   the same thing, yours wins.
 - **The file must stay a list.** If the front matter loses `reminders: 1`,
   you're asked `Edit it again, or revert to how it was? [E/r]`, as above.
+
+## Profiles
+
+A *profile* is a settings file of its own: its own sources, sidebar, last
+view and records. Use one to keep, say, work lists apart from home lists, or
+to try a set of sources without touching your usual settings. The settings
+you have to begin with are the `default` profile.
+
+```sh
+reminders new-profile work                   # an empty one
+reminders new-profile test --from default    # a copy of the default's settings
+reminders --profile work folder ~/Work/Lists # give it a folder
+reminders -P work                            # open it
+reminders profiles                           # list them
+```
+
+- **Choosing one:** `--profile NAME` (or `-P NAME`, before the command), else
+  the `REMINDERS_PROFILE` environment variable, else `profile-on-start=` in
+  the default profile's settings:
+
+  | Value | Opens |
+  |---|---|
+  | `default` (or unset) | the default profile |
+  | `last` | the profile last opened in the interactive interface or the app |
+  | `ask` | the interactive interface asks which (Enter: the last one); a command uses the last one |
+  | a profile's name | that profile |
+
+  A profile that's gone opens the default instead. `--profile` with a name
+  that doesn't exist is an error that lists the profiles.
+- **Where they're kept:** `$XDG_CONFIG_HOME/reminders/profiles/NAME.ini`
+  (`~/.config/…` when `XDG_CONFIG_HOME` isn't set), and its records, local
+  copies and command history under `profiles/NAME/` in
+  `$XDG_STATE_HOME/reminders/`, `$XDG_DATA_HOME/reminders/` and
+  `$XDG_CACHE_HOME/reminders/`. The default profile's are where they always
+  were.
+- **The interactive interface** shows a profile other than the default in its
+  title: `Reminders · work`.
+- **Several at once:** each run uses one profile, so two terminals can have
+  two profiles open, even on the same folder.
 
 ## Running both clients at once
 

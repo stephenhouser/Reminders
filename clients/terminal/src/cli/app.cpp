@@ -35,7 +35,7 @@ term::SavedView App::saved_view() {
 		return {"today", ""};
 	}
 	auto v =
-		term::parse_view_setting(rem::load_setting(rem::Profile(), "view"));
+		term::parse_view_setting(rem::load_setting(store_.profile(), "view"));
 	if (v.kind == "list" && !store_.list(v.name)) {
 		return {"today", ""};
 	}
@@ -338,8 +338,8 @@ int App::run(const std::string& name, const Args& a) {
 namespace cmd {
 
 // Every command, with its names; in this order in --help and the terminal
-// interface's :help. main() runs sync, folder and tui itself, the terminal
-// interface the ones only it has.
+// interface's :help. main() runs sync, folder, tui, profiles and
+// new-profile itself, the terminal interface the ones only it has.
 std::span<const Command> commands() {
 	static const std::vector<Command> kCommands = {
 		{.names = {"lists"},
@@ -444,6 +444,15 @@ std::span<const Command> commands() {
 		 .arg = Arg::Source},
 		{.names = {"tui"},
 		 .summary = "open the interactive interface",
+		 .where = Where::Cli},
+		{.names = {"profiles"},
+		 .summary = "the profiles, with their sources (* the one in use)",
+		 .where = Where::Cli},
+		{.names = {"new-profile"},
+		 .usage = "NAME [--from PROFILE]",
+		 .summary = "make a profile",
+		 .help = "Make a profile: settings of its own, empty or copied from "
+				 "PROFILE's. Use it with --profile NAME",
 		 .where = Where::Cli},
 		{.names = {"go"},
 		 .usage = "VIEW",

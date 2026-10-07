@@ -7,9 +7,9 @@ const std::vector<std::string> kFlags = {
 
 // Options that take a value; anything else starting with "--" is a flag.
 const std::vector<std::string> kValued = {
-	"title", "list",  "section", "parent", "due",	"time",	 "priority",
-	"tag",	 "untag", "repeat",	 "notes",  "url",	"color", "icon",
-	"in",	 "to",	  "source",	 "format", "output"};
+	"title", "list",  "section", "parent", "due",	 "time",  "priority",
+	"tag",	 "untag", "repeat",	 "notes",  "url",	 "color", "icon",
+	"in",	 "to",	  "source",	 "format", "output", "from"};
 
 // The open library, for showing list names: a list's name, or "source/name"
 // when another source has a list of that name (see Library::label).

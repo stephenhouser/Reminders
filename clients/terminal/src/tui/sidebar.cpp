@@ -55,7 +55,7 @@ SidebarEntry Tui::entry_for(const View& v) {
 		}
 	} else if (v.kind == View::Tag) {
 		e.title = "#" + v.name,
-		e.color = rem::load_tag_style(rem::Profile(), v.name).color;
+		e.color = rem::load_tag_style(store_.profile(), v.name).color;
 	}
 	e.hidden = sidebar_.hidden(v);
 	return e;
@@ -115,7 +115,11 @@ void Tui::draw_sidebar(int width, int height) {
 	auto entries = sidebar();
 	side_sel_ = std::clamp(side_sel_, 0, static_cast<int>(entries.size()) - 1);
 	attron(A_BOLD);
-	put(0, 1, "Reminders", width - 2);
+	// With another profile than the default, its name: "Reminders · work".
+	auto& profile = store_.profile();
+	put(0, 1,
+		profile.is_default() ? "Reminders" : "Reminders · " + profile.name(),
+		width - 2);
 	attroff(A_BOLD);
 	int y = 2;	// a blank line under the title
 	for (int i = 0; i < static_cast<int>(entries.size()) && y < height - 1;
@@ -238,7 +242,7 @@ void Tui::move_entry(int delta) {
 }
 
 void Tui::load_layout() {
-	note_lines_ = rem::load_note_lines(rem::Profile());
+	note_lines_ = rem::load_note_lines(store_.profile());
 	sidebar_.reload();
 }
 

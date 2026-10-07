@@ -9,6 +9,7 @@ add_executable(reminders-cli
   src/cli/commands_read.cpp
   src/cli/commands_edit.cpp
   src/cli/commands_io.cpp
+  src/cli/profiles.cpp
   src/editfile.cpp
   src/tui/tui.cpp
   src/tui/sidebar.cpp

@@ -23,6 +23,7 @@ int main(int argc, char** argv) {
 	});
 
 	// Global options come before the command.
+	std::optional<std::string> profile_name;  // --profile
 	std::size_t i = 0;
 	for (; i < args.size(); ++i) {
 		auto& s = args[i];
@@ -46,6 +47,14 @@ int main(int argc, char** argv) {
 			g.folder = args[++i];
 		} else if (s.starts_with("--folder=")) {
 			g.folder = s.substr(9);
+		} else if (s == "-P" || s == "--profile") {
+			if (i + 1 >= args.size()) {
+				std::cerr << "reminders: --profile needs a name\n";
+				return 2;
+			}
+			profile_name = args[++i];
+		} else if (s.starts_with("--profile=")) {
+			profile_name = s.substr(10);
 		} else {
 			break;
 		}
@@ -55,9 +64,18 @@ int main(int argc, char** argv) {
 								  args.end());
 
 	try {
+		if (cmd == "new-profile") {
+			return cmd_new_profile(parse_args(rest));
+		}
+		// Only the interactive interface asks which profile (with
+		// profile-on-start=ask); a command uses the one last opened.
+		auto profile = choose_profile(profile_name, cmd == "tui");
+		if (cmd == "profiles") {
+			return cmd_profiles(g, profile);
+		}
 		if (cmd == "folder") {
 			if (rest.empty()) {
-				auto f = rem::saved_folder(rem::Profile());
+				auto f = rem::saved_folder(profile);
 				if (!f) {
 					std::cerr << "reminders: no folder set (use `reminders "
 								 "folder PATH`)\n";
@@ -71,7 +89,7 @@ int main(int argc, char** argv) {
 				throw std::runtime_error(
 					std::format("“{}” is not a folder", rest[0]));
 			}
-			auto source = rem::set_default_folder(rem::Profile(), path);
+			auto source = rem::set_default_folder(profile, path);
 			std::cout << std::format("Folder set to {} (source “{}”, {})\n",
 									 source.folder.string(), source.name,
 									 source.backend);
@@ -87,12 +105,13 @@ int main(int argc, char** argv) {
 					std::format("“{}” is not a folder", folder->string()));
 			}
 		}
-		auto library =
-			rem::open_library(rem::Profile(), folder, rem::device_name());
+		auto library = rem::open_library(profile, folder, rem::device_name());
 		if (library->sources().empty()) {
-			throw std::runtime_error(
+			throw std::runtime_error(std::format(
 				"no folder: pass --folder PATH, or set one with `reminders "
-				"folder PATH`");
+				"{}folder PATH`",
+				profile.is_default() ? ""
+									 : "--profile " + profile.name() + " "));
 		}
 
 		// A --folder that isn't a configured source is for this run only: the
@@ -122,6 +141,11 @@ int main(int argc, char** argv) {
 				throw UsageError(
 					"the interactive interface needs a terminal; see reminders "
 					"--help for commands");
+			}
+			try {
+				rem::remember_profile(profile);	 // for profile-on-start=last
+			} catch (const std::exception&) {
+				// It just won't be remembered.
 			}
 			return run_tui(*library, own_folder);
 		}

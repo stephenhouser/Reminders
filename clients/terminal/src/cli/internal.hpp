@@ -48,7 +48,8 @@ extern const std::vector<std::string> kFlags;
 
 // --help: this, the commands (from cmd::commands()), then kUsageEnd.
 constexpr const char* kUsage =
-	R"(Usage: reminders [--folder PATH] [--json] [--no-color] [COMMAND …]
+	R"(Usage: reminders [--profile NAME] [--folder PATH] [--json] [--no-color]
+                 [COMMAND …]
 
 With no command, opens the interactive (terminal) interface.
 
@@ -75,6 +76,9 @@ Fields:
   --notes TEXT      --url URL
 
 Options:
+  -P, --profile NAME Use profile NAME's settings and sources (also
+                     REMINDERS_PROFILE; else profile-on-start= in the default
+                     profile's settings decides)
   -f, --folder PATH  Use PATH instead of the saved folder
   --json             Machine-readable output
   --no-color         No colours (also when NO_COLOR is set or not a terminal)
@@ -124,6 +128,16 @@ struct Args {
 			return out;
 		}
 };
+
+// The profile a run uses: --profile (`named`), else REMINDERS_PROFILE, else
+// profile-on-start= (rem::profile_on_start), asking on the terminal when that
+// says ask and the run is `interactive` (the interactive interface).
+rem::Profile choose_profile(const std::optional<std::string>& named,
+							bool interactive);
+// `reminders profiles`: every profile, with its sources; * marks `current`.
+int cmd_profiles(const Global& g, const rem::Profile& current);
+// `reminders new-profile NAME [--from PROFILE]`.
+int cmd_new_profile(const Args& a);
 
 class App {
 	public:
