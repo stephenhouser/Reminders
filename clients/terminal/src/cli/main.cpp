@@ -35,7 +35,7 @@ int main(int argc, char** argv) {
 			return 0;
 		}
 		if (s == "--version") {
-			std::cout << "reminders " << kVersion << "\n";
+			std::cout << "reminders " << term::kVersion << "\n";
 			return 0;
 		}
 		if (s == "--json") {

@@ -25,6 +25,7 @@
 #include "../editfile.hpp"
 #include "../text.hpp"
 #include "../tui.hpp"
+#include "../version.hpp"
 #include "reminders/actions.hpp"
 #include "reminders/backend_module.hpp"
 #include "reminders/dates.hpp"
@@ -44,8 +45,6 @@ namespace cli {
 extern const rem::Library* g_library;
 extern const std::vector<std::string> kValued;
 extern const std::vector<std::string> kFlags;
-
-constexpr const char* kVersion = "0.1.0";
 
 // --help: this, the commands (from cmd::commands()), then kUsageEnd.
 constexpr const char* kUsage =

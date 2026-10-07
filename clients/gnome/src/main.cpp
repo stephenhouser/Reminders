@@ -11,17 +11,16 @@
 #include "gtk_util.hpp"
 #include "reminders/backend_module.hpp"
 #include "support.hpp"
+#include "version.hpp"
 #include "window.hpp"
 
 namespace {
-
-constexpr const char* kVersion = "0.1.0";
 
 void show_about(GtkApplication* app) {
 	auto* about = adw_about_dialog_new();
 	adw_about_dialog_set_application_name(ADW_ABOUT_DIALOG(about), "Reminders");
 	adw_about_dialog_set_application_icon(ADW_ABOUT_DIALOG(about), ui::kAppId);
-	adw_about_dialog_set_version(ADW_ABOUT_DIALOG(about), kVersion);
+	adw_about_dialog_set_version(ADW_ABOUT_DIALOG(about), ui::kVersion);
 	adw_about_dialog_set_comments(ADW_ABOUT_DIALOG(about),
 								  "Reminders and to-do lists stored as "
 								  "Markdown files in a Syncthing folder.");
@@ -214,7 +213,7 @@ int main(int argc, char** argv) {
 	ui::connect<int(GApplication*, GVariantDict*)>(
 		app, "handle-local-options", [](GApplication*, GVariantDict* opts) {
 			if (g_variant_dict_contains(opts, "version")) {
-				g_print("Reminders %s\n", kVersion);
+				g_print("Reminders %s\n", ui::kVersion);
 				return 0;
 			}
 			return -1;	// carry on
