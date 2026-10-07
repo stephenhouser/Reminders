@@ -211,7 +211,7 @@ std::string source_problem(const SourceEdit& e, const std::string& self) {
 		}
 	}
 	std::error_code ec;
-	for (auto& s : rem::load_sources(rem::Profile())) {
+	for (auto& s : rem::load_sources(e.profile)) {
 		if (s.name != self &&
 			(s.folder == e.folder ||
 			 std::filesystem::equivalent(s.folder, e.folder, ec))) {

@@ -15,6 +15,12 @@ the shortcuts dialog (`show_shortcuts()` in `main.cpp`), `docs/KEYS.md`, and
 (the HIG gives those to other uses). Check the terminal client's
 equivalent too.
 
+**One window per profile.** Each `Window` holds its `rem::Profile` and
+reads and saves only that profile's settings; `main.cpp` keeps the windows
+apart (`window_for`, `present`), and `--profile NAME` launches are handed to
+the running app, which opens or raises that profile's window. Anything new
+that reads settings goes through `profile_`, not the default profile.
+
 ## Pitfalls met here, each one already paid for
 
 - **Arrays passed to C functions must end in `nullptr`.**
@@ -46,7 +52,10 @@ equivalent too.
 
 ## Checking UI work
 
-Launch only through `tools/gui-test.sh` (see the root `CLAUDE.md`).
+Launch only through `tools/gui-test.sh` (see the root `CLAUDE.md`). A
+second window (another profile) is opened from a `STEPS` file with
+`shell WAYLAND_DISPLAY=$TEST_SOCK build/bin/Reminders --profile NAME`; the
+windows are `…/window/1`, `…/window/2`, … for `gdbus`.
 `REMINDERS_SCREENSHOT=out.png` renders the window and quits, 1.5 s after
 start-up or after `REMINDERS_SCREENSHOT_DELAY` ms. Actions without input:
 `gdbus` on the private session bus.

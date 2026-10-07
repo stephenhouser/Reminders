@@ -89,10 +89,10 @@ Install steps and build options are in the README.
   and pass it to the settings and sources functions; paths.hpp's
   `config_dir()` and the rest are only every profile's root. The default
   profile's paths are the ones from before profiles. `app/` takes the
-  profile from its caller or its `Library` (`library.profile()`). The terminal
-  client takes it from its library. Until the GNOME app is done (stage 4 of
-  the profiles work), its call sites pass `rem::Profile()`, the default;
-  each one found by that search still needs the real profile.
+  profile from its caller or its `Library` (`library.profile()`); the
+  terminal client from its library; the GNOME app from its window
+  (`profile_`: one window per profile). A bare `rem::Profile()` means the
+  default profile on purpose, never "whichever".
 - **Per-device state** comes from `source_state_dir()` in `sources.hpp` — call
   it rather than composing a path. A back end that sets `state_in_folder`
   (today only Syncthing, since a synced folder's state belongs with that

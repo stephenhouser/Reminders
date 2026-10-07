@@ -19,9 +19,9 @@
 
 namespace ui {
 
-Window* Window::create(AdwApplication* app,
+Window* Window::create(AdwApplication* app, rem::Profile profile,
 					   std::optional<std::filesystem::path> folder) {
-	auto* w = new Window(app, std::move(folder));
+	auto* w = new Window(app, std::move(profile), std::move(folder));
 	attach(w->window_, "ui-window", std::unique_ptr<Window>(w));
 	return w;
 }
@@ -36,7 +36,7 @@ Window* Window::from(GtkWindow* window) {
 // the [general] line its settings go under) if needed. Saving it there is
 // picked up by watch_settings().
 void Window::open_settings() {
-	auto path = rem::Profile().settings_file();
+	auto path = profile_.settings_file();
 	try {
 		std::error_code ec;
 		if (!std::filesystem::exists(path, ec)) {
@@ -79,7 +79,7 @@ void Window::open_settings() {
 // a moment after the last change.
 void Window::watch_settings() {
 	auto file = Obj<GFile>::adopt(
-		g_file_new_for_path(rem::Profile().settings_file().c_str()));
+		g_file_new_for_path(profile_.settings_file().c_str()));
 	settings_monitor_ = Obj<GFileMonitor>::adopt(g_file_monitor_file(
 		file.get(), G_FILE_MONITOR_WATCH_MOVES, nullptr, nullptr));
 	if (!settings_monitor_) {
@@ -103,7 +103,7 @@ void Window::watch_settings() {
 // row-buttons=always shows each reminder row's buttons (flag, Details, ⋮)
 // all the time, dimmed; hover (the default) only on hover or keyboard focus.
 void Window::apply_row_buttons() {
-	auto value = rem::load_setting(rem::Profile(), "row-buttons");
+	auto value = rem::load_setting(profile_, "row-buttons");
 	if (value == "always") {
 		gtk_widget_add_css_class(window_, "row-buttons-always");
 	} else {
@@ -114,7 +114,7 @@ void Window::apply_row_buttons() {
 void Window::reload_settings() {
 	std::string text;
 	{
-		std::ifstream in(rem::Profile().settings_file());
+		std::ifstream in(profile_.settings_file());
 		text.assign(std::istreambuf_iterator<char>(in), {});
 	}
 	if (text == settings_text_) {
@@ -122,8 +122,7 @@ void Window::reload_settings() {
 	}
 	settings_text_ = std::move(text);
 	apply_row_buttons();
-	if (auto lines = rem::load_note_lines(rem::Profile());
-		lines != note_lines_) {
+	if (auto lines = rem::load_note_lines(profile_); lines != note_lines_) {
 		note_lines_ = lines;
 		if (store_) {
 			rebuild_content();
@@ -135,12 +134,12 @@ void Window::reload_settings() {
 	if (show_hidden_action_) {
 		g_simple_action_set_state(
 			show_hidden_action_,
-			g_variant_new_boolean(rem::load_hidden(rem::Profile()).show));
+			g_variant_new_boolean(rem::load_hidden(profile_).show));
 	}
 	// Sources added, removed or changed (and this isn't a --folder session):
 	// open them again.
 	if (remember_view_) {
-		auto configured = rem::load_sources(rem::Profile());
+		auto configured = rem::load_sources(profile_);
 		bool same = store_ && configured.size() == store_->sources().size();
 		for (std::size_t i = 0; same && i < configured.size(); ++i) {
 			auto& open = store_->sources()[i].config;
@@ -208,8 +207,9 @@ void Window::show_reminder(const std::string& id) {
 	show_details(id);
 }
 
-Window::Window(AdwApplication* app, std::optional<std::filesystem::path> folder)
-	: app_(app) {
+Window::Window(AdwApplication* app, rem::Profile profile,
+			   std::optional<std::filesystem::path> folder)
+	: app_(app), profile_(std::move(profile)) {
 	build();
 	add_actions();
 	// Ctrl+A and Escape for the reminder selection, wherever the focus is in
@@ -301,8 +301,7 @@ Window::Window(AdwApplication* app, std::optional<std::filesystem::path> folder)
 			}
 		});
 	{
-		std::ifstream in(
-			rem::Profile().settings_file());  // as read at start-up
+		std::ifstream in(profile_.settings_file());	 // as read at start-up
 		settings_text_.assign(std::istreambuf_iterator<char>(in), {});
 	}
 	watch_settings();
@@ -331,7 +330,11 @@ Window::~Window() {
 
 void Window::build() {
 	window_ = adw_application_window_new(GTK_APPLICATION(app_));
-	gtk_window_set_title(GTK_WINDOW(window_), "Reminders");
+	// With profiles, each window says whose it is: "Reminders — work".
+	bool profiles = !rem::profile_names().empty();
+	auto title =
+		profiles ? "Reminders — " + profile_.name() : std::string("Reminders");
+	gtk_window_set_title(GTK_WINDOW(window_), title.c_str());
 	gtk_window_set_icon_name(GTK_WINDOW(window_), kAppId);
 	gtk_window_set_default_size(GTK_WINDOW(window_), 900, 640);
 	gtk_widget_set_size_request(window_, 360, 300);
@@ -391,6 +394,11 @@ void Window::build() {
 	gtk_widget_set_tooltip_text(search_toggle, "Search");
 
 	auto* sidebar_header = adw_header_bar_new();
+	if (profiles) {	 // the profile under the sidebar's title
+		adw_header_bar_set_title_widget(
+			ADW_HEADER_BAR(sidebar_header),
+			adw_window_title_new("Reminders", profile_.name().c_str()));
+	}
 	adw_header_bar_pack_start(ADW_HEADER_BAR(sidebar_header), search_toggle);
 	adw_header_bar_pack_end(ADW_HEADER_BAR(sidebar_header), menu_button);
 
@@ -745,7 +753,7 @@ void Window::build() {
 	// content: on narrow windows it hides by itself and slides over.
 	adw_overlay_split_view_set_show_sidebar(
 		ADW_OVERLAY_SPLIT_VIEW(split_),
-		rem::load_bool_setting(rem::Profile(), "show-sidebar", true));
+		rem::load_bool_setting(profile_, "show-sidebar", true));
 	apply_row_buttons();
 	// ("notify" passes the property as well, so not on(), which is for signals
 	// that pass only the emitter.)
@@ -756,12 +764,12 @@ void Window::build() {
 				return;
 			}
 			bool shown = adw_overlay_split_view_get_show_sidebar(split);
-			if (rem::load_bool_setting(rem::Profile(), "show-sidebar", true) ==
+			if (rem::load_bool_setting(profile_, "show-sidebar", true) ==
 				shown) {
 				return;
 			}
 			try {
-				rem::save_setting(rem::Profile(), "show-sidebar",
+				rem::save_setting(profile_, "show-sidebar",
 								  shown ? "true" : "false");
 			} catch (const std::exception&) {
 				// Not worth interrupting for; it just won't be remembered.
@@ -891,7 +899,7 @@ void Window::add_actions() {
 	// Main menu: show the lists, smart lists and tags hidden from the sidebar
 	// (dimmed), so they can be opened or unhidden.
 	show_hidden_action_ = add_toggle(
-		window_, "show-hidden", rem::load_hidden(rem::Profile()).show,
+		window_, "show-hidden", rem::load_hidden(profile_).show,
 		[this](bool on) {
 			try {
 				if (sidebar_) {
@@ -1022,7 +1030,7 @@ void Window::select(View v) {
 	}
 	view_ = std::move(v);
 	if (view_.kind != View::Search && remember_view_) {
-		save_last_view(view_to_string(view_));
+		save_last_view(profile_, view_to_string(view_));
 	}
 	refresh();
 }
@@ -1212,10 +1220,13 @@ void Window::check_notifications() {
 			body += " — " + r.notes.substr(0, r.notes.find('\n'));
 		}
 		g_notification_set_body(n, body.c_str());
-		g_notification_set_default_action_and_target(n, "app.show-reminder",
-													 "s", r.id.c_str());
-		g_application_send_notification(G_APPLICATION(app_),
-										("reminder-" + r.id).c_str(), n);
+		// The profile too, so a click opens this profile's window.
+		g_notification_set_default_action_and_target(
+			n, "app.show-reminder", "(ss)", profile_.name().c_str(),
+			r.id.c_str());
+		g_application_send_notification(
+			G_APPLICATION(app_),
+			std::format("reminder-{}-{}", profile_.name(), r.id).c_str(), n);
 		g_object_unref(n);
 	}
 	last_notify_check_ = now;

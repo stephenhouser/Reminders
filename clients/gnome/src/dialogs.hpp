@@ -75,9 +75,10 @@ struct SourceEdit {
 		std::map<std::string, std::string> options =
 			{};	 // the back end's own settings
 		bool is_new = false;
+		rem::Profile profile = {};	// whose settings it's in
 
 		rem::SourceConfig config() const {
-			return {name, backend, folder, title, options};
+			return {name, backend, folder, title, options, profile};
 		}
 };
 // `validate` returns an error to show, or "". `on_remove` runs when Remove

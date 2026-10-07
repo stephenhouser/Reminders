@@ -59,7 +59,7 @@ Window::ViewInfo Window::view_info(const View& v) {
 				l ? l->color() : "gray"};
 	}
 	if (v.kind == View::Tag) {
-		auto style = rem::load_tag_style(rem::Profile(), v.name);
+		auto style = rem::load_tag_style(profile_, v.name);
 		return {v, "#" + v.name, list_icon_name(style.icon), style.color};
 	}
 	return {v, std::format("Search for “{}”", v.name), "edit-find-symbolic",

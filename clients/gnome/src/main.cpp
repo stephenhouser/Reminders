@@ -6,6 +6,7 @@
 #include <format>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "gtk_util.hpp"
@@ -142,44 +143,105 @@ void schedule_screenshot(GtkWindow* win, std::string path) {
 
 }  // namespace
 
-// Shows the window, creating it if needed; `folder` replaces the open folder.
-void present(AdwApplication* app, std::optional<std::filesystem::path> folder) {
-	if (auto* existing =
-			gtk_application_get_active_window(GTK_APPLICATION(app))) {
-		if (auto* w = ui::Window::from(existing)) {
-			if (folder) {
-				w->open_sources(*folder);
-			}
+// The window showing `profile`, if one is open: each profile has one.
+ui::Window* window_for(GtkApplication* app, const rem::Profile& profile) {
+	for (auto* l = gtk_application_get_windows(app); l; l = l->next) {
+		if (auto* w = ui::Window::from(GTK_WINDOW(l->data));
+			w && w->profile() == profile) {
+			return w;
 		}
-		gtk_window_present(existing);
-		return;
 	}
-	auto* window = ui::Window::create(app, std::move(folder));
+	return nullptr;
+}
+
+// Shows `profile`'s window, creating it if needed; `folder` replaces its
+// open folder.
+ui::Window* present(AdwApplication* app, const rem::Profile& profile,
+					std::optional<std::filesystem::path> folder) {
+	if (auto* w = window_for(GTK_APPLICATION(app), profile)) {
+		if (folder) {
+			w->open_sources(*folder);
+		}
+		gtk_window_present(w->gtk());
+		return w;
+	}
+	auto* window = ui::Window::create(app, profile, std::move(folder));
 	auto* win = window->gtk();
 	gtk_window_present(win);
 	if (const char* shot = g_getenv("REMINDERS_SCREENSHOT")) {
 		schedule_screenshot(win, shot);
 	}
+	try {
+		rem::remember_profile(profile);	 // for profile-on-start=last
+	} catch (const std::exception&) {
+		// It just won't be remembered.
+	}
+	return window;
 }
 
-// "reminders [FOLDER]". Runs in the main instance; messages go to the
-// terminal the command was typed in, even when the app was already running.
+// With no profile named: the window in front, if there is one, else the
+// profile profile-on-start= picks (with ask, the last one, until there's a
+// picker).
+void present_any(AdwApplication* app,
+				 std::optional<std::filesystem::path> folder) {
+	if (auto* w = ui::Window::from(
+			gtk_application_get_active_window(GTK_APPLICATION(app)))) {
+		present(app, w->profile(), std::move(folder));
+		return;
+	}
+	present(app, rem::profile_on_start().profile, std::move(folder));
+}
+
+// "Reminders [--profile NAME] [FOLDER]". Runs in the main instance;
+// messages go to the terminal the command was typed in, even when the app
+// was already running.
 int handle_command_line(AdwApplication* app, GApplicationCommandLine* cmd) {
+	// The profile: --profile, else the caller's REMINDERS_PROFILE, else none
+	// named (the window in front, or profile-on-start=).
+	std::optional<rem::Profile> profile;
+	const char* named = nullptr;
+	g_variant_dict_lookup(g_application_command_line_get_options_dict(cmd),
+						  "profile", "&s", &named);
+	if (!named || !*named) {
+		named = g_application_command_line_getenv(cmd, "REMINDERS_PROFILE");
+	}
+	if (named && *named) {
+		try {
+			profile = rem::existing_profile(named);
+		} catch (const std::exception& e) {
+			g_application_command_line_printerr(cmd, "Reminders: %s\n",
+												e.what());
+			return 1;
+		}
+	}
+
 	int all_argc = 0;
 	char** all_argv = g_application_command_line_get_arguments(cmd, &all_argc);
-	// Options are in the options dictionary; keep just the folder argument.
+	// Options are in the options dictionary; keep just the folder argument
+	// (not --profile's value either).
 	std::vector<char*> args;
 	for (int i = 0; i < all_argc; ++i) {
-		if (i == 0 || all_argv[i][0] != '-') {
+		std::string_view a = all_argv[i];
+		if ((a == "-P" || a == "--profile") && i + 1 < all_argc) {
+			++i;
+		} else if (i == 0 || !a.starts_with('-')) {
 			args.push_back(all_argv[i]);
 		}
 	}
+	auto show = [&](std::optional<std::filesystem::path> folder) {
+		if (profile) {
+			present(app, *profile, std::move(folder));
+		} else {
+			present_any(app, std::move(folder));
+		}
+	};
 	int argc = static_cast<int>(args.size());
 	char** argv = args.data();
 
 	int status = 0;
 	if (argc > 2) {
-		g_application_command_line_printerr(cmd, "Usage: Reminders [FOLDER]\n");
+		g_application_command_line_printerr(
+			cmd, "Usage: Reminders [--profile NAME] [FOLDER]\n");
 		status = 1;
 	} else if (argc == 2) {
 		// Relative paths are resolved against the caller's directory.
@@ -191,10 +253,10 @@ int handle_command_line(AdwApplication* app, GApplicationCommandLine* cmd) {
 				cmd, "Reminders: “%s” is not a folder\n", argv[1]);
 			status = 1;
 		} else {
-			present(app, std::filesystem::path(path));
+			show(std::filesystem::path(path));
 		}
 	} else {
-		present(app, std::nullopt);
+		show(std::nullopt);
 	}
 	g_strfreev(all_argv);
 	return status;
@@ -211,6 +273,12 @@ int main(int argc, char** argv) {
 	g_application_add_main_option(G_APPLICATION(app), "version", 0,
 								  G_OPTION_FLAG_NONE, G_OPTION_ARG_NONE,
 								  "Show the version and exit", nullptr);
+	g_application_add_main_option(
+		G_APPLICATION(app), "profile", 'P', G_OPTION_FLAG_NONE,
+		G_OPTION_ARG_STRING,
+		"Open profile NAME's window: its own settings and sources (also "
+		"REMINDERS_PROFILE)",
+		"NAME");
 	ui::connect<int(GApplication*, GVariantDict*)>(
 		app, "handle-local-options", [](GApplication*, GVariantDict* opts) {
 			if (g_variant_dict_contains(opts, "version")) {
@@ -224,7 +292,8 @@ int main(int argc, char** argv) {
 		"Open the lists in FOLDER (a Syncthing folder of Markdown files). "
 		"Without FOLDER,\n"
 		"the folder chosen in the app is opened. FOLDER is only used for this "
-		"session.");
+		"session.\n"
+		"Each profile opens in a window of its own.");
 
 	ui::on(app, "startup", [app] {
 		auto* gapp = GTK_APPLICATION(app);
@@ -232,15 +301,20 @@ int main(int argc, char** argv) {
 					   [app] { g_application_quit(G_APPLICATION(app)); });
 		ui::add_action(app, "about", [gapp] { show_about(gapp); });
 		ui::add_action(app, "shortcuts", [gapp] { show_shortcuts(gapp); });
-		// Target: a reminder id. Used by notifications.
+		// Target: (profile, reminder id). Used by notifications: opens
+		// that profile's window, if it was closed meanwhile.
 		auto* show =
-			g_simple_action_new("show-reminder", G_VARIANT_TYPE_STRING);
+			g_simple_action_new("show-reminder", G_VARIANT_TYPE("(ss)"));
 		ui::connect<void(GSimpleAction*, GVariant*)>(
-			show, "activate", [gapp](GSimpleAction*, GVariant* id) {
-				g_application_activate(G_APPLICATION(gapp));
-				if (auto* w = ui::Window::from(
-						gtk_application_get_active_window(gapp))) {
-					w->show_reminder(g_variant_get_string(id, nullptr));
+			show, "activate", [app](GSimpleAction*, GVariant* target) {
+				const char* name = nullptr;
+				const char* id = nullptr;
+				g_variant_get(target, "(&s&s)", &name, &id);
+				try {
+					present(app, rem::existing_profile(name), std::nullopt)
+						->show_reminder(id);
+				} catch (const std::exception&) {
+					// The profile is gone.
 				}
 			});
 		g_action_map_add_action(G_ACTION_MAP(app), G_ACTION(show));
@@ -274,7 +348,7 @@ int main(int argc, char** argv) {
 		accel("win.import", "<Control>o");
 	});
 
-	ui::on(app, "activate", [app] { present(app, std::nullopt); });
+	ui::on(app, "activate", [app] { present_any(app, std::nullopt); });
 	ui::connect<int(GApplication*, GApplicationCommandLine*)>(
 		app, "command-line",
 		[app](GApplication*, GApplicationCommandLine* cmd) {

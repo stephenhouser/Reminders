@@ -28,15 +28,17 @@ using View = rem::View;	 // what the window shows (reminders/view.hpp)
 
 class Window {
 	public:
-		// Creates the window; it owns this object and deletes it when
-		// destroyed. `folder` (from the command line) is opened instead of the
-		// saved one, without replacing the saved one.
+		// Creates the window for `profile`; it owns this object and deletes
+		// it when destroyed. `folder` (from the command line) is opened
+		// instead of the saved one, without replacing the saved one.
 		static Window* create(
-			AdwApplication* app,
+			AdwApplication* app, rem::Profile profile,
 			std::optional<std::filesystem::path> folder = std::nullopt);
 		~Window();
 		GtkWindow* gtk() const { return GTK_WINDOW(window_); }
 		static Window* from(GtkWindow* window);
+		// The profile it shows: its settings, sources and records.
+		const rem::Profile& profile() const { return profile_; }
 		// Opens a reminder's list and its details dialog (e.g. from a
 		// notification).
 		void show_reminder(const std::string& id);
@@ -47,7 +49,7 @@ class Window {
 		void apply_row_buttons();  // row-buttons=hover | always
 
 	private:
-		Window(AdwApplication* app,
+		Window(AdwApplication* app, rem::Profile profile,
 			   std::optional<std::filesystem::path> folder);
 		void build();
 		void add_actions();
@@ -292,6 +294,7 @@ class Window {
 			false;	// offers Markdown checklists that aren't lists yet
 		GSimpleAction* show_completed_action_ = nullptr;
 
+		rem::Profile profile_;
 		std::unique_ptr<rem::Library> store_;  // every source
 		std::unique_ptr<rem::SyncRunner>
 			sync_;	// CalDAV and WebDAV sources, synced in the background;
@@ -327,8 +330,7 @@ class Window {
 		gint64 last_notify_check_ = 0;	// unix seconds
 		bool updating_sidebar_ = false;
 		bool show_completed_ = false;
-		std::size_t note_lines_ =
-			rem::load_note_lines(rem::Profile());  // note-lines
+		std::size_t note_lines_ = rem::load_note_lines(profile_);  // note-lines
 		std::unique_ptr<rem::Sidebar>
 			sidebar_;  // its layout (made with store_)
 		GSimpleAction* show_hidden_action_ = nullptr;

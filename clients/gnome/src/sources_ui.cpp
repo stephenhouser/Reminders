@@ -55,11 +55,11 @@ void Window::open_folder(const std::filesystem::path& folder) {
 	// A configured source's folder becomes the default; any other folder
 	// becomes the default source's folder (created if there's none).
 	try {
-		auto source = rem::source_for_folder(rem::Profile(), folder);
+		auto source = rem::source_for_folder(profile_, folder);
 		if (source.name.empty()) {
-			rem::set_default_folder(rem::Profile(), folder);
+			rem::set_default_folder(profile_, folder);
 		} else {
-			rem::save_setting(rem::Profile(), "default-source", source.name);
+			rem::save_setting(profile_, "default-source", source.name);
 		}
 	} catch (const std::exception& e) {
 		toast(std::format("Couldn't save the folder: {}", e.what()));
@@ -146,7 +146,7 @@ void Window::remove_source(const std::string& name) {
 				return;
 			}
 			try {
-				rem::remove_source(rem::Profile(), name,
+				rem::remove_source(profile_, name,
 								   !erase);	 // this computer's records; a DAV
 											 // copy in the default place
 			} catch (const std::exception& e) {
@@ -173,7 +173,7 @@ void Window::remove_source(const std::string& name) {
 
 void Window::source_info(const std::string& name) {
 	std::optional<rem::SourceConfig> config;
-	for (auto& s : rem::load_sources(rem::Profile())) {
+	for (auto& s : rem::load_sources(profile_)) {
 		if (s.name == name) {
 			config = s;
 		}
@@ -181,15 +181,15 @@ void Window::source_info(const std::string& name) {
 	if (!config) {
 		return;
 	}
-	SourceEdit edit{
-		config->name,
-		config->title,
-		config->backend,
-		config->folder,
-		rem::load_setting(rem::Profile(), "default-source") == name ||
-			(store_ && store_->default_source() == name),
-		config->options,
-		false};
+	SourceEdit edit{config->name,
+					config->title,
+					config->backend,
+					config->folder,
+					rem::load_setting(profile_, "default-source") == name ||
+						(store_ && store_->default_source() == name),
+					config->options,
+					false,
+					profile_};
 	show_source_dialog(
 		window_, edit,
 		[name](const SourceEdit& e) { return source_problem(e, name); },
@@ -197,11 +197,11 @@ void Window::source_info(const std::string& name) {
 			try {
 				rem::save_source(e.config());
 				if (e.title.empty()) {
-					rem::save_section_setting(rem::Profile(),
-											  "source." + e.name, "title", "");
+					rem::save_section_setting(profile_, "source." + e.name,
+											  "title", "");
 				}
 				if (e.is_default) {
-					rem::save_setting(rem::Profile(), "default-source", e.name);
+					rem::save_setting(profile_, "default-source", e.name);
 				}
 			} catch (const std::exception& err) {
 				toast(std::format("Couldn't save the source: {}", err.what()));
@@ -214,7 +214,7 @@ void Window::source_info(const std::string& name) {
 
 void Window::show_sources() {
 	std::vector<SourceRow> rows;
-	for (auto& s : rem::load_sources(rem::Profile())) {
+	for (auto& s : rem::load_sources(profile_)) {
 		auto folder =
 			rem::contract_path(s.folder);  // ~/… for folders in the home folder
 		auto& module = rem::backend_of(s);
@@ -230,8 +230,9 @@ void Window::show_sources() {
 
 void Window::add_source() {
 	SourceEdit edit;
+	edit.profile = profile_;
 	edit.is_new = true;
-	edit.is_default = rem::load_sources(rem::Profile()).empty();
+	edit.is_default = rem::load_sources(profile_).empty();
 	show_source_dialog(
 		window_, edit,
 		[](const SourceEdit& e) { return source_problem(e, ""); },
@@ -242,10 +243,9 @@ void Window::add_source() {
 				}
 				auto source = e.config();
 				source.name.clear();
-				auto config = rem::add_source(rem::Profile(), source);
+				auto config = rem::add_source(profile_, source);
 				if (e.is_default) {
-					rem::save_setting(rem::Profile(), "default-source",
-									  config.name);
+					rem::save_setting(profile_, "default-source", config.name);
 				}
 				toast(
 					rem::syncs(config)
@@ -307,7 +307,7 @@ void Window::stop_watching() {
 void Window::open_sources(std::optional<std::filesystem::path> folder) {
 	std::unique_ptr<rem::Library> library;
 	try {
-		library = rem::open_library(rem::Profile(), folder, device_name());
+		library = rem::open_library(profile_, folder, device_name());
 		library->load_all();
 	} catch (const std::exception& e) {
 		toast(std::format("Couldn't open the lists: {}", e.what()));
@@ -355,7 +355,8 @@ void Window::open_sources(std::optional<std::filesystem::path> folder) {
 	start_sync();
 
 	gtk_stack_set_visible_child_name(GTK_STACK(main_stack_), "main");
-	view_ = remember ? rem::view_from_string(load_last_view()) : home_view();
+	view_ = remember ? rem::view_from_string(load_last_view(profile_))
+					 : home_view();
 	if (view_.kind ==
 		View::List) {  // "source/name", or a bare name only one source has
 		auto* l = store_->list(view_.name);

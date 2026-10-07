@@ -160,16 +160,12 @@ bool is_overdue(const rem::Reminder& r, rem::Date today) {
 	return r.due_time->hour * 60 + r.due_time->minute < minutes;
 }
 
-std::optional<std::filesystem::path> load_folder() {
-	return rem::saved_folder(rem::Profile());
+std::string load_last_view(const rem::Profile& profile) {
+	return rem::load_setting(profile, "view");
 }
 
-std::string load_last_view() {
-	return rem::load_setting(rem::Profile(), "view");
-}
-
-void save_last_view(const std::string& view) {
-	rem::save_setting(rem::Profile(), "view", view);
+void save_last_view(const rem::Profile& profile, const std::string& view) {
+	rem::save_setting(profile, "view", view);
 }
 
 std::string device_name() { return rem::device_name(); }

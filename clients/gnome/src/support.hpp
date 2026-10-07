@@ -7,6 +7,7 @@
 #include <string_view>
 
 #include "reminders/model.hpp"
+#include "reminders/profile.hpp"
 
 namespace ui {
 
@@ -27,11 +28,10 @@ std::string format_time(rem::TimeOfDay t);
 std::string due_label(const rem::Reminder& r, rem::Date today);
 bool is_overdue(const rem::Reminder& r, rem::Date today);
 
-// Persistent settings in $XDG_CONFIG_HOME/reminders/settings.ini.
-std::optional<std::filesystem::path> load_folder();
-// The last view, as "today", "list:Groceries", "tag:errands", ...
-std::string load_last_view();
-void save_last_view(const std::string& view);
+// The last view in a profile's settings, as "today", "list:Groceries",
+// "tag:errands", ...
+std::string load_last_view(const rem::Profile& profile);
+void save_last_view(const rem::Profile& profile, const std::string& view);
 
 // This computer's name for its per-device state folder inside the synced
 // folder (<folder>/.reminders/<device>/), e.g. "laptop-3f9a". Stable across
