@@ -10,6 +10,8 @@ the task lists of a CalDAV account (Nextcloud, Fastmail, …), or a folder on
 a WebDAV server, or a git repository. Each source has
 a *back end* that says how its lists are kept in sync.
 
+Yes, AI tools have been used in the creation of this code. This is an experiment after all.
+
 ```markdown
 ---
 reminders: 1
