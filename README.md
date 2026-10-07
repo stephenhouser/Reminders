@@ -141,26 +141,76 @@ Details: [docs/FORMAT.md](docs/FORMAT.md).
 | Fedora 44 (tested) | `sudo dnf install gcc-c++ cmake ninja-build gtk4-devel libadwaita-devel glib2-devel ncurses-devel libcurl-devel libxml2-devel` |
 | Debian / Ubuntu (untested; needs a release with GTK 4.20 and libadwaita 1.8) | `sudo apt install g++ cmake ninja-build libgtk-4-dev libadwaita-1-dev libglib2.0-dev-bin libncurses-dev libcurl4-openssl-dev libxml2-dev` |
 
-Each client can be left out: `-DBUILD_GNOME_APP=OFF` builds without GTK, and
-`-DBUILD_TERMINAL_APP=OFF` without ncurses. Each back end has its own option,
-all on by default: `-DBUILD_BACKEND_SYNCTHING`, `_LOCAL`, `_CALDAV`, `_WEBDAV`
-and `_GIT`. With CalDAV and WebDAV both off, libcurl and libxml2 aren't needed.
-A source naming a back end that isn't built opens as a plain local folder. The
-core library alone needs only a C++23 compiler and CMake.
+Each build goes in its own directory, so a release build and a development
+build can sit side by side: `build-release/` and `build/` below. A directory
+remembers how it was configured, so pick the build type when you create it.
 
-### Build, test, run
+### Build and install (release)
+
+```sh
+cmake -S . -B build-release -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$HOME/.local
+cmake --build build-release
+cmake --install build-release
+```
+
+This installs, under the prefix:
+
+| File | Where (prefix `~/.local`) |
+|---|---|
+| `Reminders`, the GNOME app | `~/.local/bin/Reminders` |
+| `reminders`, the terminal client | `~/.local/bin/reminders` |
+| Desktop entry | `~/.local/share/applications/com.stephenhouser.Reminders.desktop` |
+| App icon | `~/.local/share/icons/hicolor/scalable/apps/com.stephenhouser.Reminders.svg` |
+
+`~/.local/bin` must be on your `PATH`. Leave out `-DCMAKE_INSTALL_PREFIX` to
+install system-wide under `/usr/local` (then `sudo cmake --install
+build-release`). To rebuild after pulling changes, run the last two commands
+again. There's no uninstall target; `build-release/install_manifest.txt`
+lists every file installed.
+
+### Build, test and run (development)
+
+With no `CMAKE_BUILD_TYPE`, the build is a Debug build (no optimisation, with
+debug symbols). This is the one to use while working on the code:
 
 ```sh
 cmake -S . -B build -G Ninja
 cmake --build build
-ctest --test-dir build            # all the tests (or run them one by one:)
-./build/core/core_tests          # 106 tests for the core library (core_tests NAME runs the matching ones)
+ctest --test-dir build --output-on-failure   # all the tests (or run them one by one:)
+./build/core/core_tests          # the core library (core_tests NAME runs the matching ones)
 ./build/app/app_tests            # the layer the two apps share
 ./build/backends/caldav_tests    # each back end's own tests (syncthing_, webdav_, git_tests, …);
 ./build/backends/caldav_server_tests backends/common/tests/fake_dav.py   # the *_server_tests use a fake server
 ./build/bin/Reminders            # the GNOME app (or: ./build/bin/Reminders ~/Sync/Reminders)
 ./build/bin/reminders --help     # the terminal client
 ```
+
+Both clients build into `bin/` inside the build directory, whatever the build
+type.
+
+### Build options
+
+Add these to the first `cmake` line (the configure step), with `=OFF` to
+leave something out. All are on by default.
+
+| Option | Leaves out | So these aren't needed |
+|---|---|---|
+| `-DBUILD_GNOME_APP=OFF` | the GNOME app | GTK, libadwaita |
+| `-DBUILD_TERMINAL_APP=OFF` | the terminal client | ncurses |
+| `-DBUILD_BACKEND_SYNCTHING=OFF` | Syncthing folders | |
+| `-DBUILD_BACKEND_LOCAL=OFF` | plain local folders | |
+| `-DBUILD_BACKEND_CALDAV=OFF` | CalDAV accounts | libcurl, libxml2 (with WebDAV off too) |
+| `-DBUILD_BACKEND_WEBDAV=OFF` | WebDAV folders | libcurl, libxml2 (with CalDAV off too) |
+| `-DBUILD_BACKEND_GIT=OFF` | git repositories | |
+
+For example, a terminal-only build for a headless machine:
+
+```sh
+cmake -S . -B build-release -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_GNOME_APP=OFF
+```
+
+A source naming a back end that isn't built opens as a plain local folder. The
+core library alone needs only a C++23 compiler and CMake.
 
 ### Formatting
 
@@ -179,17 +229,6 @@ clang-format -i core/src/settings.cpp       # or just the files you changed
 `format` runs `clang-format` twice, since `InsertBraces` can need a second pass
 for nested statements. `format-check` fails if any file would change, so it
 can be run before a commit.
-
-### Install
-
-```sh
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$HOME/.local
-cmake --build build
-cmake --install build
-```
-
-This installs `Reminders` (the GNOME app), `reminders` (the terminal client),
-the desktop entry (`com.stephenhouser.Reminders.desktop`) and the app icon.
 
 ## Using it
 

@@ -65,9 +65,9 @@ constexpr wint_t kDelete =
 	0x110000;  // the Delete key, outside the range of characters
 
 struct SidebarEntry {
-		View view;
+		View view = {};
 		std::string title;
-		std::string color;
+		std::string color = "";
 		int count = -1;
 		// Headings: a plain Heading is just a label; a FoldHeading (a
 		// collapsible group's) can be selected, and Enter/Space folds or

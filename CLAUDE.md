@@ -39,6 +39,10 @@ reference, not the architecture.
   the same way. Test executables stay where they were (`build/core/`,
   `build/app/`, `build/backends/`).
 
+  Each client sets its own version in `src/version.hpp` (`kVersion`), apart
+  from the other clients' and from the file format's version
+  (`Document::kFormatVersion` in `model.hpp`).
+
 Public headers sit under `<dir>/include/reminders/` and are included as
 `<reminders/paths.hpp>`; everything is in `namespace rem`.
 
@@ -53,6 +57,12 @@ ctest --test-dir build --output-on-failure    # 8 suites: core, app, backends
 cmake --build build --target format           # clang-format -i, two passes
 cmake --build build --target format-check     # report only, changes nothing
 ```
+
+`build/` is Debug (the default). The user builds Release, and the optimiser
+raises warnings a Debug build doesn't (GCC's `-Wmaybe-uninitialized`), so
+before finishing a C++ change, check that a Release build in a scratch
+directory is warning-free too: `cmake -S . -B <scratch>/rel -G Ninja -DCMAKE_BUILD_TYPE=Release`.
+Install steps and build options are in the README.
 
 ## Rules
 

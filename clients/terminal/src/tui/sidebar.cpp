@@ -79,12 +79,12 @@ std::vector<SidebarEntry> Tui::sidebar() {
 	for (auto& g : sidebar_.groups()) {
 		bool foldable = sidebar_.foldable(g), folded = sidebar_.folded(g);
 		if (foldable || !out.empty()) {
-			SidebarEntry heading{
-				{}, sidebar_.title(g) + (folded ? " (folded)" : ""), "", -1};
-			heading.kind =
-				foldable ? SidebarEntry::FoldHeading : SidebarEntry::Heading;
-			heading.group = g;
-			out.push_back(heading);
+			out.push_back({
+				.title = sidebar_.title(g) + (folded ? " (folded)" : ""),
+				.kind = foldable ? SidebarEntry::FoldHeading
+								 : SidebarEntry::Heading,
+				.group = g,
+			});
 			if (folded) {
 				continue;
 			}

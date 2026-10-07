@@ -27,7 +27,7 @@ enum class Arg { None, File, List, Source, View, Reminder, Command, Setting };
 
 struct Command {
 		std::vector<std::string_view> names;  // the first is its name
-		std::string_view usage;				  // after the name
+		std::string_view usage = "";		  // after the name
 		std::string_view summary;			  // a line, for :help
 		// For --help, when there's more to say than `summary`; "\n" starts
 		// a new line.
